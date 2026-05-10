@@ -1,0 +1,239 @@
+<template>
+  <div>
+    <div class="page-title">
+      <h2>{{ title }}</h2>
+      <el-button type="primary" v-if="showUploadButton" @click="openUpload">上传文件</el-button>
+    </div>
+    <div class="query-bar">
+      <el-form inline>
+        <el-form-item label="文件名"><el-input v-model="query.keyword" clearable placeholder="输入文件名" /></el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="query.extension" clearable placeholder="全部" style="width:160px">
+            <el-option v-for="item in fileTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="上传日期"><el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" /></el-form-item>
+        <el-form-item><el-button type="primary" @click="load">查询</el-button></el-form-item>
+        <el-form-item><el-button @click="resetQuery">重置</el-button></el-form-item>
+      </el-form>
+    </div>
+    <div class="section">
+      <el-table :data="files" stripe>
+        <el-table-column prop="fileName" label="文件名称" min-width="220" />
+        <el-table-column prop="extension" label="类型" width="90" />
+        <el-table-column prop="fileSize" label="大小" width="120" :formatter="sizeText" />
+        <el-table-column prop="createdAt" label="上传时间" width="180" />
+        <el-table-column label="操作" :width="operationWidth" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="download(row)">下载</el-button>
+            <el-button link type="warning" v-if="canManage(row)" @click="openReplace(row)">替换文件</el-button>
+            <el-button link type="danger" v-if="canManage(row)" @click="deleteFile(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <el-dialog v-model="uploadOpen" title="上传文件" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="选择文件">
+          <el-upload ref="uploadRef" class="file-upload-drag" drag :auto-upload="false" :limit="1" :on-change="onFileChange">
+            <div>拖拽文件到此处，或点击选择文件</div>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="uploadOpen = false">取消</el-button>
+        <el-button type="primary" @click="submitUpload">上传</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="replaceOpen" title="替换文件" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="选择新文件">
+          <el-upload ref="replaceUploadRef" class="file-upload-drag" drag :auto-upload="false" :limit="1" :on-change="onReplaceFileChange">
+            <div>拖拽文件到此处，或点击选择文件</div>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeReplace">取消</el-button>
+        <el-button type="primary" @click="submitReplace">替换</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { http, apiDelete, apiGet } from '../api/http'
+import { useAuthStore } from '../stores/auth'
+
+interface FileTypeOption {
+  label: string
+  value: string
+}
+
+const props = withDefaults(defineProps<{
+  title?: string
+  mine?: boolean
+  manageOwnerFiles?: boolean
+  showUpload?: boolean
+}>(), {
+  title: '文件库',
+  mine: false,
+  manageOwnerFiles: false,
+  showUpload: true
+})
+
+const auth = useAuthStore()
+const files = ref<any[]>([])
+const uploadOpen = ref(false)
+const selectedFile = ref<File>()
+const uploadRef = ref<any>()
+const replaceOpen = ref(false)
+const replaceTarget = ref<any>()
+const replaceFile = ref<File>()
+const replaceUploadRef = ref<any>()
+const dateRange = ref<string[]>([])
+const query = reactive({ keyword: '', extension: '' })
+const title = computed(() => props.title)
+const showUploadButton = computed(() => props.showUpload && auth.hasPermission('file:upload'))
+const operationWidth = computed(() => props.manageOwnerFiles ? 210 : 90)
+const fileTypeOptions: FileTypeOption[] = [
+  { label: 'Word 文档', value: 'doc' },
+  { label: 'Excel 表格', value: 'xls' },
+  { label: 'PPT 演示', value: 'ppt' },
+  { label: 'PDF 文档', value: 'pdf' },
+  { label: 'CAD 图纸', value: 'dwg' },
+  { label: '图片', value: 'jpg' },
+  { label: '压缩包', value: 'zip' }
+]
+
+async function load() {
+  const params: Record<string, unknown> = { ...query }
+  if (props.mine) {
+    params.mine = true
+  }
+  if (dateRange.value?.length === 2) {
+    params.uploadStart = dateRange.value[0]
+    params.uploadEnd = dateRange.value[1]
+  }
+  files.value = await apiGet('/files', params)
+}
+
+async function openUpload() {
+  uploadOpen.value = true
+}
+
+function onFileChange(file: UploadFile) {
+  selectedFile.value = file.raw
+}
+
+async function submitUpload() {
+  if (!selectedFile.value) {
+    ElMessage.warning('请选择文件')
+    return
+  }
+  const form = new FormData()
+  form.append('file', selectedFile.value)
+  await http.post('/files/upload', form)
+  ElMessage.success('上传成功')
+  uploadOpen.value = false
+  resetUploadForm()
+  load()
+}
+
+function resetQuery() {
+  query.keyword = ''
+  query.extension = ''
+  dateRange.value = []
+  load()
+}
+
+async function download(row: any) {
+  const response = await http.get(`/files/${row.id}/download`, { responseType: 'blob' })
+  const blob = new Blob([response.data])
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = row.originalFileName || row.fileName || 'download'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+async function deleteFile(row: any) {
+  await ElMessageBox.confirm('确认删除该文件？文件将进入回收站。', '删除确认', { type: 'warning' })
+  await apiDelete(`/files/${row.id}`)
+  ElMessage.success('删除成功')
+  load()
+}
+
+function openReplace(row: any) {
+  replaceTarget.value = row
+  replaceOpen.value = true
+}
+
+function onReplaceFileChange(file: UploadFile) {
+  replaceFile.value = file.raw
+}
+
+async function submitReplace() {
+  if (!replaceTarget.value) {
+    return
+  }
+  if (!replaceFile.value) {
+    ElMessage.warning('请选择新文件')
+    return
+  }
+  const form = new FormData()
+  form.append('file', replaceFile.value)
+  await http.post(`/files/${replaceTarget.value.id}/replace`, form)
+  ElMessage.success('替换成功')
+  closeReplace()
+  load()
+}
+
+function closeReplace() {
+  replaceOpen.value = false
+  replaceTarget.value = undefined
+  replaceFile.value = undefined
+  replaceUploadRef.value?.clearFiles()
+}
+
+function canManage(row: any) {
+  return props.manageOwnerFiles && isOwner(row)
+}
+
+function isOwner(row: any) {
+  return row.uploadUserId === auth.user?.id
+}
+
+function resetUploadForm() {
+  selectedFile.value = undefined
+  uploadRef.value?.clearFiles()
+}
+
+function sizeText(_row: any, _column: any, value: number) {
+  if (!value) return '0 B'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
+onMounted(load)
+</script>
+
+<style scoped>
+.file-upload-drag {
+  width: 100%;
+}
+
+.file-upload-drag :deep(.el-upload),
+.file-upload-drag :deep(.el-upload-dragger) {
+  width: 100%;
+}
+
+</style>

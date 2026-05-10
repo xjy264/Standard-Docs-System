@@ -1,0 +1,133 @@
+package cn.datong.standard.service;
+
+import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.dto.CurrentUser;
+import cn.datong.standard.entity.SysRegisterApproval;
+import cn.datong.standard.entity.SysRole;
+import cn.datong.standard.entity.SysUser;
+import cn.datong.standard.entity.SysUserRole;
+import cn.datong.standard.mapper.SysDeptMapper;
+import cn.datong.standard.mapper.SysRegisterApprovalMapper;
+import cn.datong.standard.mapper.SysRoleMapper;
+import cn.datong.standard.mapper.SysUserMapper;
+import cn.datong.standard.mapper.SysUserRoleMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class ApprovalService {
+    private final SysRegisterApprovalMapper approvalMapper;
+    private final SysUserMapper userMapper;
+    private final SysDeptMapper deptMapper;
+    private final SysUserRoleMapper userRoleMapper;
+    private final SysRoleMapper roleMapper;
+
+    public List<SysRegisterApproval> pending(CurrentUser currentUser) {
+        List<SysRegisterApproval> pending = approvalMapper.selectList(new LambdaQueryWrapper<SysRegisterApproval>()
+                .eq(SysRegisterApproval::getApprovalStatus, "PENDING")
+                .orderByDesc(SysRegisterApproval::getCreatedAt));
+        if (currentUser.superAdmin()) {
+            return pending;
+        }
+        requireAdmin(currentUser.userId());
+        SysUser auditor = requireAuditor(currentUser.userId());
+        return pending.stream()
+                .filter(approval -> {
+                    SysUser user = userMapper.selectById(approval.getUserId());
+                    return user != null && auditor.getDeptId() != null && auditor.getDeptId().equals(user.getDeptId());
+                })
+                .toList();
+    }
+
+    public SysUser approve(Long id, CurrentUser currentUser) {
+        SysRegisterApproval approval = requireApproval(id);
+        ensureCanAudit(approval, currentUser);
+        approval.setApprovalStatus("APPROVED");
+        approval.setApproverId(currentUser.userId());
+        approval.setApprovedAt(LocalDateTime.now());
+        approvalMapper.updateById(approval);
+
+        SysUser user = requireTargetUser(approval);
+        user.setApprovalStatus("APPROVED");
+        user.setStatus("ENABLED");
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+        return user;
+    }
+
+    public SysUser reject(Long id, String reason, CurrentUser currentUser) {
+        SysRegisterApproval approval = requireApproval(id);
+        ensureCanAudit(approval, currentUser);
+        approval.setApprovalStatus("REJECTED");
+        approval.setRejectReason(reason);
+        approval.setApproverId(currentUser.userId());
+        approval.setApprovedAt(LocalDateTime.now());
+        approvalMapper.updateById(approval);
+
+        SysUser user = requireTargetUser(approval);
+        user.setApprovalStatus("REJECTED");
+        user.setStatus("DISABLED");
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+        return user;
+    }
+
+    private void ensureCanAudit(SysRegisterApproval approval, CurrentUser currentUser) {
+        if (currentUser.superAdmin()) {
+            return;
+        }
+        requireAdmin(currentUser.userId());
+        SysUser auditor = requireAuditor(currentUser.userId());
+        SysUser targetUser = requireTargetUser(approval);
+        if (auditor.getDeptId() == null || !auditor.getDeptId().equals(targetUser.getDeptId())) {
+            throw new BusinessException(403, "只能审核本科室或本车间的注册申请");
+        }
+    }
+
+    private SysUser requireAuditor(Long userId) {
+        SysUser auditor = userMapper.selectById(userId);
+        if (auditor == null) {
+            throw new BusinessException("审核人不存在");
+        }
+        return auditor;
+    }
+
+    private void requireAdmin(Long userId) {
+        SysRole adminRole = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getRoleCode, UserAdminService.ADMIN_ROLE_CODE));
+        if (adminRole == null) {
+            throw new BusinessException(403, "没有注册审核权限");
+        }
+        Set<Long> adminUserIds = userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRole>()
+                        .eq(SysUserRole::getRoleId, adminRole.getId()))
+                .stream()
+                .map(SysUserRole::getUserId)
+                .collect(Collectors.toSet());
+        if (!adminUserIds.contains(userId)) {
+            throw new BusinessException(403, "没有注册审核权限");
+        }
+    }
+
+    private SysRegisterApproval requireApproval(Long id) {
+        SysRegisterApproval approval = approvalMapper.selectById(id);
+        if (approval == null) {
+            throw new BusinessException("审批记录不存在");
+        }
+        return approval;
+    }
+
+    private SysUser requireTargetUser(SysRegisterApproval approval) {
+        SysUser user = userMapper.selectById(approval.getUserId());
+        if (user == null) {
+            throw new BusinessException("注册用户不存在");
+        }
+        return user;
+    }
+}
