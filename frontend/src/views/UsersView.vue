@@ -3,8 +3,7 @@
     <div class="page-title">
       <h2>用户管理</h2>
       <div>
-        <el-button v-if="auth.hasPermission('user:approve')" @click="openApprovals">注册审核</el-button>
-        <el-button type="primary" @click="openCreate">新增用户</el-button>
+        <el-button v-if="auth.hasPermission('user:approve')" type="primary" @click="openApprovals">注册审核</el-button>
       </div>
     </div>
     <div class="query-bar">
@@ -73,7 +72,6 @@
     <el-dialog v-model="open" title="用户信息" width="520px">
       <el-form label-position="top">
         <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
-        <el-form-item label="密码" v-if="!form.id"><el-input v-model="form.password" type="password" /></el-form-item>
         <el-form-item label="姓名"><el-input v-model="form.realName" /></el-form-item>
         <el-form-item label="手机号"><el-input v-model="form.phone" /></el-form-item>
         <el-form-item v-if="auth.user?.isSuperAdmin" label="所属组织">
@@ -121,18 +119,6 @@ async function loadDepts() {
   deptRows.value = await apiGet('/depts/tree')
 }
 
-function openCreate() {
-  Object.assign(form, {
-    id: null,
-    username: '',
-    password: '',
-    realName: '',
-    phone: '',
-    deptId: auth.user?.isSuperAdmin ? undefined : auth.user?.deptId
-  })
-  open.value = true
-}
-
 function openApprovals() {
   router.push('/approvals')
 }
@@ -152,8 +138,7 @@ function edit(row: any) {
 }
 
 async function save() {
-  if (form.id) await apiPut(`/users/${form.id}`, form)
-  else await apiPost('/users', form)
+  await apiPut(`/users/${form.id}`, form)
   ElMessage.success('保存成功')
   open.value = false
   load()
