@@ -2,7 +2,10 @@
   <div>
     <div class="page-title">
       <h2>用户管理</h2>
-      <el-button type="primary" @click="openCreate">新增用户</el-button>
+      <div>
+        <el-button v-if="auth.hasPermission('user:approve')" @click="openApprovals">注册审核</el-button>
+        <el-button type="primary" @click="openCreate">新增用户</el-button>
+      </div>
     </div>
     <div class="query-bar">
       <el-form inline>
@@ -93,6 +96,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { apiGet, apiPost, apiPut } from '../api/http'
 import { useAuthStore } from '../stores/auth'
 
@@ -103,6 +107,7 @@ const open = ref(false)
 const query = reactive<any>({ realName: '', phone: '', deptId: undefined })
 const form = reactive<any>({})
 const auth = useAuthStore()
+const router = useRouter()
 
 async function load() {
   rows.value = await apiGet('/users', {
@@ -126,6 +131,10 @@ function openCreate() {
     deptId: auth.user?.isSuperAdmin ? undefined : auth.user?.deptId
   })
   open.value = true
+}
+
+function openApprovals() {
+  router.push('/approvals')
 }
 
 function edit(row: any) {
