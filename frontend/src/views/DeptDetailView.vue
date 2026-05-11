@@ -59,14 +59,19 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { apiGet } from '../api/http'
 
 const route = useRoute()
+const router = useRouter()
 const detail = ref<any>()
 
 async function load() {
-  detail.value = await apiGet(`/depts/${route.params.id}/detail`)
+  try {
+    detail.value = await apiGet(`/depts/${route.params.id}/detail`)
+  } catch {
+    router.push('/depts')
+  }
 }
 
 function isTopLevel(dept: any) {

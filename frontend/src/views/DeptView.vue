@@ -4,22 +4,11 @@
       <h2>组织管理</h2>
       <el-button type="primary" @click="openCreate">新增组织节点</el-button>
     </div>
-    <el-alert
-      v-if="auth.user?.isSuperAdmin && missingCoverage.length"
-      type="warning"
-      :closable="false"
-      show-icon
-      class="admin-warning"
-    >
-      <template #title>
-        {{ missingCoverage.length }} 个可配置组织未设置管理员：{{ missingCoverage.map((item) => item.deptName).join('、') }}
-      </template>
-    </el-alert>
     <div class="section">
-      <el-table :data="treeRows" row-key="id" stripe default-expand-all :tree-props="{ children: 'children' }">
-        <el-table-column prop="deptName" label="组织名称">
+      <el-table class="dept-table" :data="treeRows" row-key="id" stripe default-expand-all :tree-props="{ children: 'children' }">
+        <el-table-column prop="deptName" label="组织名称" min-width="300">
           <template #default="{ row }">
-            <el-button link type="primary" @click="view(row)">{{ row.deptName }}</el-button>
+            <span>{{ row.deptName }}</span>
             <el-tag
               v-if="auth.user?.isSuperAdmin && coverageMap.get(Number(row.id))?.missingAdmin"
               class="admin-tag"
@@ -29,19 +18,19 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="deptCode" label="组织编码" width="160" />
-        <el-table-column label="层级" width="120">
+        <el-table-column prop="deptCode" label="组织编码" width="150" />
+        <el-table-column label="层级" width="100">
           <template #default="{ row }">{{ isTopLevel(row) ? '一级单位' : '二级单位' }}</template>
         </el-table-column>
-        <el-table-column v-if="auth.user?.isSuperAdmin" label="管理员" width="220">
+        <el-table-column v-if="auth.user?.isSuperAdmin" label="管理员" width="190">
           <template #default="{ row }">
             <span :class="{ muted: !coverageMap.get(Number(row.id)) }">{{ adminNames(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="160">
+        <el-table-column prop="status" label="状态" width="90" />
+        <el-table-column label="操作" width="120" align="left">
           <template #default="{ row }">
-            <el-button link type="primary" @click="view(row)">查看</el-button>
+            <el-button v-if="!isAgency(row)" link type="primary" @click="view(row)">查看</el-button>
             <el-button link type="primary" @click="edit(row)">编辑</el-button>
           </template>
         </el-table-column>
@@ -71,7 +60,6 @@ const rows = ref<any[]>([])
 const treeRows = computed(() => buildDeptTree(rows.value))
 const coverage = ref<any[]>([])
 const coverageMap = computed(() => new Map(coverage.value.map((item) => [Number(item.deptId), item])))
-const missingCoverage = computed(() => coverage.value.filter((item) => item.missingAdmin))
 const open = ref(false)
 const form = reactive<any>({})
 const auth = useAuthStore()
@@ -128,6 +116,10 @@ function isTopLevel(row: any) {
   return !Number(row.parentId || 0)
 }
 
+function isAgency(row: any) {
+  return isTopLevel(row) && row.deptName === '机关'
+}
+
 function adminNames(row: any) {
   const item = coverageMap.value.get(Number(row.id))
   if (!item) return '不需要设置'
@@ -139,12 +131,12 @@ onMounted(load)
 </script>
 
 <style scoped>
-.admin-warning {
-  margin-bottom: 14px;
-}
-
 .admin-tag {
   margin-left: 10px;
+}
+
+.dept-table {
+  width: 100%;
 }
 
 .muted {
