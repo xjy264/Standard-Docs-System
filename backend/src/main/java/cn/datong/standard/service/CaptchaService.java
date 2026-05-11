@@ -1,25 +1,42 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.config.CaptchaProperties;
 import cloud.tianai.captcha.application.ImageCaptchaApplication;
 import cloud.tianai.captcha.application.vo.ImageCaptchaVO;
 import cloud.tianai.captcha.common.response.ApiResponse;
 import cloud.tianai.captcha.spring.plugins.secondary.SecondaryVerificationApplication;
 import cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class CaptchaService {
     public static final String SLIDER_PASSED_CODE = "SLIDER_PASSED";
     private final ImageCaptchaApplication captchaApplication;
+    private final CaptchaProperties captchaProperties;
+
+    @Autowired
+    public CaptchaService(ImageCaptchaApplication captchaApplication, CaptchaProperties captchaProperties) {
+        this.captchaApplication = captchaApplication;
+        this.captchaProperties = captchaProperties;
+    }
+
+    public CaptchaService(ImageCaptchaApplication captchaApplication) {
+        this(captchaApplication, new CaptchaProperties());
+    }
 
     public ApiResponse<ImageCaptchaVO> create() {
+        if (captchaProperties.isDisabled()) {
+            return ApiResponse.ofError("验证码已关闭");
+        }
         return captchaApplication.generateCaptcha("SLIDER");
     }
 
     public ApiResponse<?> matching(String id, ImageCaptchaTrack track) {
+        if (captchaProperties.isDisabled()) {
+            return ApiResponse.ofSuccess();
+        }
         normalizeAbsoluteBrowserTrack(track);
         return captchaApplication.matching(id, track);
     }
@@ -61,6 +78,9 @@ public class CaptchaService {
     }
 
     public void verify(String key, String code) {
+        if (captchaProperties.isDisabled()) {
+            return;
+        }
         if (!SLIDER_PASSED_CODE.equals(code)
                 || !(captchaApplication instanceof SecondaryVerificationApplication secondary)
                 || !secondary.secondaryVerification(key)) {

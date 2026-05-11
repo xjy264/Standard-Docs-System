@@ -1,6 +1,7 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.config.CaptchaProperties;
 import cloud.tianai.captcha.application.ImageCaptchaApplication;
 import cloud.tianai.captcha.spring.plugins.secondary.SecondaryVerificationApplication;
 import cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack;
@@ -47,6 +48,16 @@ class CaptchaServiceTest {
         assertThatThrownBy(() -> service.verify("captcha-id", CaptchaService.SLIDER_PASSED_CODE))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("验证码错误或已过期");
+    }
+
+    @Test
+    void disabledProviderSkipsSliderVerification() {
+        ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
+        CaptchaProperties properties = new CaptchaProperties();
+        properties.setProvider("none");
+        CaptchaService service = new CaptchaService(captchaApplication, properties);
+
+        assertThatCode(() -> service.verify("", "")).doesNotThrowAnyException();
     }
 
     @Test

@@ -25,6 +25,7 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 captcha:
+  provider: ${CAPTCHA_PROVIDER:local}
   init-default-resource: true
   secondary:
     enabled: true
