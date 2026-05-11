@@ -31,6 +31,12 @@ public class ApprovalController {
         return ApiResponse.success(approvalService.pending(currentUser));
     }
 
+    @GetMapping("/history")
+    public ApiResponse<List<SysRegisterApproval>> history() {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(approvalService.history(currentUser));
+    }
+
     @PostMapping("/{id}/approve")
     public ApiResponse<Void> approve(@PathVariable Long id, HttpServletRequest request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
