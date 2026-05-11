@@ -1,6 +1,7 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.config.CaptchaProperties;
 import cloud.tianai.captcha.application.ImageCaptchaApplication;
 import cloud.tianai.captcha.spring.plugins.secondary.SecondaryVerificationApplication;
 import cloud.tianai.captcha.validator.impl.SimpleImageCaptchaValidator;
@@ -53,11 +54,13 @@ class CaptchaServiceTest {
     }
 
     @Test
-    void noneProviderSkipsSliderVerificationForLocalTests() {
+    void disabledProviderSkipsSliderVerification() {
         ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
-        CaptchaService service = new CaptchaService(captchaApplication, "none");
+        CaptchaProperties properties = new CaptchaProperties();
+        properties.setProvider("none");
+        CaptchaService service = new CaptchaService(captchaApplication, properties);
 
-        assertThatCode(() -> service.verify("captcha-id", "any-code")).doesNotThrowAnyException();
+        assertThatCode(() -> service.verify("", "")).doesNotThrowAnyException();
     }
 
     @Test

@@ -9,7 +9,7 @@ public record RegisterRequest(
         @NotBlank String realName,
         @NotBlank String phone,
         @NotNull Long deptId,
-        @NotBlank String captchaKey,
-        @NotBlank String captchaCode
+        String captchaKey,
+        String captchaCode
 ) {
 }

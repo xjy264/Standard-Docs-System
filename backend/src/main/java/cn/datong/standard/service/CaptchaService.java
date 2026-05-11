@@ -1,6 +1,7 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.config.CaptchaProperties;
 import cloud.tianai.captcha.application.ImageCaptchaApplication;
 import cloud.tianai.captcha.application.vo.ImageCaptchaVO;
 import cloud.tianai.captcha.common.response.ApiResponse;
@@ -9,7 +10,6 @@ import cloud.tianai.captcha.spring.plugins.secondary.SecondaryVerificationApplic
 import cloud.tianai.captcha.validator.impl.SimpleImageCaptchaValidator;
 import cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -21,25 +21,30 @@ public class CaptchaService {
     private static final long PASSED_CAPTCHA_EXPIRE_MILLIS = 5 * 60 * 1000L;
     private static final float SLIDER_TOLERANCE = 0.08f;
     private final ImageCaptchaApplication captchaApplication;
-    private final String provider;
+    private final CaptchaProperties captchaProperties;
     private final Map<String, Long> passedCaptchaIds = new ConcurrentHashMap<>();
 
     @Autowired
-    public CaptchaService(ImageCaptchaApplication captchaApplication,
-                          @Value("${captcha.provider:local}") String provider) {
+    public CaptchaService(ImageCaptchaApplication captchaApplication, CaptchaProperties captchaProperties) {
         this.captchaApplication = captchaApplication;
-        this.provider = provider;
+        this.captchaProperties = captchaProperties;
     }
 
-    CaptchaService(ImageCaptchaApplication captchaApplication) {
-        this(captchaApplication, "local");
+    public CaptchaService(ImageCaptchaApplication captchaApplication) {
+        this(captchaApplication, new CaptchaProperties());
     }
 
     public ApiResponse<ImageCaptchaVO> create() {
+        if (captchaProperties.isDisabled()) {
+            return ApiResponse.ofError("验证码已关闭");
+        }
         return captchaApplication.generateCaptcha("SLIDER");
     }
 
     public ApiResponse<?> matching(String id, ImageCaptchaTrack track) {
+        if (captchaProperties.isDisabled()) {
+            return ApiResponse.ofSuccess();
+        }
         normalizeAbsoluteBrowserTrack(track);
         Float movePercentage = calculateMovePercentage(track);
         applySliderTolerance();
@@ -107,7 +112,7 @@ public class CaptchaService {
     }
 
     public void verify(String key, String code) {
-        if ("none".equalsIgnoreCase(provider)) {
+        if (captchaProperties.isDisabled()) {
             return;
         }
         if (!SLIDER_PASSED_CODE.equals(code)) {

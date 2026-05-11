@@ -15,6 +15,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +31,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Slf4j
 public class AuthController {
     private final CaptchaService captchaService;
     private final AuthService authService;
@@ -38,11 +40,16 @@ public class AuthController {
 
     @RequestMapping(value = "/captcha", method = {RequestMethod.GET, RequestMethod.POST})
     public ApiResponse<?> captcha() {
-        cloud.tianai.captcha.common.response.ApiResponse<?> response = captchaService.create();
-        if (!response.isSuccess()) {
-            return ApiResponse.fail(response.getCode(), response.getMsg());
+        try {
+            cloud.tianai.captcha.common.response.ApiResponse<?> response = captchaService.create();
+            if (!response.isSuccess()) {
+                return ApiResponse.fail(response.getCode(), response.getMsg());
+            }
+            return ApiResponse.success(response.getData());
+        } catch (Exception ex) {
+            log.error("生成滑块验证码失败", ex);
+            return ApiResponse.fail(500, "验证码服务异常，请稍后重试");
         }
-        return ApiResponse.success(response.getData());
     }
 
     @PostMapping("/captcha/check")
