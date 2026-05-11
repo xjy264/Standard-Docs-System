@@ -3,6 +3,7 @@ package cn.datong.standard.service;
 import cn.datong.standard.common.BusinessException;
 import cloud.tianai.captcha.application.ImageCaptchaApplication;
 import cloud.tianai.captcha.spring.plugins.secondary.SecondaryVerificationApplication;
+import cloud.tianai.captcha.validator.impl.SimpleImageCaptchaValidator;
 import cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -12,9 +13,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class CaptchaServiceTest {
@@ -50,10 +53,12 @@ class CaptchaServiceTest {
     }
 
     @Test
-    void matchingNormalizesAbsoluteBrowserTrackToRelativeTrack() {
+    void matchingConvertsAbsoluteBrowserTrackToMovePercentage() {
         ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
+        when(captchaApplication.matching(eq("captcha-id"), anyFloat())).thenReturn(true);
         CaptchaService service = new CaptchaService(captchaApplication);
         ImageCaptchaTrack track = new ImageCaptchaTrack();
+        track.setBgImageWidth(300);
         track.setTrackList(List.of(
                 new ImageCaptchaTrack.Track(520f, 260f, 0f, "down"),
                 new ImageCaptchaTrack.Track(620f, 261f, 300f, "move"),
@@ -62,22 +67,55 @@ class CaptchaServiceTest {
 
         service.matching("captcha-id", track);
 
-        ArgumentCaptor<ImageCaptchaTrack> captor = ArgumentCaptor.forClass(ImageCaptchaTrack.class);
+        ArgumentCaptor<Float> captor = ArgumentCaptor.forClass(Float.class);
         verify(captchaApplication).matching(eq("captcha-id"), captor.capture());
-        List<ImageCaptchaTrack.Track> normalized = captor.getValue().getTrackList();
-        assertThat(normalized.get(0).getX()).isEqualTo(0f);
-        assertThat(normalized.get(0).getY()).isEqualTo(0f);
-        assertThat(normalized.get(1).getX()).isEqualTo(100f);
-        assertThat(normalized.get(1).getY()).isEqualTo(1f);
-        assertThat(normalized.get(2).getX()).isEqualTo(122f);
-        assertThat(normalized.get(2).getY()).isEqualTo(0f);
+        verify(captchaApplication, never()).matching(eq("captcha-id"), org.mockito.ArgumentMatchers.any(ImageCaptchaTrack.class));
+        assertThat(captor.getValue()).isCloseTo(122f / 300f, org.assertj.core.data.Offset.offset(0.0001f));
     }
 
     @Test
-    void matchingAddsTinyVerticalMovementWhenBrowserTrackIsPerfectlyHorizontal() {
+    void matchingFailureUsesTacBasicCheckFailCode() {
         ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
+        when(captchaApplication.matching(eq("captcha-id"), anyFloat())).thenReturn(false);
         CaptchaService service = new CaptchaService(captchaApplication);
         ImageCaptchaTrack track = new ImageCaptchaTrack();
+        track.setBgImageWidth(300);
+        track.setTrackList(List.of(
+                new ImageCaptchaTrack.Track(0f, 0f, 0f, "down"),
+                new ImageCaptchaTrack.Track(100f, 0f, 500f, "up")
+        ));
+
+        cloud.tianai.captcha.common.response.ApiResponse<?> response = service.matching("captcha-id", track);
+
+        assertThat(response.getCode()).isEqualTo(4001);
+    }
+
+    @Test
+    void matchingWidensSliderToleranceForLocalUiScale() {
+        ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
+        SimpleImageCaptchaValidator validator = new SimpleImageCaptchaValidator(0.02f);
+        when(captchaApplication.getImageCaptchaValidator()).thenReturn(validator);
+        when(captchaApplication.matching(eq("captcha-id"), anyFloat())).thenReturn(true);
+        CaptchaService service = new CaptchaService(captchaApplication);
+        ImageCaptchaTrack track = new ImageCaptchaTrack();
+        track.setBgImageWidth(300);
+        track.setTrackList(List.of(
+                new ImageCaptchaTrack.Track(0f, 0f, 0f, "down"),
+                new ImageCaptchaTrack.Track(100f, 0f, 500f, "up")
+        ));
+
+        service.matching("captcha-id", track);
+
+        assertThat(validator.getDefaultTolerant()).isEqualTo(0.08f);
+    }
+
+    @Test
+    void matchedSliderTokenCanPassServiceVerificationOnce() {
+        ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
+        when(captchaApplication.matching(eq("captcha-id"), anyFloat())).thenReturn(true);
+        CaptchaService service = new CaptchaService(captchaApplication);
+        ImageCaptchaTrack track = new ImageCaptchaTrack();
+        track.setBgImageWidth(300);
         track.setTrackList(List.of(
                 new ImageCaptchaTrack.Track(520f, 260f, 0f, "down"),
                 new ImageCaptchaTrack.Track(560f, 260f, 160f, "move"),
@@ -87,13 +125,9 @@ class CaptchaServiceTest {
 
         service.matching("captcha-id", track);
 
-        ArgumentCaptor<ImageCaptchaTrack> captor = ArgumentCaptor.forClass(ImageCaptchaTrack.class);
-        verify(captchaApplication).matching(eq("captcha-id"), captor.capture());
-        List<Float> yPoints = captor.getValue().getTrackList().stream()
-                .map(ImageCaptchaTrack.Track::getY)
-                .toList();
-        assertThat(yPoints).contains(0f);
-        assertThat(yPoints.stream().distinct()).hasSizeGreaterThan(1);
-        assertThat(yPoints).allSatisfy(y -> assertThat(Math.abs(y)).isLessThanOrEqualTo(2f));
+        assertThatCode(() -> service.verify("captcha-id", CaptchaService.SLIDER_PASSED_CODE)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> service.verify("captcha-id", CaptchaService.SLIDER_PASSED_CODE))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("验证码错误或已过期");
     }
 }
