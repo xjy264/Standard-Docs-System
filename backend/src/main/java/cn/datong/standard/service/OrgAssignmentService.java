@@ -59,6 +59,9 @@ public class OrgAssignmentService {
         if (dept == null) {
             throw new BusinessException("组织不存在");
         }
+        if (isAgency(dept)) {
+            throw new BusinessException(403, "机关不直接查看详情");
+        }
         List<SysDept> depts = depts();
         boolean assignable = canAssignUsers(dept, depts);
         Map<Long, String> deptNames = deptNames(depts);
@@ -106,6 +109,11 @@ public class OrgAssignmentService {
         boolean hasChild = depts.stream()
                 .anyMatch(item -> dept.getId().equals(item.getParentId()));
         return !topLevel || !hasChild;
+    }
+
+    private boolean isAgency(SysDept dept) {
+        boolean topLevel = dept.getParentId() == null || dept.getParentId() == 0;
+        return topLevel && "机关".equals(dept.getDeptName());
     }
 
     private List<SysDept> depts() {

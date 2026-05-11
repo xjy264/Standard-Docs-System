@@ -4,45 +4,24 @@
       <h2>组织管理</h2>
       <el-button type="primary" @click="openCreate">新增组织节点</el-button>
     </div>
-    <el-alert
-      v-if="auth.user?.isSuperAdmin && missingCoverage.length"
-      type="warning"
-      :closable="false"
-      show-icon
-      class="admin-warning"
-    >
-      <template #title>
-        {{ missingCoverage.length }} 个一级组织未设置管理员：{{ missingCoverage.map((item) => item.deptName).join('、') }}
-      </template>
-    </el-alert>
     <div class="section">
-      <el-table :data="treeRows" row-key="id" stripe default-expand-all :tree-props="{ children: 'children' }">
-        <el-table-column prop="deptName" label="组织名称">
+      <el-table class="dept-table" :data="treeRows" row-key="id" stripe default-expand-all :tree-props="{ children: 'children' }">
+        <el-table-column prop="deptName" label="组织名称" min-width="260">
           <template #default="{ row }">
-            <el-button link type="primary" @click="view(row)">{{ row.deptName }}</el-button>
-            <el-tag
-              v-if="auth.user?.isSuperAdmin && isTopLevel(row) && coverageMap.get(Number(row.id))?.missingAdmin"
-              class="admin-tag"
-              type="warning"
-            >
-              未设置管理员
-            </el-tag>
+            <span>{{ row.deptName }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="deptCode" label="组织编码" width="160" />
-        <el-table-column label="层级" width="120">
-          <template #default="{ row }">{{ isTopLevel(row) ? '一级单位' : '二级单位' }}</template>
-        </el-table-column>
-        <el-table-column v-if="auth.user?.isSuperAdmin" label="管理员" width="220">
+        <el-table-column prop="userCount" label="组织用户数" min-width="170" />
+        <el-table-column prop="fileCount" label="组织文件数" min-width="170" />
+        <el-table-column label="管理员设置情况" min-width="320">
           <template #default="{ row }">
-            <span v-if="isTopLevel(row)">{{ adminNames(row) }}</span>
-            <span v-else class="muted">随一级组织</span>
+            <el-tag v-if="row.adminRequired && row.missingAdmin" type="warning">未设置管理员</el-tag>
+            <el-tag v-else-if="row.adminRequired" type="success">{{ adminNames(row) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100" />
-        <el-table-column label="操作" width="160">
+        <el-table-column label="操作" min-width="180" align="left">
           <template #default="{ row }">
-            <el-button link type="primary" @click="view(row)">查看</el-button>
+            <el-button v-if="!isAgency(row)" link type="primary" @click="view(row)">查看</el-button>
             <el-button link type="primary" @click="edit(row)">编辑</el-button>
           </template>
         </el-table-column>
@@ -70,19 +49,13 @@ import { useAuthStore } from '../stores/auth'
 
 const rows = ref<any[]>([])
 const treeRows = computed(() => buildDeptTree(rows.value))
-const coverage = ref<any[]>([])
-const coverageMap = computed(() => new Map(coverage.value.map((item) => [Number(item.deptId), item])))
-const missingCoverage = computed(() => coverage.value.filter((item) => item.missingAdmin))
 const open = ref(false)
 const form = reactive<any>({})
 const auth = useAuthStore()
 const router = useRouter()
 
 async function load() {
-  rows.value = await apiGet('/depts/tree')
-  if (auth.user?.isSuperAdmin) {
-    coverage.value = await apiGet('/depts/admin-coverage')
-  }
+  rows.value = await apiGet('/depts/overview')
 }
 
 function openCreate() {
@@ -129,25 +102,19 @@ function isTopLevel(row: any) {
   return !Number(row.parentId || 0)
 }
 
+function isAgency(row: any) {
+  return isTopLevel(row) && row.deptName === '机关'
+}
+
 function adminNames(row: any) {
-  const item = coverageMap.value.get(Number(row.id))
-  if (!item || item.missingAdmin) return '未设置管理员'
-  return item.adminNames.join('、')
+  return row.adminNames?.join('、') || ''
 }
 
 onMounted(load)
 </script>
 
 <style scoped>
-.admin-warning {
-  margin-bottom: 14px;
-}
-
-.admin-tag {
-  margin-left: 10px;
-}
-
-.muted {
-  color: #909399;
+.dept-table {
+  width: 100%;
 }
 </style>

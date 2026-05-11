@@ -188,7 +188,7 @@ class FileAccessServiceTest {
     }
 
     @Test
-    void sectionUploadedFileAllowsAllLoggedInUsersIgnoringHistoricalScope() {
+    void sectionUploadedFileAllowsSameSectionOnlyIgnoringHistoricalScope() {
         SysFileMapper fileMapper = mock(SysFileMapper.class);
         SysFilePermissionMapper filePermissionMapper = mock(SysFilePermissionMapper.class);
         SysFileCopyMapper fileCopyMapper = mock(SysFileCopyMapper.class);
@@ -205,14 +205,16 @@ class FileAccessServiceTest {
         when(deptMapper.selectList(any())).thenReturn(List.of(
                 dept(24L, 0L, "机关"),
                 dept(25L, 24L, "计财科"),
+                dept(26L, 24L, "技术科"),
                 dept(7L, 0L, "秦皇岛房建车间"),
                 dept(8L, 0L, "秦皇岛公寓车间")
         ));
         FileAccessService service = new FileAccessService(fileMapper, filePermissionMapper, fileCopyMapper, deptMapper);
 
-        assertThat(service.canAccess(30L, 7L, false, 1L)).isTrue();
-        assertThat(service.canAccess(31L, 8L, false, 1L)).isTrue();
         assertThat(service.canAccess(32L, 25L, false, 1L)).isTrue();
+        assertThat(service.canAccess(33L, 26L, false, 1L)).isFalse();
+        assertThat(service.canAccess(30L, 7L, false, 1L)).isFalse();
+        assertThat(service.canAccess(31L, 8L, false, 1L)).isFalse();
     }
 
     @Test
@@ -269,6 +271,24 @@ class FileAccessServiceTest {
         FileAccessService service = new FileAccessService(fileMapper, filePermissionMapper, fileCopyMapper, deptMapper);
 
         assertThat(service.canAccess(33L, 8L, false, 1L)).isFalse();
+    }
+
+    @Test
+    void superAdminCanAccessAnyExistingFileFromServiceEntry() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        SysFilePermissionMapper filePermissionMapper = mock(SysFilePermissionMapper.class);
+        SysFileCopyMapper fileCopyMapper = mock(SysFileCopyMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        SysFile file = SysFile.builder()
+                .id(1L)
+                .uploadUserId(10L)
+                .deptId(7L)
+                .visibilityScope(VisibilityScope.PRIVATE)
+                .build();
+        when(fileMapper.selectById(1L)).thenReturn(file);
+        FileAccessService service = new FileAccessService(fileMapper, filePermissionMapper, fileCopyMapper, deptMapper);
+
+        assertThat(service.canAccess(1L, 24L, true, 1L)).isTrue();
     }
 
     private SysDept dept(Long id, Long parentId, String name) {

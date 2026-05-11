@@ -85,6 +85,22 @@ class OrgAssignmentServiceTest {
         assertThat(detail.admins()).extracting("realName").containsExactly("何悦");
     }
 
+    @Test
+    void agencyDetailIsNotViewable() {
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        when(deptMapper.selectById(24L)).thenReturn(dept(24L, 0L, "机关"));
+        OrgAssignmentService service = new OrgAssignmentService(
+                deptMapper,
+                mock(SysUserMapper.class),
+                mock(SysUserRoleMapper.class),
+                mock(SysRoleMapper.class)
+        );
+
+        assertThatThrownBy(() -> service.detail(24L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("机关不直接查看详情");
+    }
+
     private SysDept dept(Long id, Long parentId, String name) {
         SysDept dept = new SysDept();
         dept.setId(id);

@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -68,8 +69,8 @@ public class AuthController {
     }
 
     @GetMapping(value = "/dev-login", produces = MediaType.TEXT_HTML_VALUE)
-    public String devLogin(HttpServletRequest servletRequest) throws JsonProcessingException {
-        AuthTokenResponse response = authService.devLoginAsUserOne(servletRequest);
+    public String devLogin(@RequestParam(defaultValue = "1") Long userId, HttpServletRequest servletRequest) throws JsonProcessingException {
+        AuthTokenResponse response = authService.devLoginAs(userId, servletRequest);
         return """
                 <!doctype html>
                 <meta charset="utf-8">

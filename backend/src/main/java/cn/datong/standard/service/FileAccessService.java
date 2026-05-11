@@ -76,6 +76,9 @@ public class FileAccessService {
         if (file == null) {
             return false;
         }
+        if (superAdmin) {
+            return true;
+        }
         return canAccessByOrganization(userId, userDeptId, file);
     }
 
@@ -104,7 +107,7 @@ public class FileAccessService {
         Long fileTopDeptId = OrgScopeSupport.topLevelDeptId(file.getDeptId(), depts);
         Long userTopDeptId = OrgScopeSupport.topLevelDeptId(userDeptId, depts);
         if (agencyDeptId != null && agencyDeptId.equals(fileTopDeptId)) {
-            return true;
+            return userDeptId.equals(file.getDeptId());
         }
         if (agencyDeptId != null && agencyDeptId.equals(userTopDeptId)) {
             return true;

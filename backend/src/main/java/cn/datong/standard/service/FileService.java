@@ -2,14 +2,18 @@ package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.FileSearchRequest;
+import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysFile;
 import cn.datong.standard.entity.SysFilePermissionRow;
 import cn.datong.standard.entity.SysRecycleBin;
+import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.enums.TargetType;
 import cn.datong.standard.enums.VisibilityScope;
+import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysFileMapper;
 import cn.datong.standard.mapper.SysFilePermissionMapper;
 import cn.datong.standard.mapper.SysRecycleBinMapper;
+import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -22,7 +26,12 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +44,8 @@ public class FileService {
     private final FileAccessService fileAccessService;
     private final PermissionService permissionService;
     private final OperationLogService logService;
+    private final SysUserMapper userMapper;
+    private final SysDeptMapper deptMapper;
 
     public SysFile upload(Long userId, Long deptId, boolean superAdmin, MultipartFile multipartFile, Long folderId,
                           VisibilityScope visibilityScope, List<Long> userIds, List<Long> deptIds,
@@ -83,10 +94,12 @@ public class FileService {
                 .ge(request.uploadStart() != null, SysFile::getCreatedAt, request.uploadStart() == null ? null : request.uploadStart().atStartOfDay())
                 .lt(request.uploadEnd() != null, SysFile::getCreatedAt, request.uploadEnd() == null ? null : request.uploadEnd().plusDays(1).atStartOfDay())
                 .orderByDesc(SysFile::getCreatedAt);
-        return fileMapper.selectList(wrapper).stream()
+        List<SysFile> files = fileMapper.selectList(wrapper).stream()
                 .filter(file -> !Boolean.TRUE.equals(request.mine()) || userId.equals(file.getUploadUserId()))
                 .filter(file -> fileAccessService.canAccess(userId, deptId, superAdmin, file.getId()))
                 .toList();
+        fillOwnerInfo(files);
+        return files;
     }
 
     public SysFile detail(Long userId, Long deptId, boolean superAdmin, Long fileId) {
@@ -112,7 +125,7 @@ public class FileService {
         if (file == null) {
             throw new BusinessException("文件不存在");
         }
-        requireOwner(userId, file);
+        requireOwnerOrSuperAdmin(userId, superAdmin, file);
         file.setDeleted(1);
         file.setDeletedBy(userId);
         file.setDeletedAt(LocalDateTime.now());
@@ -135,7 +148,7 @@ public class FileService {
         if (file == null) {
             throw new BusinessException("文件不存在");
         }
-        requireOwner(userId, file);
+        requireOwnerOrSuperAdmin(userId, superAdmin, file);
         file.setDeleted(0);
         file.setDeletedBy(null);
         file.setDeletedAt(null);
@@ -148,7 +161,7 @@ public class FileService {
         if (file == null) {
             throw new BusinessException("文件不存在");
         }
-        requireOwner(userId, file);
+        requireOwnerOrSuperAdmin(userId, superAdmin, file);
         storageService.remove(file.getStorageBucket(), file.getStoragePath());
         fileMapper.deleteById(fileId);
         logService.operation(userId, "彻底删除文件", "FILE", fileId, "SUCCESS", null, request);
@@ -199,6 +212,13 @@ public class FileService {
         }
     }
 
+    private void requireOwnerOrSuperAdmin(Long userId, boolean superAdmin, SysFile file) {
+        if (superAdmin) {
+            return;
+        }
+        requireOwner(userId, file);
+    }
+
     private void removeOldObject(String bucket, String objectName) {
         if (bucket == null || objectName == null) {
             return;
@@ -208,6 +228,45 @@ public class FileService {
         } catch (RuntimeException ex) {
             log.warn("替换文件后清理旧文件失败：bucket={}, object={}", bucket, objectName, ex);
         }
+    }
+
+    private void fillOwnerInfo(List<SysFile> files) {
+        Set<Long> userIds = files.stream()
+                .map(SysFile::getUploadUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (userIds.isEmpty()) {
+            return;
+        }
+        List<SysUser> owners = userMapper.selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getId, userIds));
+        Map<Long, SysUser> ownerMap = owners.stream().collect(Collectors.toMap(SysUser::getId, Function.identity()));
+        Map<Long, SysDept> deptMap = deptMapper.selectList(new LambdaQueryWrapper<SysDept>().eq(SysDept::getDeleted, 0)).stream()
+                .collect(Collectors.toMap(SysDept::getId, Function.identity()));
+        for (SysFile file : files) {
+            SysUser owner = ownerMap.get(file.getUploadUserId());
+            if (owner != null) {
+                file.setOwnerName(owner.getRealName() == null || owner.getRealName().isBlank()
+                        ? owner.getUsername()
+                        : owner.getRealName());
+            }
+            Long ownerDeptId = owner != null && owner.getDeptId() != null ? owner.getDeptId() : file.getDeptId();
+            String deptPath = ownerDeptId == null ? null : deptPath(ownerDeptId, deptMap);
+            if (deptPath != null) {
+                file.setOwnerDeptName(deptPath);
+            }
+        }
+    }
+
+    private String deptPath(Long deptId, Map<Long, SysDept> deptMap) {
+        SysDept dept = deptMap.get(deptId);
+        if (dept == null) {
+            return null;
+        }
+        if (dept.getParentId() == null || dept.getParentId() == 0 || dept.getParentId().equals(deptId)) {
+            return dept.getDeptName();
+        }
+        String parentPath = deptPath(dept.getParentId(), deptMap);
+        return parentPath == null || parentPath.isBlank() ? dept.getDeptName() : parentPath + "-" + dept.getDeptName();
     }
 
     private void grant(Long fileId, List<Long> ids, TargetType targetType, Long createdBy) {

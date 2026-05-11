@@ -77,6 +77,7 @@ public class ApprovalService {
         user.setStatus("ENABLED");
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
+        assignStaffRoleIfMissing(user.getId());
         return user;
     }
 
@@ -131,6 +132,23 @@ public class ApprovalService {
         if (!adminUserIds.contains(userId)) {
             throw new BusinessException(403, "没有注册审核权限");
         }
+    }
+
+    private void assignStaffRoleIfMissing(Long userId) {
+        List<SysUserRole> existingRoles = userRoleMapper.selectList(new LambdaQueryWrapper<SysUserRole>()
+                .eq(SysUserRole::getUserId, userId));
+        if (!existingRoles.isEmpty()) {
+            return;
+        }
+        SysRole staffRole = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getRoleCode, UserAdminService.STAFF_ROLE_CODE));
+        if (staffRole == null) {
+            throw new BusinessException("角色不存在：" + UserAdminService.STAFF_ROLE_CODE);
+        }
+        SysUserRole row = new SysUserRole();
+        row.setUserId(userId);
+        row.setRoleId(staffRole.getId());
+        userRoleMapper.insert(row);
     }
 
     private SysRegisterApproval requireApproval(Long id) {

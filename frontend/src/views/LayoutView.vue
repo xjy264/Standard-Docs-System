@@ -14,7 +14,6 @@
           <el-menu-item index="/files">文件库</el-menu-item>
           <el-menu-item index="/personal">个人空间</el-menu-item>
           <el-menu-item v-if="auth.user?.isSuperAdmin" index="/depts">组织管理</el-menu-item>
-          <el-menu-item v-if="auth.hasPermission('user:approve')" index="/approvals">注册审核</el-menu-item>
           <el-menu-item v-if="auth.hasPermission('user:view')" index="/users">用户管理</el-menu-item>
         </el-menu>
       </aside>

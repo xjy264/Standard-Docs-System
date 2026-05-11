@@ -43,10 +43,12 @@ public class UserController {
 
     @GetMapping
     public ApiResponse<List<UserView>> list(@RequestParam(required = false) Long deptId,
-                                            @RequestParam(required = false) String keyword) {
+                                            @RequestParam(required = false) String keyword,
+                                            @RequestParam(required = false) String realName,
+                                            @RequestParam(required = false) String phone) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         permissionService.require(currentUser.userId(), currentUser.superAdmin(), "user:view");
-        return ApiResponse.success(userAdminService.listUserViews(deptId, keyword, currentUser));
+        return ApiResponse.success(userAdminService.listUserViews(deptId, keyword, realName, phone, currentUser));
     }
 
     @GetMapping("/{id}")
