@@ -33,12 +33,30 @@ public class ApprovalService {
         List<SysRegisterApproval> pending = approvalMapper.selectList(new LambdaQueryWrapper<SysRegisterApproval>()
                 .eq(SysRegisterApproval::getApprovalStatus, "PENDING")
                 .orderByDesc(SysRegisterApproval::getCreatedAt));
+        pending = pending.stream()
+                .filter(approval -> "PENDING".equals(approval.getApprovalStatus()))
+                .toList();
+        return filterApprovalsByAuditScope(pending, currentUser);
+    }
+
+    public List<SysRegisterApproval> history(CurrentUser currentUser) {
+        List<SysRegisterApproval> history = approvalMapper.selectList(new LambdaQueryWrapper<SysRegisterApproval>()
+                .in(SysRegisterApproval::getApprovalStatus, List.of("APPROVED", "REJECTED"))
+                .orderByDesc(SysRegisterApproval::getApprovedAt));
+        history = history.stream()
+                .filter(approval -> "APPROVED".equals(approval.getApprovalStatus())
+                        || "REJECTED".equals(approval.getApprovalStatus()))
+                .toList();
+        return filterApprovalsByAuditScope(history, currentUser);
+    }
+
+    private List<SysRegisterApproval> filterApprovalsByAuditScope(List<SysRegisterApproval> approvals, CurrentUser currentUser) {
         if (currentUser.superAdmin()) {
-            return pending;
+            return approvals;
         }
         requireAdmin(currentUser.userId());
         SysUser auditor = requireAuditor(currentUser.userId());
-        return pending.stream()
+        return approvals.stream()
                 .filter(approval -> {
                     SysUser user = userMapper.selectById(approval.getUserId());
                     return user != null && auditor.getDeptId() != null && auditor.getDeptId().equals(user.getDeptId());

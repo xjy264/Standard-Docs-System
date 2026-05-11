@@ -100,11 +100,81 @@ class ApprovalServiceTest {
                 .hasMessage("没有注册审核权限");
     }
 
+    @Test
+    void superAdminCanSeeApprovedAndRejectedApprovalHistory() {
+        SysRegisterApprovalMapper approvalMapper = mock(SysRegisterApprovalMapper.class);
+        when(approvalMapper.selectList(any())).thenReturn(List.of(
+                approval(1L, 10L, "APPROVED"),
+                approval(2L, 20L, "REJECTED"),
+                approval(3L, 30L, "PENDING")
+        ));
+        ApprovalService service = new ApprovalService(
+                approvalMapper,
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class),
+                mock(SysUserRoleMapper.class),
+                mock(SysRoleMapper.class)
+        );
+
+        List<SysRegisterApproval> result = service.history(new CurrentUser(1L, 24L, true));
+
+        assertThat(result).extracting(SysRegisterApproval::getUserId).containsExactly(10L, 20L);
+    }
+
+    @Test
+    void adminOnlySeesApprovalHistoryInOwnDept() {
+        SysRegisterApprovalMapper approvalMapper = mock(SysRegisterApprovalMapper.class);
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        SysUserRoleMapper userRoleMapper = mock(SysUserRoleMapper.class);
+        SysRoleMapper roleMapper = mock(SysRoleMapper.class);
+        when(approvalMapper.selectList(any())).thenReturn(List.of(
+                approval(1L, 10L, "APPROVED"),
+                approval(2L, 20L, "REJECTED"),
+                approval(3L, 30L, "PENDING")
+        ));
+        when(userMapper.selectById(19L)).thenReturn(user(19L, 25L));
+        when(userMapper.selectById(10L)).thenReturn(user(10L, 25L));
+        when(userMapper.selectById(20L)).thenReturn(user(20L, 7L));
+        when(userMapper.selectById(30L)).thenReturn(user(30L, 25L));
+        when(roleMapper.selectOne(any())).thenReturn(role(2L, "SEGMENT_ADMIN"));
+        when(userRoleMapper.selectList(any())).thenReturn(List.of(userRole(19L, 2L)));
+        ApprovalService service = new ApprovalService(approvalMapper, userMapper, deptMapper, userRoleMapper, roleMapper);
+
+        List<SysRegisterApproval> result = service.history(new CurrentUser(19L, 24L, false));
+
+        assertThat(result).extracting(SysRegisterApproval::getUserId).containsExactly(10L);
+    }
+
+    @Test
+    void normalUserCannotAccessApprovalHistory() {
+        SysRegisterApprovalMapper approvalMapper = mock(SysRegisterApprovalMapper.class);
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysRoleMapper roleMapper = mock(SysRoleMapper.class);
+        when(userMapper.selectById(3L)).thenReturn(user(3L, 8L));
+        when(roleMapper.selectOne(any())).thenReturn(role(2L, "SEGMENT_ADMIN"));
+        ApprovalService service = new ApprovalService(
+                approvalMapper,
+                userMapper,
+                mock(SysDeptMapper.class),
+                mock(SysUserRoleMapper.class),
+                roleMapper
+        );
+
+        assertThatThrownBy(() -> service.history(new CurrentUser(3L, 8L, false)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("没有注册审核权限");
+    }
+
     private SysRegisterApproval approval(Long id, Long userId) {
+        return approval(id, userId, "PENDING");
+    }
+
+    private SysRegisterApproval approval(Long id, Long userId, String status) {
         SysRegisterApproval approval = new SysRegisterApproval();
         approval.setId(id);
         approval.setUserId(userId);
-        approval.setApprovalStatus("PENDING");
+        approval.setApprovalStatus(status);
         return approval;
     }
 

@@ -22,6 +22,7 @@
 ## 注册审批
 
 - `GET /api/approvals/pending`：待审批列表。
+- `GET /api/approvals/history`：审核历史列表，返回当前用户有权查看的已同意和已拒绝记录。
 - `POST /api/approvals/{id}/approve`：审批通过。
 - `POST /api/approvals/{id}/reject`：审批拒绝。
 
