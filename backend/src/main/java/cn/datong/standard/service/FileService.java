@@ -125,7 +125,7 @@ public class FileService {
         if (file == null) {
             throw new BusinessException("文件不存在");
         }
-        requireOwner(userId, file);
+        requireOwnerOrSuperAdmin(userId, superAdmin, file);
         file.setDeleted(1);
         file.setDeletedBy(userId);
         file.setDeletedAt(LocalDateTime.now());
@@ -148,7 +148,7 @@ public class FileService {
         if (file == null) {
             throw new BusinessException("文件不存在");
         }
-        requireOwner(userId, file);
+        requireOwnerOrSuperAdmin(userId, superAdmin, file);
         file.setDeleted(0);
         file.setDeletedBy(null);
         file.setDeletedAt(null);
@@ -161,7 +161,7 @@ public class FileService {
         if (file == null) {
             throw new BusinessException("文件不存在");
         }
-        requireOwner(userId, file);
+        requireOwnerOrSuperAdmin(userId, superAdmin, file);
         storageService.remove(file.getStorageBucket(), file.getStoragePath());
         fileMapper.deleteById(fileId);
         logService.operation(userId, "彻底删除文件", "FILE", fileId, "SUCCESS", null, request);
@@ -210,6 +210,13 @@ public class FileService {
         if (userId == null || !userId.equals(file.getUploadUserId())) {
             throw new BusinessException(403, "只有文件所有者可以改动删除该文件");
         }
+    }
+
+    private void requireOwnerOrSuperAdmin(Long userId, boolean superAdmin, SysFile file) {
+        if (superAdmin) {
+            return;
+        }
+        requireOwner(userId, file);
     }
 
     private void removeOldObject(String bucket, String objectName) {

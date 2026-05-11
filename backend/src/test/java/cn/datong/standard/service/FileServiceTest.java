@@ -188,18 +188,22 @@ class FileServiceTest {
     }
 
     @Test
-    void superAdminCannotSoftDeleteOthersFile() {
+    void superAdminCanSoftDeleteOthersFile() {
         SysFileMapper fileMapper = mock(SysFileMapper.class);
-        when(fileMapper.selectById(1L)).thenReturn(SysFile.builder()
+        SysFile file = SysFile.builder()
                 .id(1L)
                 .uploadUserId(10L)
                 .deptId(7L)
-                .build());
+                .fileSize(12L)
+                .storagePath("docs/a.pdf")
+                .build();
+        when(fileMapper.selectById(1L)).thenReturn(file);
         FileService service = fileService(fileMapper, mock(SysRecycleBinMapper.class), mock(FileStorageService.class));
 
-        assertThatThrownBy(() -> service.softDelete(1L, 24L, true, 1L, null))
-                .isInstanceOf(cn.datong.standard.common.BusinessException.class)
-                .hasMessage("只有文件所有者可以改动删除该文件");
+        service.softDelete(1L, 24L, true, 1L, null);
+
+        verify(fileMapper).updateById(file);
+        assertThat(file.getDeleted()).isEqualTo(1);
     }
 
     @Test
@@ -220,22 +224,43 @@ class FileServiceTest {
     }
 
     @Test
-    void nonOwnerCannotRestoreFileEvenWithSuperAdminFlag() {
+    void superAdminCanRestoreOthersFile() {
         SysFileMapper fileMapper = mock(SysFileMapper.class);
-        when(fileMapper.selectById(1L)).thenReturn(SysFile.builder()
+        SysFile file = SysFile.builder()
                 .id(1L)
                 .uploadUserId(10L)
                 .deleted(1)
-                .build());
+                .build();
+        when(fileMapper.selectById(1L)).thenReturn(file);
         FileService service = fileService(fileMapper, mock(SysRecycleBinMapper.class), mock(FileStorageService.class));
 
-        assertThatThrownBy(() -> service.restore(1L, true, 1L, null))
-                .isInstanceOf(cn.datong.standard.common.BusinessException.class)
-                .hasMessage("只有文件所有者可以改动删除该文件");
+        service.restore(1L, true, 1L, null);
+
+        verify(fileMapper).updateById(file);
+        assertThat(file.getDeleted()).isZero();
     }
 
     @Test
-    void nonOwnerCannotRemoveFileEvenWithSuperAdminFlag() {
+    void superAdminCanRemoveOthersFile() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        FileStorageService storageService = mock(FileStorageService.class);
+        SysFile file = SysFile.builder()
+                .id(1L)
+                .uploadUserId(10L)
+                .storageBucket("bucket")
+                .storagePath("docs/a.pdf")
+                .build();
+        when(fileMapper.selectById(1L)).thenReturn(file);
+        FileService service = fileService(fileMapper, mock(SysRecycleBinMapper.class), storageService);
+
+        service.remove(1L, true, 1L, null);
+
+        verify(storageService).remove("bucket", "docs/a.pdf");
+        verify(fileMapper).deleteById(1L);
+    }
+
+    @Test
+    void nonOwnerCannotRemoveFileWithoutSuperAdminFlag() {
         SysFileMapper fileMapper = mock(SysFileMapper.class);
         when(fileMapper.selectById(1L)).thenReturn(SysFile.builder()
                 .id(1L)
@@ -245,7 +270,7 @@ class FileServiceTest {
                 .build());
         FileService service = fileService(fileMapper, mock(SysRecycleBinMapper.class), mock(FileStorageService.class));
 
-        assertThatThrownBy(() -> service.remove(1L, true, 1L, null))
+        assertThatThrownBy(() -> service.remove(1L, false, 1L, null))
                 .isInstanceOf(cn.datong.standard.common.BusinessException.class)
                 .hasMessage("只有文件所有者可以改动删除该文件");
     }

@@ -87,17 +87,27 @@ public class UserAdminService {
     }
 
     public List<UserView> listUserViews(Long deptId, String keyword, CurrentUser currentUser) {
+        return listUserViews(deptId, keyword, null, null, currentUser);
+    }
+
+    public List<UserView> listUserViews(Long deptId, String keyword, String realName, String phone, CurrentUser currentUser) {
         Long effectiveDeptId = deptId;
         if (currentUser != null && !currentUser.superAdmin()) {
             requireAdminUser(currentUser.userId());
             effectiveDeptId = currentUser.deptId();
         }
+        Long filterDeptId = effectiveDeptId;
+        String nameFilter = hasText(realName) ? realName : keyword;
         List<SysUser> users = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
-                .eq(effectiveDeptId != null, SysUser::getDeptId, effectiveDeptId)
-                .like(keyword != null && !keyword.isBlank(), SysUser::getRealName, keyword));
+                .eq(filterDeptId != null, SysUser::getDeptId, filterDeptId)
+                .like(hasText(nameFilter), SysUser::getRealName, nameFilter)
+                .like(hasText(phone), SysUser::getPhone, phone));
         Set<Long> adminUserIds = orgAssignmentService.adminUserIds();
         Map<Long, String> deptNames = orgAssignmentService.deptNames();
         return users.stream()
+                .filter(user -> filterDeptId == null || filterDeptId.equals(user.getDeptId()))
+                .filter(user -> !hasText(nameFilter) || contains(user.getRealName(), nameFilter))
+                .filter(user -> !hasText(phone) || contains(user.getPhone(), phone))
                 .map(user -> toUserView(user, adminUserIds.contains(user.getId()), deptNames.get(user.getDeptId())))
                 .toList();
     }
@@ -197,6 +207,14 @@ public class UserAdminService {
         if (!currentUserSuperAdmin) {
             throw new BusinessException(403, message);
         }
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private boolean contains(String value, String keyword) {
+        return value != null && value.contains(keyword);
     }
 
     private String displayName(SysUser user) {

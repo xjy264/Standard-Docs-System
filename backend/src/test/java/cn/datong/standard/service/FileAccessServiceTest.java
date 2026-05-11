@@ -273,6 +273,24 @@ class FileAccessServiceTest {
         assertThat(service.canAccess(33L, 8L, false, 1L)).isFalse();
     }
 
+    @Test
+    void superAdminCanAccessAnyExistingFileFromServiceEntry() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        SysFilePermissionMapper filePermissionMapper = mock(SysFilePermissionMapper.class);
+        SysFileCopyMapper fileCopyMapper = mock(SysFileCopyMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        SysFile file = SysFile.builder()
+                .id(1L)
+                .uploadUserId(10L)
+                .deptId(7L)
+                .visibilityScope(VisibilityScope.PRIVATE)
+                .build();
+        when(fileMapper.selectById(1L)).thenReturn(file);
+        FileAccessService service = new FileAccessService(fileMapper, filePermissionMapper, fileCopyMapper, deptMapper);
+
+        assertThat(service.canAccess(1L, 24L, true, 1L)).isTrue();
+    }
+
     private SysDept dept(Long id, Long parentId, String name) {
         SysDept dept = new SysDept();
         dept.setId(id);

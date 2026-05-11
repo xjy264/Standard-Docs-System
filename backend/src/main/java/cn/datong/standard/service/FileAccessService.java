@@ -76,6 +76,9 @@ public class FileAccessService {
         if (file == null) {
             return false;
         }
+        if (superAdmin) {
+            return true;
+        }
         return canAccessByOrganization(userId, userDeptId, file);
     }
 

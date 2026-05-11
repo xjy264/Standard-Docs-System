@@ -5,8 +5,29 @@
       <el-button type="primary" @click="openCreate">新增用户</el-button>
     </div>
     <div class="query-bar">
-      <el-input v-model="keyword" clearable placeholder="按姓名搜索" style="width:260px" />
-      <el-button type="primary" @click="load">查询</el-button>
+      <el-form inline>
+        <el-form-item label="姓名">
+          <el-input v-model="query.realName" clearable placeholder="输入姓名" style="width:180px" />
+        </el-form-item>
+        <el-form-item label="手机号">
+          <el-input v-model="query.phone" clearable placeholder="输入手机号" style="width:180px" />
+        </el-form-item>
+        <el-form-item v-if="auth.user?.isSuperAdmin" label="所属组织">
+          <el-tree-select
+            v-model="query.deptId"
+            :data="deptTree"
+            node-key="id"
+            :props="{ label: 'deptName', children: 'children', disabled: 'disabled' }"
+            check-strictly
+            clearable
+            default-expand-all
+            placeholder="全部组织"
+            style="width:220px"
+          />
+        </el-form-item>
+        <el-form-item><el-button type="primary" @click="load">查询</el-button></el-form-item>
+        <el-form-item><el-button @click="resetQuery">重置</el-button></el-form-item>
+      </el-form>
     </div>
     <div class="section">
       <el-table :data="rows" stripe>
@@ -79,12 +100,16 @@ const rows = ref<any[]>([])
 const deptRows = ref<any[]>([])
 const deptTree = computed(() => buildDeptTree(deptRows.value))
 const open = ref(false)
-const keyword = ref('')
+const query = reactive<any>({ realName: '', phone: '', deptId: undefined })
 const form = reactive<any>({})
 const auth = useAuthStore()
 
 async function load() {
-  rows.value = await apiGet('/users', { keyword: keyword.value })
+  rows.value = await apiGet('/users', {
+    realName: query.realName,
+    phone: query.phone,
+    deptId: query.deptId
+  })
 }
 
 async function loadDepts() {
@@ -122,6 +147,13 @@ async function save() {
   else await apiPost('/users', form)
   ElMessage.success('保存成功')
   open.value = false
+  load()
+}
+
+function resetQuery() {
+  query.realName = ''
+  query.phone = ''
+  query.deptId = undefined
   load()
 }
 

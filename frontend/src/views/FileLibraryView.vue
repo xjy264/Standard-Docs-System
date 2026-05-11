@@ -28,8 +28,8 @@
         <el-table-column label="操作" :width="operationWidth" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="download(row)">下载</el-button>
-            <el-button link type="warning" v-if="canManage(row)" @click="openReplace(row)">替换文件</el-button>
-            <el-button link type="danger" v-if="canManage(row)" @click="deleteFile(row)">删除</el-button>
+            <el-button link type="warning" v-if="canReplace(row)" @click="openReplace(row)">替换文件</el-button>
+            <el-button link type="danger" v-if="canDelete(row)" @click="deleteFile(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -101,7 +101,7 @@ const dateRange = ref<string[]>([])
 const query = reactive({ keyword: '', extension: '' })
 const title = computed(() => props.title)
 const showUploadButton = computed(() => props.showUpload && auth.hasPermission('file:upload'))
-const operationWidth = computed(() => props.manageOwnerFiles ? 210 : 90)
+const operationWidth = computed(() => props.manageOwnerFiles ? 210 : auth.user?.isSuperAdmin ? 130 : 90)
 const fileTypeOptions: FileTypeOption[] = [
   { label: 'Word 文档', value: 'doc' },
   { label: 'Excel 表格', value: 'xls' },
@@ -205,8 +205,12 @@ function closeReplace() {
   replaceUploadRef.value?.clearFiles()
 }
 
-function canManage(row: any) {
+function canReplace(row: any) {
   return props.manageOwnerFiles && isOwner(row)
+}
+
+function canDelete(row: any) {
+  return (props.manageOwnerFiles && isOwner(row)) || auth.user?.isSuperAdmin
 }
 
 function isOwner(row: any) {
