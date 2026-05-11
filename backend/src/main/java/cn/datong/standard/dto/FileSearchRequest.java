@@ -9,6 +9,8 @@ public record FileSearchRequest(
         String extension,
         LocalDate uploadStart,
         LocalDate uploadEnd,
+        String ownerDeptName,
+        String ownerName,
         Long deptId,
         Long folderId,
         VisibilityScope visibilityScope,

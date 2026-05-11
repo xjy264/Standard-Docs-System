@@ -49,7 +49,7 @@
 ## 文件
 
 - `POST /api/files/upload`：上传文件。
-- `GET /api/files`：文件列表和搜索。
+- `GET /api/files`：文件列表和搜索，支持 `keyword`、`extension`、`ownerDeptName`、`ownerName`、`uploadStart`、`uploadEnd`、`mine` 等查询参数。
 - `GET /api/files/{id}`：文件详情。
 - `GET /api/files/{id}/download`：文件下载。
 - `GET /api/files/{id}/preview`：文件预览配置。

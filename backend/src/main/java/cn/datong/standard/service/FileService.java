@@ -99,7 +99,10 @@ public class FileService {
                 .filter(file -> fileAccessService.canAccess(userId, deptId, superAdmin, file.getId()))
                 .toList();
         fillOwnerInfo(files);
-        return files;
+        return files.stream()
+                .filter(file -> contains(file.getOwnerDeptName(), request.ownerDeptName()))
+                .filter(file -> contains(file.getOwnerName(), request.ownerName()))
+                .toList();
     }
 
     public SysFile detail(Long userId, Long deptId, boolean superAdmin, Long fileId) {
@@ -267,6 +270,10 @@ public class FileService {
         }
         String parentPath = deptPath(dept.getParentId(), deptMap);
         return parentPath == null || parentPath.isBlank() ? dept.getDeptName() : parentPath + "-" + dept.getDeptName();
+    }
+
+    private boolean contains(String value, String keyword) {
+        return keyword == null || keyword.isBlank() || (value != null && value.contains(keyword.trim()));
     }
 
     private void grant(Long fileId, List<Long> ids, TargetType targetType, Long createdBy) {

@@ -12,6 +12,8 @@
             <el-option v-for="item in fileTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
+        <el-form-item label="所属组织"><el-input v-model="query.ownerDeptName" clearable placeholder="输入所属组织" /></el-form-item>
+        <el-form-item label="所属人"><el-input v-model="query.ownerName" clearable placeholder="输入所属人" /></el-form-item>
         <el-form-item label="上传日期"><el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" /></el-form-item>
         <el-form-item><el-button type="primary" @click="load">查询</el-button></el-form-item>
         <el-form-item><el-button @click="resetQuery">重置</el-button></el-form-item>
@@ -20,12 +22,12 @@
     <div class="section">
       <el-table :data="files" stripe>
         <el-table-column prop="fileName" label="文件名称" min-width="220" />
-        <el-table-column prop="extension" label="类型" width="90" />
-        <el-table-column prop="fileSize" label="大小" width="120" :formatter="sizeText" />
-        <el-table-column prop="ownerDeptName" label="所有人所属组织" width="160" />
-        <el-table-column prop="ownerName" label="所有人姓名" width="120" />
-        <el-table-column prop="createdAt" label="上传时间" width="180" />
-        <el-table-column label="操作" :width="operationWidth" fixed="right">
+        <el-table-column prop="extension" label="类型" min-width="100" />
+        <el-table-column prop="fileSize" label="大小" min-width="130" :formatter="sizeText" />
+        <el-table-column prop="ownerDeptName" label="所属组织" min-width="180" />
+        <el-table-column prop="ownerName" label="所属人" min-width="130" />
+        <el-table-column prop="createdAt" label="上传时间" min-width="180" />
+        <el-table-column label="操作" :min-width="operationWidth" align="left">
           <template #default="{ row }">
             <el-button link type="primary" @click="download(row)">下载</el-button>
             <el-button link type="warning" v-if="canReplace(row)" @click="openReplace(row)">替换文件</el-button>
@@ -98,7 +100,7 @@ const replaceTarget = ref<any>()
 const replaceFile = ref<File>()
 const replaceUploadRef = ref<any>()
 const dateRange = ref<string[]>([])
-const query = reactive({ keyword: '', extension: '' })
+const query = reactive({ keyword: '', extension: '', ownerDeptName: '', ownerName: '' })
 const title = computed(() => props.title)
 const showUploadButton = computed(() => props.showUpload && auth.hasPermission('file:upload'))
 const operationWidth = computed(() => props.manageOwnerFiles ? 210 : auth.user?.isSuperAdmin ? 130 : 90)
@@ -149,6 +151,8 @@ async function submitUpload() {
 function resetQuery() {
   query.keyword = ''
   query.extension = ''
+  query.ownerDeptName = ''
+  query.ownerName = ''
   dateRange.value = []
   load()
 }

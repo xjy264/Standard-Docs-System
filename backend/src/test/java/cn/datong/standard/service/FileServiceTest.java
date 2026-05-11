@@ -76,7 +76,7 @@ class FileServiceTest {
         );
 
         List<SysFile> result = service.search(30L, 21L, false,
-                new FileSearchRequest(null, null, null, null, null, null, null, false));
+                new FileSearchRequest(null, null, null, null, null, null, null, null, null, false));
 
         assertThat(result).containsExactly(visible);
     }
@@ -111,7 +111,7 @@ class FileServiceTest {
         );
 
         List<SysFile> result = service.search(30L, 21L, false,
-                new FileSearchRequest(null, null, null, null, null, null, null, true));
+                new FileSearchRequest(null, null, null, null, null, null, null, null, null, true));
 
         assertThat(result).containsExactly(own);
     }
@@ -158,13 +158,76 @@ class FileServiceTest {
         );
 
         List<SysFile> result = service.search(20L, 31L, false,
-                new FileSearchRequest(null, null, null, null, null, null, null, false));
+                new FileSearchRequest(null, null, null, null, null, null, null, null, null, false));
 
         assertThat(result).singleElement()
                 .satisfies(item -> {
                     assertThat(item.getOwnerName()).isEqualTo("张三");
                     assertThat(item.getOwnerDeptName()).isEqualTo("机关-技术科");
                 });
+    }
+
+    @Test
+    void searchFiltersByOwnerNameAndOwnerDeptName() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        FileAccessService fileAccessService = mock(FileAccessService.class);
+        SysFile matched = SysFile.builder()
+                .id(1L)
+                .uploadUserId(10L)
+                .deptId(31L)
+                .fileName("技术文件.pdf")
+                .build();
+        SysFile unmatched = SysFile.builder()
+                .id(2L)
+                .uploadUserId(11L)
+                .deptId(27L)
+                .fileName("安全文件.pdf")
+                .build();
+        SysUser owner = new SysUser();
+        owner.setId(10L);
+        owner.setUsername("zhangsan");
+        owner.setRealName("张三");
+        owner.setDeptId(31L);
+        SysUser otherOwner = new SysUser();
+        otherOwner.setId(11L);
+        otherOwner.setUsername("lisi");
+        otherOwner.setRealName("李四");
+        otherOwner.setDeptId(27L);
+        SysDept agency = new SysDept();
+        agency.setId(24L);
+        agency.setDeptName("机关");
+        agency.setParentId(0L);
+        SysDept techDept = new SysDept();
+        techDept.setId(31L);
+        techDept.setDeptName("技术科");
+        techDept.setParentId(24L);
+        SysDept safetyDept = new SysDept();
+        safetyDept.setId(27L);
+        safetyDept.setDeptName("安全科");
+        safetyDept.setParentId(24L);
+        when(fileMapper.selectList(any())).thenReturn(List.of(matched, unmatched));
+        when(fileAccessService.canAccess(20L, 31L, false, 1L)).thenReturn(true);
+        when(fileAccessService.canAccess(20L, 31L, false, 2L)).thenReturn(true);
+        when(userMapper.selectList(any())).thenReturn(List.of(owner, otherOwner));
+        when(deptMapper.selectList(any())).thenReturn(List.of(agency, techDept, safetyDept));
+        FileService service = new FileService(
+                fileMapper,
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                mock(FileStorageService.class),
+                fileAccessService,
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                userMapper,
+                deptMapper
+        );
+
+        List<SysFile> result = service.search(20L, 31L, false,
+                new FileSearchRequest(null, null, null, null, "技术科", "张", null, null, null, false));
+
+        assertThat(result).containsExactly(matched);
     }
 
     @Test
