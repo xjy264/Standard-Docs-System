@@ -6,20 +6,20 @@
     </div>
     <div class="section">
       <el-table class="dept-table" :data="treeRows" row-key="id" stripe default-expand-all :tree-props="{ children: 'children' }">
-        <el-table-column prop="deptName" label="组织名称" min-width="300">
+        <el-table-column prop="deptName" label="组织名称" min-width="260">
           <template #default="{ row }">
             <span>{{ row.deptName }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="userCount" label="组织用户数" width="130" />
-        <el-table-column prop="fileCount" label="组织文件数" width="130" />
-        <el-table-column label="管理员设置情况" width="220">
+        <el-table-column prop="userCount" label="组织用户数" min-width="170" />
+        <el-table-column prop="fileCount" label="组织文件数" min-width="170" />
+        <el-table-column label="管理员设置情况" min-width="320">
           <template #default="{ row }">
             <el-tag v-if="row.adminRequired && row.missingAdmin" type="warning">未设置管理员</el-tag>
             <el-tag v-else-if="row.adminRequired" type="success">{{ adminNames(row) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" align="left">
+        <el-table-column label="操作" min-width="180" align="left">
           <template #default="{ row }">
             <el-button v-if="!isAgency(row)" link type="primary" @click="view(row)">查看</el-button>
             <el-button link type="primary" @click="edit(row)">编辑</el-button>
