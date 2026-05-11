@@ -2,14 +2,18 @@ package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.FileSearchRequest;
+import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysFile;
 import cn.datong.standard.entity.SysFilePermissionRow;
 import cn.datong.standard.entity.SysRecycleBin;
+import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.enums.TargetType;
 import cn.datong.standard.enums.VisibilityScope;
+import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysFileMapper;
 import cn.datong.standard.mapper.SysFilePermissionMapper;
 import cn.datong.standard.mapper.SysRecycleBinMapper;
+import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -22,7 +26,12 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +44,8 @@ public class FileService {
     private final FileAccessService fileAccessService;
     private final PermissionService permissionService;
     private final OperationLogService logService;
+    private final SysUserMapper userMapper;
+    private final SysDeptMapper deptMapper;
 
     public SysFile upload(Long userId, Long deptId, boolean superAdmin, MultipartFile multipartFile, Long folderId,
                           VisibilityScope visibilityScope, List<Long> userIds, List<Long> deptIds,
@@ -83,10 +94,12 @@ public class FileService {
                 .ge(request.uploadStart() != null, SysFile::getCreatedAt, request.uploadStart() == null ? null : request.uploadStart().atStartOfDay())
                 .lt(request.uploadEnd() != null, SysFile::getCreatedAt, request.uploadEnd() == null ? null : request.uploadEnd().plusDays(1).atStartOfDay())
                 .orderByDesc(SysFile::getCreatedAt);
-        return fileMapper.selectList(wrapper).stream()
+        List<SysFile> files = fileMapper.selectList(wrapper).stream()
                 .filter(file -> !Boolean.TRUE.equals(request.mine()) || userId.equals(file.getUploadUserId()))
                 .filter(file -> fileAccessService.canAccess(userId, deptId, superAdmin, file.getId()))
                 .toList();
+        fillOwnerInfo(files);
+        return files;
     }
 
     public SysFile detail(Long userId, Long deptId, boolean superAdmin, Long fileId) {
@@ -207,6 +220,42 @@ public class FileService {
             storageService.remove(bucket, objectName);
         } catch (RuntimeException ex) {
             log.warn("替换文件后清理旧文件失败：bucket={}, object={}", bucket, objectName, ex);
+        }
+    }
+
+    private void fillOwnerInfo(List<SysFile> files) {
+        Set<Long> userIds = files.stream()
+                .map(SysFile::getUploadUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (userIds.isEmpty()) {
+            return;
+        }
+        List<SysUser> owners = userMapper.selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getId, userIds));
+        Map<Long, SysUser> ownerMap = owners.stream().collect(Collectors.toMap(SysUser::getId, Function.identity()));
+        Set<Long> deptIds = files.stream()
+                .map(file -> {
+                    SysUser owner = ownerMap.get(file.getUploadUserId());
+                    return owner != null && owner.getDeptId() != null ? owner.getDeptId() : file.getDeptId();
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, SysDept> deptMap = deptIds.isEmpty()
+                ? Map.of()
+                : deptMapper.selectList(new LambdaQueryWrapper<SysDept>().in(SysDept::getId, deptIds)).stream()
+                .collect(Collectors.toMap(SysDept::getId, Function.identity()));
+        for (SysFile file : files) {
+            SysUser owner = ownerMap.get(file.getUploadUserId());
+            if (owner != null) {
+                file.setOwnerName(owner.getRealName() == null || owner.getRealName().isBlank()
+                        ? owner.getUsername()
+                        : owner.getRealName());
+            }
+            Long ownerDeptId = owner != null && owner.getDeptId() != null ? owner.getDeptId() : file.getDeptId();
+            SysDept dept = ownerDeptId == null ? null : deptMap.get(ownerDeptId);
+            if (dept != null) {
+                file.setOwnerDeptName(dept.getDeptName());
+            }
         }
     }
 

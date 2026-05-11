@@ -1,11 +1,15 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.dto.FileSearchRequest;
+import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysFile;
+import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.enums.VisibilityScope;
+import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysFileMapper;
 import cn.datong.standard.mapper.SysFilePermissionMapper;
 import cn.datong.standard.mapper.SysRecycleBinMapper;
+import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
 import org.junit.jupiter.api.Test;
@@ -66,7 +70,9 @@ class FileServiceTest {
                 mock(FileStorageService.class),
                 fileAccessService,
                 mock(PermissionService.class),
-                mock(OperationLogService.class)
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class)
         );
 
         List<SysFile> result = service.search(30L, 21L, false,
@@ -99,13 +105,61 @@ class FileServiceTest {
                 mock(FileStorageService.class),
                 fileAccessService,
                 mock(PermissionService.class),
-                mock(OperationLogService.class)
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class)
         );
 
         List<SysFile> result = service.search(30L, 21L, false,
                 new FileSearchRequest(null, null, null, null, null, null, null, true));
 
         assertThat(result).containsExactly(own);
+    }
+
+    @Test
+    void searchFillsOwnerNameAndOwnerDeptName() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        FileAccessService fileAccessService = mock(FileAccessService.class);
+        SysFile file = SysFile.builder()
+                .id(1L)
+                .uploadUserId(10L)
+                .deptId(7L)
+                .fileName("组织文件.pdf")
+                .build();
+        SysUser owner = new SysUser();
+        owner.setId(10L);
+        owner.setUsername("zhangsan");
+        owner.setRealName("张三");
+        owner.setDeptId(31L);
+        SysDept dept = new SysDept();
+        dept.setId(31L);
+        dept.setDeptName("技术科");
+        when(fileMapper.selectList(any())).thenReturn(List.of(file));
+        when(fileAccessService.canAccess(20L, 31L, false, 1L)).thenReturn(true);
+        when(userMapper.selectList(any())).thenReturn(List.of(owner));
+        when(deptMapper.selectList(any())).thenReturn(List.of(dept));
+        FileService service = new FileService(
+                fileMapper,
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                mock(FileStorageService.class),
+                fileAccessService,
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                userMapper,
+                deptMapper
+        );
+
+        List<SysFile> result = service.search(20L, 31L, false,
+                new FileSearchRequest(null, null, null, null, null, null, null, false));
+
+        assertThat(result).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.getOwnerName()).isEqualTo("张三");
+                    assertThat(item.getOwnerDeptName()).isEqualTo("技术科");
+                });
     }
 
     @Test
@@ -265,7 +319,9 @@ class FileServiceTest {
                 storageService,
                 mock(FileAccessService.class),
                 mock(PermissionService.class),
-                mock(OperationLogService.class)
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class)
         );
     }
 }

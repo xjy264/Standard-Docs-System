@@ -22,6 +22,8 @@
         <el-table-column prop="fileName" label="文件名称" min-width="220" />
         <el-table-column prop="extension" label="类型" width="90" />
         <el-table-column prop="fileSize" label="大小" width="120" :formatter="sizeText" />
+        <el-table-column prop="ownerDeptName" label="所有人所属组织" width="160" />
+        <el-table-column prop="ownerName" label="所有人姓名" width="120" />
         <el-table-column prop="createdAt" label="上传时间" width="180" />
         <el-table-column label="操作" :width="operationWidth" fixed="right">
           <template #default="{ row }">
