@@ -125,6 +125,32 @@ class UserAdminServiceTest {
     }
 
     @Test
+    void adminCoverageRequiresSectionsAndWorkshopsButNotAgency() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysRoleMapper roleMapper = mock(SysRoleMapper.class);
+        SysUserRoleMapper userRoleMapper = mock(SysUserRoleMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        when(deptMapper.selectList(any())).thenReturn(List.of(
+                dept(24L, 0L, "机关"),
+                dept(31L, 24L, "技术科"),
+                dept(32L, 24L, "安全科"),
+                dept(7L, 0L, "房建车间"),
+                dept(8L, 0L, "公寓车间")
+        ));
+        when(roleMapper.selectOne(any())).thenReturn(role(2L, "SEGMENT_ADMIN"));
+        when(userRoleMapper.selectList(any())).thenReturn(List.of());
+        when(userMapper.selectList(any())).thenReturn(List.of());
+        OrgAssignmentService orgAssignmentService = new OrgAssignmentService(deptMapper, userMapper, userRoleMapper, roleMapper);
+        UserAdminService service = new UserAdminService(userMapper, userRoleMapper, roleMapper, deptMapper, orgAssignmentService);
+
+        List<DeptAdminCoverage> coverage = service.adminCoverage(true);
+
+        assertThat(coverage).extracting(DeptAdminCoverage::deptId)
+                .containsExactlyInAnyOrder(31L, 32L, 7L, 8L);
+        assertThat(coverage).allSatisfy(item -> assertThat(item.missingAdmin()).isTrue());
+    }
+
+    @Test
     void cannotPromoteUserInUnassignableDept() {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         SysRoleMapper roleMapper = mock(SysRoleMapper.class);

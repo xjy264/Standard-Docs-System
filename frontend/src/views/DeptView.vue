@@ -12,7 +12,7 @@
       class="admin-warning"
     >
       <template #title>
-        {{ missingCoverage.length }} 个一级组织未设置管理员：{{ missingCoverage.map((item) => item.deptName).join('、') }}
+        {{ missingCoverage.length }} 个可配置组织未设置管理员：{{ missingCoverage.map((item) => item.deptName).join('、') }}
       </template>
     </el-alert>
     <div class="section">
@@ -21,7 +21,7 @@
           <template #default="{ row }">
             <el-button link type="primary" @click="view(row)">{{ row.deptName }}</el-button>
             <el-tag
-              v-if="auth.user?.isSuperAdmin && isTopLevel(row) && coverageMap.get(Number(row.id))?.missingAdmin"
+              v-if="auth.user?.isSuperAdmin && coverageMap.get(Number(row.id))?.missingAdmin"
               class="admin-tag"
               type="warning"
             >
@@ -35,8 +35,7 @@
         </el-table-column>
         <el-table-column v-if="auth.user?.isSuperAdmin" label="管理员" width="220">
           <template #default="{ row }">
-            <span v-if="isTopLevel(row)">{{ adminNames(row) }}</span>
-            <span v-else class="muted">随一级组织</span>
+            <span :class="{ muted: !coverageMap.get(Number(row.id)) }">{{ adminNames(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100" />
@@ -131,7 +130,8 @@ function isTopLevel(row: any) {
 
 function adminNames(row: any) {
   const item = coverageMap.value.get(Number(row.id))
-  if (!item || item.missingAdmin) return '未设置管理员'
+  if (!item) return '不需要设置'
+  if (item.missingAdmin) return '未设置管理员'
   return item.adminNames.join('、')
 }
 

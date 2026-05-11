@@ -136,10 +136,15 @@ class FileServiceTest {
         SysDept dept = new SysDept();
         dept.setId(31L);
         dept.setDeptName("技术科");
+        dept.setParentId(24L);
+        SysDept parentDept = new SysDept();
+        parentDept.setId(24L);
+        parentDept.setDeptName("机关");
+        parentDept.setParentId(0L);
         when(fileMapper.selectList(any())).thenReturn(List.of(file));
         when(fileAccessService.canAccess(20L, 31L, false, 1L)).thenReturn(true);
         when(userMapper.selectList(any())).thenReturn(List.of(owner));
-        when(deptMapper.selectList(any())).thenReturn(List.of(dept));
+        when(deptMapper.selectList(any())).thenReturn(List.of(parentDept, dept));
         FileService service = new FileService(
                 fileMapper,
                 mock(SysFilePermissionMapper.class),
@@ -158,7 +163,7 @@ class FileServiceTest {
         assertThat(result).singleElement()
                 .satisfies(item -> {
                     assertThat(item.getOwnerName()).isEqualTo("张三");
-                    assertThat(item.getOwnerDeptName()).isEqualTo("技术科");
+                    assertThat(item.getOwnerDeptName()).isEqualTo("机关-技术科");
                 });
     }
 

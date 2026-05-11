@@ -233,16 +233,7 @@ public class FileService {
         }
         List<SysUser> owners = userMapper.selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getId, userIds));
         Map<Long, SysUser> ownerMap = owners.stream().collect(Collectors.toMap(SysUser::getId, Function.identity()));
-        Set<Long> deptIds = files.stream()
-                .map(file -> {
-                    SysUser owner = ownerMap.get(file.getUploadUserId());
-                    return owner != null && owner.getDeptId() != null ? owner.getDeptId() : file.getDeptId();
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<Long, SysDept> deptMap = deptIds.isEmpty()
-                ? Map.of()
-                : deptMapper.selectList(new LambdaQueryWrapper<SysDept>().in(SysDept::getId, deptIds)).stream()
+        Map<Long, SysDept> deptMap = deptMapper.selectList(new LambdaQueryWrapper<SysDept>().eq(SysDept::getDeleted, 0)).stream()
                 .collect(Collectors.toMap(SysDept::getId, Function.identity()));
         for (SysFile file : files) {
             SysUser owner = ownerMap.get(file.getUploadUserId());
@@ -252,11 +243,23 @@ public class FileService {
                         : owner.getRealName());
             }
             Long ownerDeptId = owner != null && owner.getDeptId() != null ? owner.getDeptId() : file.getDeptId();
-            SysDept dept = ownerDeptId == null ? null : deptMap.get(ownerDeptId);
-            if (dept != null) {
-                file.setOwnerDeptName(dept.getDeptName());
+            String deptPath = ownerDeptId == null ? null : deptPath(ownerDeptId, deptMap);
+            if (deptPath != null) {
+                file.setOwnerDeptName(deptPath);
             }
         }
+    }
+
+    private String deptPath(Long deptId, Map<Long, SysDept> deptMap) {
+        SysDept dept = deptMap.get(deptId);
+        if (dept == null) {
+            return null;
+        }
+        if (dept.getParentId() == null || dept.getParentId() == 0 || dept.getParentId().equals(deptId)) {
+            return dept.getDeptName();
+        }
+        String parentPath = deptPath(dept.getParentId(), deptMap);
+        return parentPath == null || parentPath.isBlank() ? dept.getDeptName() : parentPath + "-" + dept.getDeptName();
     }
 
     private void grant(Long fileId, List<Long> ids, TargetType targetType, Long createdBy) {
