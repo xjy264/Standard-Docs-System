@@ -9,25 +9,16 @@
         <el-table-column prop="deptName" label="组织名称" min-width="300">
           <template #default="{ row }">
             <span>{{ row.deptName }}</span>
-            <el-tag
-              v-if="auth.user?.isSuperAdmin && coverageMap.get(Number(row.id))?.missingAdmin"
-              class="admin-tag"
-              type="warning"
-            >
-              未设置管理员
-            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="deptCode" label="组织编码" width="150" />
-        <el-table-column label="层级" width="100">
-          <template #default="{ row }">{{ isTopLevel(row) ? '一级单位' : '二级单位' }}</template>
-        </el-table-column>
-        <el-table-column v-if="auth.user?.isSuperAdmin" label="管理员" width="190">
+        <el-table-column prop="userCount" label="组织用户数" width="130" />
+        <el-table-column prop="fileCount" label="组织文件数" width="130" />
+        <el-table-column label="管理员设置情况" width="220">
           <template #default="{ row }">
-            <span :class="{ muted: !coverageMap.get(Number(row.id)) }">{{ adminNames(row) }}</span>
+            <el-tag v-if="row.adminRequired && row.missingAdmin" type="warning">未设置管理员</el-tag>
+            <el-tag v-else-if="row.adminRequired" type="success">{{ adminNames(row) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="90" />
         <el-table-column label="操作" width="120" align="left">
           <template #default="{ row }">
             <el-button v-if="!isAgency(row)" link type="primary" @click="view(row)">查看</el-button>
@@ -58,18 +49,13 @@ import { useAuthStore } from '../stores/auth'
 
 const rows = ref<any[]>([])
 const treeRows = computed(() => buildDeptTree(rows.value))
-const coverage = ref<any[]>([])
-const coverageMap = computed(() => new Map(coverage.value.map((item) => [Number(item.deptId), item])))
 const open = ref(false)
 const form = reactive<any>({})
 const auth = useAuthStore()
 const router = useRouter()
 
 async function load() {
-  rows.value = await apiGet('/depts/tree')
-  if (auth.user?.isSuperAdmin) {
-    coverage.value = await apiGet('/depts/admin-coverage')
-  }
+  rows.value = await apiGet('/depts/overview')
 }
 
 function openCreate() {
@@ -121,25 +107,14 @@ function isAgency(row: any) {
 }
 
 function adminNames(row: any) {
-  const item = coverageMap.value.get(Number(row.id))
-  if (!item) return '不需要设置'
-  if (item.missingAdmin) return '未设置管理员'
-  return item.adminNames.join('、')
+  return row.adminNames?.join('、') || ''
 }
 
 onMounted(load)
 </script>
 
 <style scoped>
-.admin-tag {
-  margin-left: 10px;
-}
-
 .dept-table {
   width: 100%;
-}
-
-.muted {
-  color: #909399;
 }
 </style>

@@ -9,6 +9,8 @@ import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.security.SecurityUtils;
 import cn.datong.standard.service.DeptAdminCoverage;
 import cn.datong.standard.service.DeptDetail;
+import cn.datong.standard.service.DeptOverview;
+import cn.datong.standard.service.DeptOverviewService;
 import cn.datong.standard.service.OrgAssignmentService;
 import cn.datong.standard.service.PermissionService;
 import cn.datong.standard.service.UserAdminService;
@@ -36,6 +38,7 @@ public class DeptController {
     private final PermissionService permissionService;
     private final UserAdminService userAdminService;
     private final OrgAssignmentService orgAssignmentService;
+    private final DeptOverviewService deptOverviewService;
 
     @GetMapping("/tree")
     public ApiResponse<List<SysDept>> tree() {
@@ -53,6 +56,12 @@ public class DeptController {
     public ApiResponse<List<DeptAdminCoverage>> adminCoverage() {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(userAdminService.adminCoverage(currentUser.superAdmin()));
+    }
+
+    @GetMapping("/overview")
+    public ApiResponse<List<DeptOverview>> overview() {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(deptOverviewService.overview(currentUser.superAdmin()));
     }
 
     @GetMapping("/{id}/detail")
