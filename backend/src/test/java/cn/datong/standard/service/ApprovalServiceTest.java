@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ApprovalServiceTest {
@@ -98,6 +99,33 @@ class ApprovalServiceTest {
         assertThatThrownBy(() -> service.pending(new CurrentUser(3L, 8L, false)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("没有注册审核权限");
+    }
+
+    @Test
+    void approveAssignsStaffRoleWhenRegisteredUserHasNoRole() {
+        SysRegisterApprovalMapper approvalMapper = mock(SysRegisterApprovalMapper.class);
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysUserRoleMapper userRoleMapper = mock(SysUserRoleMapper.class);
+        SysRoleMapper roleMapper = mock(SysRoleMapper.class);
+        SysRegisterApproval approval = approval(1L, 10L);
+        SysUser targetUser = user(10L, 25L);
+        when(approvalMapper.selectById(1L)).thenReturn(approval);
+        when(userMapper.selectById(10L)).thenReturn(targetUser);
+        when(userRoleMapper.selectList(any())).thenReturn(List.of());
+        when(roleMapper.selectOne(any())).thenReturn(role(5L, "STAFF"));
+        ApprovalService service = new ApprovalService(
+                approvalMapper,
+                userMapper,
+                mock(SysDeptMapper.class),
+                userRoleMapper,
+                roleMapper
+        );
+
+        service.approve(1L, new CurrentUser(1L, 24L, true));
+
+        verify(userRoleMapper).insert(org.mockito.ArgumentMatchers.<SysUserRole>argThat(row ->
+                row.getUserId().equals(10L) && row.getRoleId().equals(5L)
+        ));
     }
 
     private SysRegisterApproval approval(Long id, Long userId) {

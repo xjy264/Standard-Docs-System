@@ -50,6 +50,14 @@ class CaptchaServiceTest {
     }
 
     @Test
+    void noneProviderSkipsSliderVerificationForLocalTests() {
+        ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
+        CaptchaService service = new CaptchaService(captchaApplication, "none");
+
+        assertThatCode(() -> service.verify("captcha-id", "any-code")).doesNotThrowAnyException();
+    }
+
+    @Test
     void matchingNormalizesAbsoluteBrowserTrackToRelativeTrack() {
         ImageCaptchaApplication captchaApplication = mock(ImageCaptchaApplication.class);
         CaptchaService service = new CaptchaService(captchaApplication);

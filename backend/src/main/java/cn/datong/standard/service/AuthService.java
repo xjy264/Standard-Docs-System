@@ -81,12 +81,16 @@ public class AuthService {
     }
 
     public AuthTokenResponse devLoginAsUserOne(HttpServletRequest servletRequest) {
+        return devLoginAs(1L, servletRequest);
+    }
+
+    public AuthTokenResponse devLoginAs(Long userId, HttpServletRequest servletRequest) {
         if (!isLocalRequest(servletRequest)) {
             throw new BusinessException(403, "仅本地开发环境允许跳过登录");
         }
-        SysUser user = userMapper.selectById(1L);
+        SysUser user = userMapper.selectById(userId);
         if (user == null) {
-            throw new BusinessException("本地开发用户不存在：id=1");
+            throw new BusinessException("本地开发用户不存在：id=" + userId);
         }
         String token = jwtTokenProvider.createToken(user.getId(), user.getDeptId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
         Set<String> permissions = permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));

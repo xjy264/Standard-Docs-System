@@ -6,14 +6,26 @@ import cloud.tianai.captcha.application.vo.ImageCaptchaVO;
 import cloud.tianai.captcha.common.response.ApiResponse;
 import cloud.tianai.captcha.spring.plugins.secondary.SecondaryVerificationApplication;
 import cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class CaptchaService {
     public static final String SLIDER_PASSED_CODE = "SLIDER_PASSED";
     private final ImageCaptchaApplication captchaApplication;
+    private final String provider;
+
+    @Autowired
+    public CaptchaService(ImageCaptchaApplication captchaApplication,
+                          @Value("${captcha.provider:local}") String provider) {
+        this.captchaApplication = captchaApplication;
+        this.provider = provider;
+    }
+
+    CaptchaService(ImageCaptchaApplication captchaApplication) {
+        this(captchaApplication, "local");
+    }
 
     public ApiResponse<ImageCaptchaVO> create() {
         return captchaApplication.generateCaptcha("SLIDER");
@@ -61,6 +73,9 @@ public class CaptchaService {
     }
 
     public void verify(String key, String code) {
+        if ("none".equalsIgnoreCase(provider)) {
+            return;
+        }
         if (!SLIDER_PASSED_CODE.equals(code)
                 || !(captchaApplication instanceof SecondaryVerificationApplication secondary)
                 || !secondary.secondaryVerification(key)) {
