@@ -21,11 +21,11 @@
     </div>
     <div class="section">
       <el-table :data="files" stripe>
-        <el-table-column prop="fileName" label="文件名称" min-width="220" />
-        <el-table-column prop="extension" label="类型" min-width="100" />
-        <el-table-column prop="fileSize" label="大小" min-width="130" :formatter="sizeText" />
-        <el-table-column prop="ownerDeptName" label="所属组织" min-width="180" />
-        <el-table-column prop="ownerName" label="所属人" min-width="130" />
+        <el-table-column prop="fileName" label="文件名称" min-width="260" />
+        <el-table-column prop="extension" label="类型" min-width="120" />
+        <el-table-column prop="fileSize" label="大小" min-width="140" :formatter="sizeText" />
+        <el-table-column prop="ownerDeptName" label="所属组织" min-width="170" />
+        <el-table-column prop="ownerName" label="所属人" min-width="150" />
         <el-table-column prop="createdAt" label="上传时间" min-width="180" />
         <el-table-column label="操作" :min-width="operationWidth" align="left">
           <template #default="{ row }">
@@ -103,7 +103,7 @@ const dateRange = ref<string[]>([])
 const query = reactive({ keyword: '', extension: '', ownerDeptName: '', ownerName: '' })
 const title = computed(() => props.title)
 const showUploadButton = computed(() => props.showUpload && auth.hasPermission('file:upload'))
-const operationWidth = computed(() => props.manageOwnerFiles ? 210 : auth.user?.isSuperAdmin ? 130 : 90)
+const operationWidth = computed(() => props.manageOwnerFiles ? 230 : auth.user?.isSuperAdmin ? 130 : 90)
 const fileTypeOptions: FileTypeOption[] = [
   { label: 'Word 文档', value: 'doc' },
   { label: 'Excel 表格', value: 'xls' },
