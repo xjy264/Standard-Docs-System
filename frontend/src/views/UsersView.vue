@@ -157,8 +157,12 @@ async function toggle(row: any) {
 }
 
 async function reset(row: any) {
-  const { value } = await ElMessageBox.prompt('请输入新密码', '重置密码')
-  await apiPost(`/users/${row.id}/reset-password`, undefined, { password: value })
+  const { value } = await ElMessageBox.prompt('请输入新密码', '重置密码', {
+    inputType: 'password',
+    inputPattern: /^.{6,64}$/,
+    inputErrorMessage: '密码长度需为 6-64 位'
+  })
+  await apiPost(`/users/${row.id}/reset-password`, { password: value })
   ElMessage.success('重置成功')
 }
 

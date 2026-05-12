@@ -1,7 +1,9 @@
 package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
+import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.CurrentUser;
+import cn.datong.standard.dto.ResetPasswordRequest;
 import cn.datong.standard.dto.UserView;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.entity.SysUserPermission;
@@ -10,10 +12,12 @@ import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.mapper.SysUserPermissionMapper;
 import cn.datong.standard.mapper.SysUserRoleMapper;
 import cn.datong.standard.security.SecurityUtils;
+import cn.datong.standard.service.OperationLogService;
 import cn.datong.standard.service.OrgAssignmentService;
 import cn.datong.standard.service.PermissionService;
 import cn.datong.standard.service.UserAdminService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,6 +44,7 @@ public class UserController {
     private final UserAdminService userAdminService;
     private final OrgAssignmentService orgAssignmentService;
     private final PasswordEncoder passwordEncoder;
+    private final OperationLogService logService;
 
     @GetMapping
     public ApiResponse<List<UserView>> list(@RequestParam(required = false) Long deptId,
@@ -102,14 +107,28 @@ public class UserController {
     }
 
     @PostMapping("/{id}/reset-password")
-    public ApiResponse<Void> resetPassword(@PathVariable Long id, @RequestParam String password) {
+    public ApiResponse<Void> resetPassword(@PathVariable Long id,
+                                           @RequestBody(required = false) ResetPasswordRequest body,
+                                           @RequestParam(required = false) String password,
+                                           HttpServletRequest request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         requireUserManager(currentUser);
         userAdminService.requireSameDeptManage(currentUser, id);
+        String newPassword = body != null && body.password() != null ? body.password() : password;
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new BusinessException("密码不能为空");
+        }
+        if (newPassword.length() < 6 || newPassword.length() > 64) {
+            throw new BusinessException("密码长度需为 6-64 位");
+        }
         SysUser user = userMapper.selectById(id);
-        user.setPassword(passwordEncoder.encode(password));
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        user.setPassword(passwordEncoder.encode(newPassword));
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
+        logService.operation(currentUser.userId(), "重置密码", "USER", id, "SUCCESS", null, request);
         return ApiResponse.success();
     }
 
