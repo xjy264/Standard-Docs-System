@@ -37,17 +37,35 @@
       </el-table>
     </div>
 
-    <el-dialog v-model="uploadOpen" title="上传文件" width="520px">
+    <el-dialog
+      v-model="uploadOpen"
+      title="上传文件"
+      width="520px"
+      :close-on-click-modal="!uploading"
+      :close-on-press-escape="!uploading"
+      :show-close="!uploading"
+      @closed="resetUploadForm"
+    >
       <el-form label-position="top">
         <el-form-item label="选择文件">
-          <el-upload ref="uploadRef" class="file-upload-drag" drag :auto-upload="false" :limit="1" :on-change="onFileChange">
-            <div>拖拽文件到此处，或点击选择文件</div>
+          <el-upload
+            ref="uploadRef"
+            class="file-upload-drag"
+            drag
+            multiple
+            :auto-upload="false"
+            :limit="uploadLimit"
+            :on-change="onFileChange"
+            :on-remove="onFileRemove"
+            :on-exceed="onFileExceed"
+          >
+            <div>拖拽多个文件到此处，或点击选择文件</div>
           </el-upload>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="uploadOpen = false">取消</el-button>
-        <el-button type="primary" @click="submitUpload">上传</el-button>
+        <el-button :disabled="uploading" @click="uploadOpen = false">取消</el-button>
+        <el-button type="primary" :loading="uploading" :disabled="uploading || selectedFiles.length === 0" @click="submitUpload">上传</el-button>
       </template>
     </el-dialog>
 
@@ -68,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { http, apiDelete, apiGet } from '../api/http'
 import { useAuthStore } from '../stores/auth'
@@ -93,7 +111,8 @@ const props = withDefaults(defineProps<{
 const auth = useAuthStore()
 const files = ref<any[]>([])
 const uploadOpen = ref(false)
-const selectedFile = ref<File>()
+const selectedFiles = ref<UploadRawFile[]>([])
+const uploading = ref(false)
 const uploadRef = ref<any>()
 const replaceOpen = ref(false)
 const replaceTarget = ref<any>()
@@ -104,6 +123,8 @@ const query = reactive({ keyword: '', extension: '', ownerDeptName: '', ownerNam
 const title = computed(() => props.title)
 const showUploadButton = computed(() => props.showUpload && auth.hasPermission('file:upload'))
 const operationWidth = computed(() => props.manageOwnerFiles ? 230 : auth.user?.isSuperAdmin ? 130 : 90)
+const uploadLimit = 20
+const uploadConcurrency = 3
 const fileTypeOptions: FileTypeOption[] = [
   { label: 'Word 文档', value: 'doc' },
   { label: 'Excel 表格', value: 'xls' },
@@ -127,25 +148,83 @@ async function load() {
 }
 
 async function openUpload() {
+  resetUploadForm()
   uploadOpen.value = true
 }
 
-function onFileChange(file: UploadFile) {
-  selectedFile.value = file.raw
+function onFileChange(_file: UploadFile, uploadFiles: UploadFiles) {
+  syncSelectedFiles(uploadFiles)
+}
+
+function onFileRemove(_file: UploadFile, uploadFiles: UploadFiles) {
+  syncSelectedFiles(uploadFiles)
+}
+
+function onFileExceed() {
+  ElMessage.warning(`单次最多选择 ${uploadLimit} 个文件，请分批上传`)
+}
+
+function syncSelectedFiles(uploadFiles: UploadFiles) {
+  selectedFiles.value = uploadFiles
+    .map((item) => item.raw)
+    .filter((file): file is UploadRawFile => Boolean(file))
 }
 
 async function submitUpload() {
-  if (!selectedFile.value) {
+  if (uploading.value) {
+    return
+  }
+  if (selectedFiles.value.length === 0) {
     ElMessage.warning('请选择文件')
     return
   }
+  uploading.value = true
+  try {
+    const result = await uploadSelectedFiles([...selectedFiles.value])
+    if (result.successCount > 0) {
+      await load()
+      uploadOpen.value = false
+    }
+    if (result.successCount > 0 && result.failCount === 0) {
+      ElMessage.success(`上传成功，共 ${result.successCount} 个文件`)
+    } else if (result.successCount > 0) {
+      ElMessage.warning(`上传完成，成功 ${result.successCount} 个，失败 ${result.failCount} 个，请重新选择失败文件后再试`)
+    } else {
+      ElMessage.error('上传失败，请稍后重试')
+    }
+  } finally {
+    uploading.value = false
+    resetUploadForm()
+  }
+}
+
+async function uploadSelectedFiles(uploadFiles: UploadRawFile[]) {
+  let nextIndex = 0
+  let successCount = 0
+  let failCount = 0
+  const workerCount = Math.min(uploadConcurrency, uploadFiles.length)
+
+  async function uploadWorker() {
+    while (nextIndex < uploadFiles.length) {
+      const file = uploadFiles[nextIndex]
+      nextIndex += 1
+      try {
+        await uploadSingleFile(file)
+        successCount += 1
+      } catch {
+        failCount += 1
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => uploadWorker()))
+  return { successCount, failCount }
+}
+
+async function uploadSingleFile(file: UploadRawFile) {
   const form = new FormData()
-  form.append('file', selectedFile.value)
-  await http.post('/files/upload', form)
-  ElMessage.success('上传成功')
-  uploadOpen.value = false
-  resetUploadForm()
-  load()
+  form.append('file', file)
+  await http.post('/files/upload', form, { headers: { 'X-Silent-Error': '1' } })
 }
 
 function resetQuery() {
@@ -222,7 +301,7 @@ function isOwner(row: any) {
 }
 
 function resetUploadForm() {
-  selectedFile.value = undefined
+  selectedFiles.value = []
   uploadRef.value?.clearFiles()
 }
 
