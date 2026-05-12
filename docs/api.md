@@ -14,8 +14,8 @@
 
 - `GET /api/auth/captcha`：获取滑块验证码。
 - `POST /api/auth/captcha/check`：校验滑块轨迹，返回登录和注册使用的一次性验证码凭证。
-- `POST /api/auth/register`：注册，密码字段为 `password` 和 `confirmPassword`，需满足 8-20 位且包含大小写字母、数字、常见英文特殊符号。
-- `POST /api/auth/login`：登录。
+- `POST /api/auth/register`：注册，请求体包含 `phone`、`realName`、`deptId`、`password`、`confirmPassword`，不再填写用户名；密码需满足 8-20 位且包含大小写字母、数字、常见英文特殊符号。
+- `POST /api/auth/login`：手机号登录，请求体包含 `phone`、`password`。
 - `POST /api/auth/logout`：登出。
 - `GET /api/auth/me`：当前用户信息。
 

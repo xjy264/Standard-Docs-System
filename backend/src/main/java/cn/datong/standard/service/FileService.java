@@ -249,7 +249,7 @@ public class FileService {
             SysUser owner = ownerMap.get(file.getUploadUserId());
             if (owner != null) {
                 file.setOwnerName(owner.getRealName() == null || owner.getRealName().isBlank()
-                        ? owner.getUsername()
+                        ? (owner.getPhone() == null || owner.getPhone().isBlank() ? owner.getUsername() : owner.getPhone())
                         : owner.getRealName());
             }
             Long ownerDeptId = owner != null && owner.getDeptId() != null ? owner.getDeptId() : file.getDeptId();

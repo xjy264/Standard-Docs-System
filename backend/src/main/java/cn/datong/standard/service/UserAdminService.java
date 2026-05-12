@@ -221,6 +221,9 @@ public class UserAdminService {
         if (user.getRealName() != null && !user.getRealName().isBlank()) {
             return user.getRealName();
         }
+        if (user.getPhone() != null && !user.getPhone().isBlank()) {
+            return user.getPhone();
+        }
         return user.getUsername();
     }
 }

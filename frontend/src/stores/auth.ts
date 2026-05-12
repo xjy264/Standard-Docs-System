@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 
 export interface LoginUser {
   id: number
-  username: string
+  username?: string
+  phone: string
   realName: string
   deptId?: number
   isSuperAdmin?: boolean

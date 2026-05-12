@@ -14,7 +14,7 @@
         </el-tab-pane>
         <el-tab-pane label="登录日志" name="logins">
           <el-table :data="logins" stripe>
-            <el-table-column prop="username" label="用户名" />
+            <el-table-column prop="username" label="手机号" />
             <el-table-column prop="result" label="结果" width="100" />
             <el-table-column prop="failReason" label="失败原因" />
             <el-table-column prop="createdAt" label="时间" />

@@ -2,6 +2,7 @@ package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.AuthTokenResponse;
+import cn.datong.standard.dto.LoginRequest;
 import cn.datong.standard.dto.RegisterRequest;
 import cn.datong.standard.entity.SysRegisterApproval;
 import cn.datong.standard.entity.SysUser;
@@ -147,7 +148,6 @@ class AuthServiceTest {
         );
 
         assertThatThrownBy(() -> service.register(new RegisterRequest(
-                "zhangsan",
                 "Password123!",
                 "Password123!",
                 "张三",
@@ -175,7 +175,6 @@ class AuthServiceTest {
         );
 
         assertThatThrownBy(() -> service.register(new RegisterRequest(
-                "zhangsan",
                 "password",
                 "password",
                 "张三",
@@ -205,7 +204,6 @@ class AuthServiceTest {
         );
 
         assertThatThrownBy(() -> service.register(new RegisterRequest(
-                "zhangsan",
                 "Password123!",
                 "Password123@",
                 "张三",
@@ -216,6 +214,36 @@ class AuthServiceTest {
         )))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("两次输入的密码不一致");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
+    void registerRejectsDuplicatedPhone() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        when(userMapper.selectCount(any())).thenReturn(1L);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                mock(PasswordEncoder.class),
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest(
+                "Password123!",
+                "Password123!",
+                "张三",
+                "13800000000",
+                25L,
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("手机号已存在");
 
         verify(userMapper, never()).insert(any(SysUser.class));
     }
@@ -246,7 +274,6 @@ class AuthServiceTest {
         );
 
         service.register(new RegisterRequest(
-                "权限测试_注册用户",
                 "Password123!",
                 "Password123!",
                 "权限测试_注册用户",
@@ -263,7 +290,8 @@ class AuthServiceTest {
         verify(userMapper).insert(userCaptor.capture());
         verify(approvalMapper).insert(approvalCaptor.capture());
         SysUser user = userCaptor.getValue();
-        assertThat(user.getUsername()).isEqualTo("权限测试_注册用户");
+        assertThat(user.getUsername()).isEqualTo("13800000000");
+        assertThat(user.getPhone()).isEqualTo("13800000000");
         assertThat(user.getPassword()).isEqualTo("encoded-password");
         assertThat(user.getDeptId()).isEqualTo(25L);
         assertThat(user.getStatus()).isEqualTo("DISABLED");
@@ -282,6 +310,7 @@ class AuthServiceTest {
         SysUser user = new SysUser();
         user.setId(100L);
         user.setUsername("权限测试_注册用户");
+        user.setPhone("13800000000");
         user.setPassword("encoded-password");
         user.setStatus("DISABLED");
         user.setApprovalStatus("PENDING");
@@ -299,8 +328,8 @@ class AuthServiceTest {
         );
 
         assertThatThrownBy(() -> service.login(
-                new cn.datong.standard.dto.LoginRequest(
-                        "权限测试_注册用户",
+                new LoginRequest(
+                        "13800000000",
                         "Password123",
                         "captcha-id",
                         CaptchaService.SLIDER_PASSED_CODE
@@ -309,5 +338,107 @@ class AuthServiceTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("用户未审批或已禁用");
+    }
+
+    @Test
+    void loginWithPhoneSucceeds() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        OperationLogService logService = mock(OperationLogService.class);
+        SysUser user = new SysUser();
+        user.setId(1L);
+        user.setDeptId(24L);
+        user.setPhone("00000000000");
+        user.setPassword("encoded-password");
+        user.setStatus("ENABLED");
+        user.setApprovalStatus("APPROVED");
+        user.setIsSuperAdmin(true);
+        when(userMapper.selectOne(any())).thenReturn(user);
+        when(passwordEncoder.matches("Admin12345@@", "encoded-password")).thenReturn(true);
+        when(jwtTokenProvider.createToken(1L, 24L, true)).thenReturn("token");
+        when(permissionService.getEffectivePermissions(1L, true)).thenReturn(Set.of("*"));
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                passwordEncoder,
+                mock(CaptchaService.class),
+                jwtTokenProvider,
+                permissionService,
+                logService,
+                mock(OrgAssignmentService.class)
+        );
+
+        AuthTokenResponse response = service.login(new LoginRequest(
+                "00000000000",
+                "Admin12345@@",
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        ), null);
+
+        assertThat(response.token()).isEqualTo("token");
+        assertThat(response.user()).isSameAs(user);
+        assertThat(response.permissions()).containsExactly("*");
+        verify(logService).login("00000000000", 1L, "SUCCESS", null, null);
+    }
+
+    @Test
+    void loginWithOldUsernameFails() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        OperationLogService logService = mock(OperationLogService.class);
+        when(userMapper.selectOne(any())).thenReturn(null);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                mock(PasswordEncoder.class),
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                logService,
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.login(new LoginRequest(
+                "admin",
+                "Admin12345@@",
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        ), null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("手机号或密码错误");
+        verify(logService).login("admin", null, "FAIL", "手机号或密码错误", null);
+    }
+
+    @Test
+    void loginWithWrongPasswordFailsWithPhoneMessage() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        OperationLogService logService = mock(OperationLogService.class);
+        SysUser user = new SysUser();
+        user.setPhone("00000000000");
+        user.setPassword("encoded-password");
+        when(userMapper.selectOne(any())).thenReturn(user);
+        when(passwordEncoder.matches("wrong", "encoded-password")).thenReturn(false);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                passwordEncoder,
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                logService,
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.login(new LoginRequest(
+                "00000000000",
+                "wrong",
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        ), null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("手机号或密码错误");
+        verify(logService).login("00000000000", null, "FAIL", "手机号或密码错误", null);
     }
 }

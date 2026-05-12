@@ -7,7 +7,6 @@
     <section class="auth-panel">
       <h2>提交注册申请</h2>
       <el-form label-position="top" @submit.prevent>
-        <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="真实姓名"><el-input v-model="form.realName" /></el-form-item>
         <el-form-item label="手机号"><el-input v-model="form.phone" /></el-form-item>
         <el-form-item label="部门">
@@ -51,7 +50,6 @@ const captchaRef = ref<InstanceType<typeof SliderCaptcha> | null>(null)
 const depts = ref<Array<{ id: number; deptName: string }>>([])
 const deptTree = computed(() => buildDeptTree(depts.value))
 const form = reactive({
-  username: '',
   password: '',
   confirmPassword: '',
   realName: '',

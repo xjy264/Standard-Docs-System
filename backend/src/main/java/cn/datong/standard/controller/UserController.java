@@ -69,6 +69,7 @@ public class UserController {
         CurrentUser currentUser = SecurityUtils.currentUser();
         requireUserManager(currentUser);
         userAdminService.requireCreateInManagedDept(currentUser, user.getDeptId());
+        user.setUsername(user.getPhone());
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setStatus("ENABLED");
         user.setApprovalStatus("APPROVED");
@@ -89,6 +90,9 @@ public class UserController {
             userAdminService.requireCreateInManagedDept(currentUser, user.getDeptId());
         }
         user.setId(id);
+        if (user.getPhone() != null && !user.getPhone().isBlank()) {
+            user.setUsername(user.getPhone());
+        }
         user.setPassword(null);
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);

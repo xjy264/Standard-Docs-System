@@ -3,7 +3,7 @@
     <header class="topbar">
       <div class="brand">大同房建公寓段标准化资料管理系统</div>
       <div>
-        <span>{{ auth.user?.realName || auth.user?.username }}</span>
+        <span>{{ auth.user?.realName || auth.user?.phone }}</span>
         <el-button link style="color:#fff;margin-left:14px" @click="logout">退出</el-button>
       </div>
     </header>

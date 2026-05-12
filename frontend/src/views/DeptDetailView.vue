@@ -32,7 +32,6 @@
     <div class="section">
       <h3>组织管理员</h3>
       <el-table :data="detail?.admins || []" stripe>
-        <el-table-column prop="username" label="用户名" />
         <el-table-column prop="realName" label="姓名" />
         <el-table-column prop="phone" label="手机号" />
         <el-table-column prop="status" label="状态" width="110" />
@@ -42,7 +41,6 @@
     <div class="section">
       <h3>直属用户</h3>
       <el-table :data="detail?.users || []" stripe>
-        <el-table-column prop="username" label="用户名" />
         <el-table-column prop="realName" label="姓名" />
         <el-table-column prop="phone" label="手机号" />
         <el-table-column prop="identity" label="身份" width="130">

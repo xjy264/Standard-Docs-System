@@ -7,8 +7,8 @@
     <section class="auth-panel">
       <h2>用户登录</h2>
       <el-form label-position="top" @submit.prevent>
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" />
+        <el-form-item label="手机号">
+          <el-input v-model="form.phone" />
         </el-form-item>
         <el-form-item label="密码">
           <el-input v-model="form.password" type="password" show-password />
@@ -39,7 +39,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const captchaRef = ref<InstanceType<typeof SliderCaptcha> | null>(null)
-const form = reactive({ username: 'admin', password: 'Admin12345@@', captchaKey: '', captchaCode: '' })
+const form = reactive({ phone: '00000000000', password: 'Admin12345@@', captchaKey: '', captchaCode: '' })
 
 function resetCaptchaState() {
   form.captchaKey = ''

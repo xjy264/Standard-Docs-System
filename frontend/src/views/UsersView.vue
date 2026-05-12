@@ -33,7 +33,6 @@
     </div>
     <div class="section">
       <el-table :data="rows" stripe>
-        <el-table-column prop="username" label="用户名" />
         <el-table-column prop="realName" label="姓名" />
         <el-table-column prop="phone" label="手机号" />
         <el-table-column prop="deptName" label="所属组织" />
@@ -71,7 +70,6 @@
     </div>
     <el-dialog v-model="open" title="用户信息" width="520px">
       <el-form label-position="top">
-        <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="姓名"><el-input v-model="form.realName" /></el-form-item>
         <el-form-item label="手机号"><el-input v-model="form.phone" /></el-form-item>
         <el-form-item v-if="auth.user?.isSuperAdmin" label="所属组织">
@@ -140,7 +138,6 @@ function openApprovals() {
 function edit(row: any) {
   Object.assign(form, {
     id: row.id,
-    username: row.username,
     realName: row.realName,
     phone: row.phone,
     deptId: row.deptId,
@@ -196,14 +193,14 @@ function closeResetPassword() {
 }
 
 async function promote(row: any) {
-  await ElMessageBox.confirm(`确认将 ${row.realName || row.username} 设为管理员？`, '设为管理员')
+  await ElMessageBox.confirm(`确认将 ${row.realName || row.phone} 设为管理员？`, '设为管理员')
   await apiPost(`/users/${row.id}/promote-admin`)
   ElMessage.success('已设为管理员')
   load()
 }
 
 async function demote(row: any) {
-  await ElMessageBox.confirm(`确认取消 ${row.realName || row.username} 的管理员身份？`, '取消管理员')
+  await ElMessageBox.confirm(`确认取消 ${row.realName || row.phone} 的管理员身份？`, '取消管理员')
   await apiPost(`/users/${row.id}/demote-admin`)
   ElMessage.success('已取消管理员')
   load()

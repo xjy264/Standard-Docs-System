@@ -36,4 +36,4 @@ docker compose logs -f backend
 docker compose logs -f frontend
 ```
 
-登录默认账号 `admin / Admin12345@@` 后，完成组织、用户、权限和文件上传下载演示。
+登录默认账号 `00000000000 / Admin12345@@` 后，完成组织、用户、权限和文件上传下载演示。

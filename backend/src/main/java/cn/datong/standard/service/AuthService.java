@@ -36,12 +36,12 @@ public class AuthService {
         PasswordPolicy.validate(request.password(), request.confirmPassword());
         orgAssignmentService.requireAssignableDept(request.deptId());
         Long count = userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getUsername, request.username()));
+                .eq(SysUser::getPhone, request.phone()));
         if (count > 0) {
-            throw new BusinessException("用户名已存在");
+            throw new BusinessException("手机号已存在");
         }
         SysUser user = new SysUser();
-        user.setUsername(request.username());
+        user.setUsername(request.phone());
         user.setPassword(passwordEncoder.encode(request.password()));
         user.setRealName(request.realName());
         user.setPhone(request.phone());
@@ -64,20 +64,20 @@ public class AuthService {
     public AuthTokenResponse login(LoginRequest request, HttpServletRequest servletRequest) {
         captchaService.verify(request.captchaKey(), request.captchaCode());
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getUsername, request.username()));
+                .eq(SysUser::getPhone, request.phone()));
         if (user == null || !passwordEncoder.matches(request.password(), user.getPassword())) {
-            logService.login(request.username(), null, "FAIL", "用户名或密码错误", servletRequest);
-            throw new BusinessException("用户名或密码错误");
+            logService.login(request.phone(), null, "FAIL", "手机号或密码错误", servletRequest);
+            throw new BusinessException("手机号或密码错误");
         }
         if (!"APPROVED".equals(user.getApprovalStatus()) || !"ENABLED".equals(user.getStatus())) {
-            logService.login(request.username(), user.getId(), "FAIL", "用户未审批或已禁用", servletRequest);
+            logService.login(request.phone(), user.getId(), "FAIL", "用户未审批或已禁用", servletRequest);
             throw new BusinessException("用户未审批或已禁用");
         }
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
         String token = jwtTokenProvider.createToken(user.getId(), user.getDeptId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
         Set<String> permissions = permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
-        logService.login(request.username(), user.getId(), "SUCCESS", null, servletRequest);
+        logService.login(request.phone(), user.getId(), "SUCCESS", null, servletRequest);
         return new AuthTokenResponse(token, user, permissions);
     }
 
