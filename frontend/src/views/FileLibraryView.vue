@@ -14,9 +14,11 @@
         </el-form-item>
         <el-form-item label="所属组织"><el-input v-model="query.ownerDeptName" clearable placeholder="输入所属组织" /></el-form-item>
         <el-form-item label="所属人"><el-input v-model="query.ownerName" clearable placeholder="输入所属人" /></el-form-item>
-        <el-form-item label="上传日期"><el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" /></el-form-item>
-        <el-form-item><el-button type="primary" @click="load">查询</el-button></el-form-item>
-        <el-form-item><el-button @click="resetQuery">重置</el-button></el-form-item>
+        <el-form-item label="上传日期"><el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" style="width:240px" /></el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="load">查询</el-button>
+          <el-button @click="resetQuery">重置</el-button>
+        </el-form-item>
       </el-form>
     </div>
     <div class="section">
