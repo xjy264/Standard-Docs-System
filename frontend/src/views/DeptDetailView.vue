@@ -50,18 +50,41 @@
         </el-table-column>
         <el-table-column prop="status" label="状态" width="110" />
         <el-table-column prop="approvalStatus" label="审批状态" width="120" />
+        <el-table-column v-if="auth.user?.isSuperAdmin" label="操作" width="150">
+          <template #default="{ row }">
+            <el-button
+              v-if="!row.isSuperAdmin && !row.admin"
+              link
+              type="success"
+              @click="promote(row)"
+            >
+              设为管理员
+            </el-button>
+            <el-button
+              v-if="!row.isSuperAdmin && row.admin"
+              link
+              type="info"
+              @click="demote(row)"
+            >
+              取消管理员
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { apiGet } from '../api/http'
+import { apiGet, apiPost } from '../api/http'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const detail = ref<any>()
 
 async function load() {
@@ -80,6 +103,20 @@ function identityTagType(identity: string) {
   if (identity === '超级管理员') return 'danger'
   if (identity === '管理员') return 'warning'
   return 'info'
+}
+
+async function promote(row: any) {
+  await ElMessageBox.confirm(`确认将 ${row.realName || row.phone} 设为管理员？`, '设为管理员')
+  await apiPost(`/users/${row.id}/promote-admin`)
+  ElMessage.success('已设为管理员')
+  load()
+}
+
+async function demote(row: any) {
+  await ElMessageBox.confirm(`确认取消 ${row.realName || row.phone} 的管理员身份？`, '取消管理员')
+  await apiPost(`/users/${row.id}/demote-admin`)
+  ElMessage.success('已取消管理员')
+  load()
 }
 
 onMounted(load)
