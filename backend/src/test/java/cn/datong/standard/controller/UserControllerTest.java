@@ -45,14 +45,14 @@ class UserControllerTest {
         HttpServletRequest request = mock(HttpServletRequest.class);
         SysUser user = user(50L);
         when(userMapper.selectById(50L)).thenReturn(user);
-        when(passwordEncoder.encode("123456")).thenReturn("encoded-123456");
+        when(passwordEncoder.encode("Password123!")).thenReturn("encoded-password");
         UserController controller = controller(userMapper, passwordEncoder, logService);
 
-        controller.resetPassword(50L, new ResetPasswordRequest("123456"), null, request);
+        controller.resetPassword(50L, new ResetPasswordRequest("Password123!", "Password123!"), null, request);
 
         ArgumentCaptor<SysUser> userCaptor = ArgumentCaptor.forClass(SysUser.class);
         verify(userMapper).updateById(userCaptor.capture());
-        assertThat(userCaptor.getValue().getPassword()).isEqualTo("encoded-123456");
+        assertThat(userCaptor.getValue().getPassword()).isEqualTo("encoded-password");
         assertThat(userCaptor.getValue().getUpdatedAt()).isNotNull();
         verify(logService).operation(1L, "重置密码", "USER", 50L, "SUCCESS", null, request);
     }
@@ -63,9 +63,35 @@ class UserControllerTest {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         UserController controller = controller(userMapper, mock(PasswordEncoder.class), mock(OperationLogService.class));
 
-        assertThatThrownBy(() -> controller.resetPassword(50L, new ResetPasswordRequest("12345"), null, null))
+        assertThatThrownBy(() -> controller.resetPassword(50L, new ResetPasswordRequest("Aa1!", "Aa1!"), null, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("密码长度需为 6-64 位");
+                .hasMessage("密码长度需为 8-20 位");
+
+        verify(userMapper, never()).updateById(any(SysUser.class));
+    }
+
+    @Test
+    void resetPasswordRejectsMismatchedConfirmPassword() {
+        authenticateAsSuperAdmin();
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        UserController controller = controller(userMapper, mock(PasswordEncoder.class), mock(OperationLogService.class));
+
+        assertThatThrownBy(() -> controller.resetPassword(50L, new ResetPasswordRequest("Password123!", "Password123@"), null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("两次输入的密码不一致");
+
+        verify(userMapper, never()).updateById(any(SysUser.class));
+    }
+
+    @Test
+    void resetPasswordRejectsMissingConfirmPassword() {
+        authenticateAsSuperAdmin();
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        UserController controller = controller(userMapper, mock(PasswordEncoder.class), mock(OperationLogService.class));
+
+        assertThatThrownBy(() -> controller.resetPassword(50L, new ResetPasswordRequest("Password123!", null), null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("确认密码不能为空");
 
         verify(userMapper, never()).updateById(any(SysUser.class));
     }
@@ -77,7 +103,7 @@ class UserControllerTest {
         when(userMapper.selectById(50L)).thenReturn(null);
         UserController controller = controller(userMapper, mock(PasswordEncoder.class), mock(OperationLogService.class));
 
-        assertThatThrownBy(() -> controller.resetPassword(50L, new ResetPasswordRequest("123456"), null, null))
+        assertThatThrownBy(() -> controller.resetPassword(50L, new ResetPasswordRequest("Password123!", "Password123!"), null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("用户不存在");
 

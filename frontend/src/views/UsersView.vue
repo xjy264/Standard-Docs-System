@@ -88,6 +88,16 @@
       </el-form>
       <template #footer><el-button @click="open=false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
+    <el-dialog v-model="resetPasswordOpen" title="重置密码" width="420px" @closed="closeResetPassword">
+      <el-form label-position="top">
+        <el-form-item label="新密码"><el-input v-model="resetPasswordForm.password" type="password" show-password /></el-form-item>
+        <el-form-item label="确认密码"><el-input v-model="resetPasswordForm.confirmPassword" type="password" show-password /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="resetPasswordOpen=false">取消</el-button>
+        <el-button type="primary" @click="submitResetPassword">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -97,13 +107,17 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiGet, apiPost, apiPut } from '../api/http'
 import { useAuthStore } from '../stores/auth'
+import { passwordValidationMessage } from '../utils/passwordPolicy'
 
 const rows = ref<any[]>([])
 const deptRows = ref<any[]>([])
 const deptTree = computed(() => buildDeptTree(deptRows.value))
 const open = ref(false)
+const resetPasswordOpen = ref(false)
 const query = reactive<any>({ realName: '', phone: '', deptId: undefined })
 const form = reactive<any>({})
+const resetPasswordTarget = ref<any>()
+const resetPasswordForm = reactive({ password: '', confirmPassword: '' })
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -156,14 +170,29 @@ async function toggle(row: any) {
   load()
 }
 
-async function reset(row: any) {
-  const { value } = await ElMessageBox.prompt('请输入新密码', '重置密码', {
-    inputType: 'password',
-    inputPattern: /^.{6,64}$/,
-    inputErrorMessage: '密码长度需为 6-64 位'
+function reset(row: any) {
+  resetPasswordTarget.value = row
+  resetPasswordOpen.value = true
+}
+
+async function submitResetPassword() {
+  const passwordMessage = passwordValidationMessage(resetPasswordForm.password, resetPasswordForm.confirmPassword)
+  if (passwordMessage) {
+    ElMessage.warning(passwordMessage)
+    return
+  }
+  await apiPost(`/users/${resetPasswordTarget.value.id}/reset-password`, {
+    password: resetPasswordForm.password,
+    confirmPassword: resetPasswordForm.confirmPassword
   })
-  await apiPost(`/users/${row.id}/reset-password`, { password: value })
   ElMessage.success('重置成功')
+  resetPasswordOpen.value = false
+}
+
+function closeResetPassword() {
+  resetPasswordTarget.value = undefined
+  resetPasswordForm.password = ''
+  resetPasswordForm.confirmPassword = ''
 }
 
 async function promote(row: any) {

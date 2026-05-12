@@ -33,6 +33,7 @@ public class AuthService {
 
     public void register(RegisterRequest request) {
         captchaService.verify(request.captchaKey(), request.captchaCode());
+        PasswordPolicy.validate(request.password(), request.confirmPassword());
         orgAssignmentService.requireAssignableDept(request.deptId());
         Long count = userMapper.selectCount(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, request.username()));

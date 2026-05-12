@@ -14,7 +14,7 @@
 
 - `GET /api/auth/captcha`：获取滑块验证码。
 - `POST /api/auth/captcha/check`：校验滑块轨迹，返回登录和注册使用的一次性验证码凭证。
-- `POST /api/auth/register`：注册。
+- `POST /api/auth/register`：注册，密码字段为 `password` 和 `confirmPassword`，需满足 8-20 位且包含大小写字母、数字、常见英文特殊符号。
 - `POST /api/auth/login`：登录。
 - `POST /api/auth/logout`：登出。
 - `GET /api/auth/me`：当前用户信息。
@@ -35,6 +35,7 @@
 - `GET /api/users`：用户列表。
 - `POST /api/users`：创建用户。
 - `PUT /api/users/{id}`：修改用户。
+- `POST /api/users/{id}/reset-password`：管理员重置密码，请求体包含 `password` 和 `confirmPassword`，需满足强密码规则且两次一致。
 - `POST /api/users/{id}/enable`：启用用户。
 - `POST /api/users/{id}/disable`：禁用用户。
 

@@ -14,6 +14,7 @@ import cn.datong.standard.mapper.SysUserRoleMapper;
 import cn.datong.standard.security.SecurityUtils;
 import cn.datong.standard.service.OperationLogService;
 import cn.datong.standard.service.OrgAssignmentService;
+import cn.datong.standard.service.PasswordPolicy;
 import cn.datong.standard.service.PermissionService;
 import cn.datong.standard.service.UserAdminService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -115,12 +116,8 @@ public class UserController {
         requireUserManager(currentUser);
         userAdminService.requireSameDeptManage(currentUser, id);
         String newPassword = body != null && body.password() != null ? body.password() : password;
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new BusinessException("密码不能为空");
-        }
-        if (newPassword.length() < 6 || newPassword.length() > 64) {
-            throw new BusinessException("密码长度需为 6-64 位");
-        }
+        String confirmPassword = body == null ? null : body.confirmPassword();
+        PasswordPolicy.validate(newPassword, confirmPassword);
         SysUser user = userMapper.selectById(id);
         if (user == null) {
             throw new BusinessException("用户不存在");

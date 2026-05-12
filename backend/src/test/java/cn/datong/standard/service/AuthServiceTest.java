@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -147,7 +148,8 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> service.register(new RegisterRequest(
                 "zhangsan",
-                "Password123",
+                "Password123!",
+                "Password123!",
                 "张三",
                 "13800000000",
                 24L,
@@ -159,6 +161,66 @@ class AuthServiceTest {
     }
 
     @Test
+    void registerRejectsWeakPasswordBeforeCreatingUser() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                mock(PasswordEncoder.class),
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest(
+                "zhangsan",
+                "password",
+                "password",
+                "张三",
+                "13800000000",
+                25L,
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("密码缺少大写字母、数字、特殊符号");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
+    void registerRejectsMismatchedConfirmPasswordBeforeCreatingUser() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                mock(PasswordEncoder.class),
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest(
+                "zhangsan",
+                "Password123!",
+                "Password123@",
+                "张三",
+                "13800000000",
+                25L,
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("两次输入的密码不一致");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
     void registerCreatesDisabledPendingUserAndPendingApproval() {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         SysRegisterApprovalMapper approvalMapper = mock(SysRegisterApprovalMapper.class);
@@ -166,7 +228,7 @@ class AuthServiceTest {
         CaptchaService captchaService = mock(CaptchaService.class);
         OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
         when(userMapper.selectCount(any())).thenReturn(0L);
-        when(passwordEncoder.encode("Password123")).thenReturn("encoded-password");
+        when(passwordEncoder.encode("Password123!")).thenReturn("encoded-password");
         doAnswer(invocation -> {
             SysUser user = invocation.getArgument(0);
             user.setId(100L);
@@ -185,7 +247,8 @@ class AuthServiceTest {
 
         service.register(new RegisterRequest(
                 "权限测试_注册用户",
-                "Password123",
+                "Password123!",
+                "Password123!",
                 "权限测试_注册用户",
                 "13800000000",
                 25L,

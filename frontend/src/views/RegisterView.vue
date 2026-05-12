@@ -22,6 +22,7 @@
           />
         </el-form-item>
         <el-form-item label="密码"><el-input v-model="form.password" type="password" show-password /></el-form-item>
+        <el-form-item label="确认密码"><el-input v-model="form.confirmPassword" type="password" show-password /></el-form-item>
         <SliderCaptcha
           ref="captchaRef"
           host-id="register-captcha"
@@ -43,12 +44,22 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiGet, apiPost } from '../api/http'
 import SliderCaptcha from '../components/SliderCaptcha.vue'
+import { passwordValidationMessage } from '../utils/passwordPolicy'
 
 const router = useRouter()
 const captchaRef = ref<InstanceType<typeof SliderCaptcha> | null>(null)
 const depts = ref<Array<{ id: number; deptName: string }>>([])
 const deptTree = computed(() => buildDeptTree(depts.value))
-const form = reactive({ username: '', password: '', realName: '', phone: '', deptId: undefined as number | undefined, captchaKey: '', captchaCode: '' })
+const form = reactive({
+  username: '',
+  password: '',
+  confirmPassword: '',
+  realName: '',
+  phone: '',
+  deptId: undefined as number | undefined,
+  captchaKey: '',
+  captchaCode: ''
+})
 
 function resetCaptchaState() {
   form.captchaKey = ''
@@ -67,6 +78,11 @@ function handleCaptchaVerified(payload: { captchaKey: string; captchaCode: strin
 async function submit() {
   if (!form.deptId) {
     ElMessage.warning('请选择所属组织')
+    return
+  }
+  const passwordMessage = passwordValidationMessage(form.password, form.confirmPassword)
+  if (passwordMessage) {
+    ElMessage.warning(passwordMessage)
     return
   }
   if (!form.captchaKey) {
