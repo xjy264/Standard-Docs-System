@@ -190,9 +190,10 @@ async function submitUpload() {
     if (result.successCount > 0 && result.failCount === 0) {
       ElMessage.success(`上传成功，共 ${result.successCount} 个文件`)
     } else if (result.successCount > 0) {
-      ElMessage.warning(`上传完成，成功 ${result.successCount} 个，失败 ${result.failCount} 个，请重新选择失败文件后再试`)
+      const reason = result.firstError ? `，失败原因：${result.firstError}` : ''
+      ElMessage.warning(`上传完成，成功 ${result.successCount} 个，失败 ${result.failCount} 个，请重新选择失败文件后再试${reason}`)
     } else {
-      ElMessage.error('上传失败，请稍后重试')
+      ElMessage.error(result.firstError || '上传失败，请稍后重试')
     }
   } finally {
     uploading.value = false
@@ -204,6 +205,7 @@ async function uploadSelectedFiles(uploadFiles: UploadRawFile[]) {
   let nextIndex = 0
   let successCount = 0
   let failCount = 0
+  let firstError = ''
   const workerCount = Math.min(uploadConcurrency, uploadFiles.length)
 
   async function uploadWorker() {
@@ -213,20 +215,30 @@ async function uploadSelectedFiles(uploadFiles: UploadRawFile[]) {
       try {
         await uploadSingleFile(file)
         successCount += 1
-      } catch {
+      } catch (error) {
         failCount += 1
+        if (!firstError) {
+          firstError = errorMessage(error)
+        }
       }
     }
   }
 
   await Promise.all(Array.from({ length: workerCount }, () => uploadWorker()))
-  return { successCount, failCount }
+  return { successCount, failCount, firstError }
 }
 
 async function uploadSingleFile(file: UploadRawFile) {
   const form = new FormData()
   form.append('file', file)
   await http.post('/files/upload', form, { headers: { 'X-Silent-Error': '1' } })
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  return '上传失败，请稍后重试'
 }
 
 function resetQuery() {
