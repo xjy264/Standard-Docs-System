@@ -1,8 +1,8 @@
 package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
+import cn.datong.standard.dto.ApprovalView;
 import cn.datong.standard.dto.CurrentUser;
-import cn.datong.standard.entity.SysRegisterApproval;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.security.SecurityUtils;
 import cn.datong.standard.service.OperationLogService;
@@ -26,13 +26,13 @@ public class ApprovalController {
     private final OperationLogService logService;
 
     @GetMapping("/pending")
-    public ApiResponse<List<SysRegisterApproval>> pending() {
+    public ApiResponse<List<ApprovalView>> pending() {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(approvalService.pending(currentUser));
     }
 
     @GetMapping("/history")
-    public ApiResponse<List<SysRegisterApproval>> history() {
+    public ApiResponse<List<ApprovalView>> history() {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(approvalService.history(currentUser));
     }

@@ -1,6 +1,7 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.dto.ApprovalView;
 import cn.datong.standard.dto.CurrentUser;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysRegisterApproval;
@@ -37,9 +38,9 @@ class ApprovalServiceTest {
                 mock(SysRoleMapper.class)
         );
 
-        List<SysRegisterApproval> result = service.pending(new CurrentUser(1L, 24L, true));
+        List<ApprovalView> result = service.pending(new CurrentUser(1L, 24L, true));
 
-        assertThat(result).extracting(SysRegisterApproval::getUserId).containsExactly(10L, 20L);
+        assertThat(result).extracting(ApprovalView::id).containsExactly(1L, 2L);
     }
 
     @Test
@@ -57,9 +58,9 @@ class ApprovalServiceTest {
         when(userRoleMapper.selectList(any())).thenReturn(List.of(userRole(19L, 2L)));
         ApprovalService service = new ApprovalService(approvalMapper, userMapper, deptMapper, userRoleMapper, roleMapper);
 
-        List<SysRegisterApproval> result = service.pending(new CurrentUser(19L, 24L, false));
+        List<ApprovalView> result = service.pending(new CurrentUser(19L, 24L, false));
 
-        assertThat(result).extracting(SysRegisterApproval::getUserId).containsExactly(10L);
+        assertThat(result).extracting(ApprovalView::userRealName).containsExactly("用户10");
     }
 
     @Test
@@ -117,9 +118,9 @@ class ApprovalServiceTest {
                 mock(SysRoleMapper.class)
         );
 
-        List<SysRegisterApproval> result = service.history(new CurrentUser(1L, 24L, true));
+        List<ApprovalView> result = service.history(new CurrentUser(1L, 24L, true));
 
-        assertThat(result).extracting(SysRegisterApproval::getUserId).containsExactly(10L, 20L);
+        assertThat(result).extracting(ApprovalView::id).containsExactly(1L, 2L);
     }
 
     @Test
@@ -142,9 +143,9 @@ class ApprovalServiceTest {
         when(userRoleMapper.selectList(any())).thenReturn(List.of(userRole(19L, 2L)));
         ApprovalService service = new ApprovalService(approvalMapper, userMapper, deptMapper, userRoleMapper, roleMapper);
 
-        List<SysRegisterApproval> result = service.history(new CurrentUser(19L, 24L, false));
+        List<ApprovalView> result = service.history(new CurrentUser(19L, 24L, false));
 
-        assertThat(result).extracting(SysRegisterApproval::getUserId).containsExactly(10L);
+        assertThat(result).extracting(ApprovalView::userRealName).containsExactly("用户10");
     }
 
     @Test
@@ -165,6 +166,71 @@ class ApprovalServiceTest {
         assertThatThrownBy(() -> service.history(new CurrentUser(3L, 8L, false)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("没有注册审核权限");
+    }
+
+    @Test
+    void pendingViewContainsUserPhoneAndDeptName() {
+        SysRegisterApprovalMapper approvalMapper = mock(SysRegisterApprovalMapper.class);
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        SysRegisterApproval approval = approval(1L, 10L);
+        when(approvalMapper.selectList(any())).thenReturn(List.of(approval));
+        SysUser user = user(10L, 25L);
+        user.setPhone("13800000000");
+        when(userMapper.selectById(10L)).thenReturn(user);
+        when(deptMapper.selectById(25L)).thenReturn(dept(25L, "技术科"));
+        ApprovalService service = new ApprovalService(
+                approvalMapper,
+                userMapper,
+                deptMapper,
+                mock(SysUserRoleMapper.class),
+                mock(SysRoleMapper.class)
+        );
+
+        List<ApprovalView> result = service.pending(new CurrentUser(1L, 24L, true));
+
+        assertThat(result).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.id()).isEqualTo(1L);
+                    assertThat(item.userRealName()).isEqualTo("用户10");
+                    assertThat(item.phone()).isEqualTo("13800000000");
+                    assertThat(item.deptName()).isEqualTo("技术科");
+                    assertThat(item.approvalStatus()).isEqualTo("PENDING");
+                });
+    }
+
+    @Test
+    void historyViewContainsApproverName() {
+        SysRegisterApprovalMapper approvalMapper = mock(SysRegisterApprovalMapper.class);
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysDeptMapper deptMapper = mock(SysDeptMapper.class);
+        SysRegisterApproval approval = approval(1L, 10L, "APPROVED");
+        approval.setApproverId(99L);
+        when(approvalMapper.selectList(any())).thenReturn(List.of(approval));
+        SysUser user = user(10L, 25L);
+        user.setPhone("13800000000");
+        when(userMapper.selectById(10L)).thenReturn(user);
+        SysUser approver = user(99L, 24L);
+        approver.setRealName("审核人");
+        when(userMapper.selectById(99L)).thenReturn(approver);
+        when(deptMapper.selectById(25L)).thenReturn(dept(25L, "技术科"));
+        ApprovalService service = new ApprovalService(
+                approvalMapper,
+                userMapper,
+                deptMapper,
+                mock(SysUserRoleMapper.class),
+                mock(SysRoleMapper.class)
+        );
+
+        List<ApprovalView> result = service.history(new CurrentUser(1L, 24L, true));
+
+        assertThat(result).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.userRealName()).isEqualTo("用户10");
+                    assertThat(item.phone()).isEqualTo("13800000000");
+                    assertThat(item.deptName()).isEqualTo("技术科");
+                    assertThat(item.approverName()).isEqualTo("审核人");
+                });
     }
 
     @Test
@@ -219,6 +285,13 @@ class ApprovalServiceTest {
         SysDept dept = new SysDept();
         dept.setId(id);
         dept.setParentId(parentId);
+        return dept;
+    }
+
+    private SysDept dept(Long id, String deptName) {
+        SysDept dept = new SysDept();
+        dept.setId(id);
+        dept.setDeptName(deptName);
         return dept;
     }
 

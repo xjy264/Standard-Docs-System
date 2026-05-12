@@ -6,7 +6,9 @@
         <el-tab-pane label="待审核" name="pending">
           <el-table :data="rows" stripe>
             <el-table-column prop="id" label="审批 ID" width="100" />
-            <el-table-column prop="userId" label="用户 ID" width="100" />
+            <el-table-column prop="userRealName" label="用户名" />
+            <el-table-column prop="deptName" label="所属组织" />
+            <el-table-column prop="phone" label="手机号" width="140" />
             <el-table-column label="状态" width="120">
               <template #default="{ row }">{{ approvalStatusText(row.approvalStatus) }}</template>
             </el-table-column>
@@ -22,13 +24,15 @@
         <el-tab-pane label="审核历史" name="history">
           <el-table :data="historyRows" stripe>
             <el-table-column prop="id" label="审批 ID" width="100" />
-            <el-table-column prop="userId" label="用户 ID" width="100" />
+            <el-table-column prop="userRealName" label="用户名" />
+            <el-table-column prop="deptName" label="所属组织" />
+            <el-table-column prop="phone" label="手机号" width="140" />
             <el-table-column label="状态" width="120">
               <template #default="{ row }">{{ approvalStatusText(row.approvalStatus) }}</template>
             </el-table-column>
             <el-table-column prop="createdAt" label="申请时间" />
             <el-table-column prop="approvedAt" label="审核时间" />
-            <el-table-column prop="approverId" label="审核人 ID" width="120" />
+            <el-table-column prop="approverName" label="审核人" width="120" />
             <el-table-column prop="rejectReason" label="拒绝原因" />
           </el-table>
         </el-tab-pane>

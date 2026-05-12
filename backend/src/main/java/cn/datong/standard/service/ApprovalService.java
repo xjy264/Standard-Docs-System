@@ -1,7 +1,9 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.dto.ApprovalView;
 import cn.datong.standard.dto.CurrentUser;
+import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysRegisterApproval;
 import cn.datong.standard.entity.SysRole;
 import cn.datong.standard.entity.SysUser;
@@ -29,17 +31,19 @@ public class ApprovalService {
     private final SysUserRoleMapper userRoleMapper;
     private final SysRoleMapper roleMapper;
 
-    public List<SysRegisterApproval> pending(CurrentUser currentUser) {
+    public List<ApprovalView> pending(CurrentUser currentUser) {
         List<SysRegisterApproval> pending = approvalMapper.selectList(new LambdaQueryWrapper<SysRegisterApproval>()
                 .eq(SysRegisterApproval::getApprovalStatus, "PENDING")
                 .orderByDesc(SysRegisterApproval::getCreatedAt));
         pending = pending.stream()
                 .filter(approval -> "PENDING".equals(approval.getApprovalStatus()))
                 .toList();
-        return filterApprovalsByAuditScope(pending, currentUser);
+        return filterApprovalsByAuditScope(pending, currentUser).stream()
+                .map(this::toView)
+                .toList();
     }
 
-    public List<SysRegisterApproval> history(CurrentUser currentUser) {
+    public List<ApprovalView> history(CurrentUser currentUser) {
         List<SysRegisterApproval> history = approvalMapper.selectList(new LambdaQueryWrapper<SysRegisterApproval>()
                 .in(SysRegisterApproval::getApprovalStatus, List.of("APPROVED", "REJECTED"))
                 .orderByDesc(SysRegisterApproval::getApprovedAt));
@@ -47,7 +51,9 @@ public class ApprovalService {
                 .filter(approval -> "APPROVED".equals(approval.getApprovalStatus())
                         || "REJECTED".equals(approval.getApprovalStatus()))
                 .toList();
-        return filterApprovalsByAuditScope(history, currentUser);
+        return filterApprovalsByAuditScope(history, currentUser).stream()
+                .map(this::toView)
+                .toList();
     }
 
     private List<SysRegisterApproval> filterApprovalsByAuditScope(List<SysRegisterApproval> approvals, CurrentUser currentUser) {
@@ -62,6 +68,33 @@ public class ApprovalService {
                     return user != null && auditor.getDeptId() != null && auditor.getDeptId().equals(user.getDeptId());
                 })
                 .toList();
+    }
+
+    private ApprovalView toView(SysRegisterApproval approval) {
+        SysUser user = userMapper.selectById(approval.getUserId());
+        SysDept dept = user == null || user.getDeptId() == null ? null : deptMapper.selectById(user.getDeptId());
+        SysUser approver = approval.getApproverId() == null ? null : userMapper.selectById(approval.getApproverId());
+        return new ApprovalView(
+                approval.getId(),
+                user == null ? null : user.getRealName(),
+                user == null ? null : user.getPhone(),
+                dept == null ? null : dept.getDeptName(),
+                approval.getApprovalStatus(),
+                approval.getCreatedAt(),
+                approval.getApprovedAt(),
+                displayName(approver),
+                approval.getRejectReason()
+        );
+    }
+
+    private String displayName(SysUser user) {
+        if (user == null) {
+            return null;
+        }
+        if (user.getRealName() != null && !user.getRealName().isBlank()) {
+            return user.getRealName();
+        }
+        return user.getPhone();
     }
 
     public SysUser approve(Long id, CurrentUser currentUser) {
