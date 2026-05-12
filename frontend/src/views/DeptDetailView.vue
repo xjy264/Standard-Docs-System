@@ -52,84 +52,23 @@
         <el-table-column prop="approvalStatus" label="审批状态" width="120" />
       </el-table>
     </div>
-
-    <div class="section">
-      <h3>用户权限</h3>
-      <el-alert
-        v-if="permissionError"
-        :title="permissionError"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="detail-alert"
-      />
-      <el-table v-else v-loading="permissionLoading" :data="permissionUsers" stripe>
-        <el-table-column prop="realName" label="用户" min-width="130" fixed />
-        <el-table-column
-          v-for="permission in permissions"
-          :key="permission.permissionCode"
-          :label="permission.permissionName"
-          min-width="150"
-        >
-          <template #default="{ row }">
-            <el-checkbox
-              :model-value="has(row.id, permission.permissionCode)"
-              @change="toggle(row.id, permission.permissionCode, $event)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="savePermissions(row)">保存</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { apiGet, apiGetSilent, apiPost } from '../api/http'
+import { apiGet } from '../api/http'
 
 const route = useRoute()
 const router = useRouter()
 const detail = ref<any>()
-const permissionUsers = ref<any[]>([])
-const permissions = ref<any[]>([])
-const selected = ref<Record<number, Set<string>>>({})
-const permissionLoading = ref(false)
-const permissionError = ref('')
 
 async function load() {
   try {
     detail.value = await apiGet(`/depts/${route.params.id}/detail`)
-    await loadPermissions()
   } catch {
     router.push('/depts')
-  }
-}
-
-async function loadPermissions() {
-  permissionLoading.value = true
-  permissionError.value = ''
-  try {
-    const result = await apiGetSilent<any>('/permission-matrix', { deptId: route.params.id })
-    permissionUsers.value = result.users || []
-    permissions.value = result.permissions || []
-    selected.value = {}
-    Object.entries(result.effective as Record<string, string[]>).forEach(([userId, codes]) => {
-      selected.value[Number(userId)] = new Set(codes)
-    })
-  } catch (error: any) {
-    permissionUsers.value = []
-    permissions.value = []
-    selected.value = {}
-    permissionError.value = error?.message || '当前账号没有修改用户权限的权限'
-  } finally {
-    permissionLoading.value = false
   }
 }
 
@@ -141,23 +80,6 @@ function identityTagType(identity: string) {
   if (identity === '超级管理员') return 'danger'
   if (identity === '管理员') return 'warning'
   return 'info'
-}
-
-function has(userId: number, code: string) {
-  return selected.value[userId]?.has(code) || false
-}
-
-function toggle(userId: number, code: string, checked: string | number | boolean) {
-  selected.value[userId] ||= new Set()
-  if (Boolean(checked)) selected.value[userId].add(code)
-  else selected.value[userId].delete(code)
-  selected.value = { ...selected.value }
-}
-
-async function savePermissions(row: any) {
-  const payload = Array.from(selected.value[row.id] || []).map((permissionCode) => ({ permissionCode, effect: 'allow' }))
-  await apiPost(`/permission-matrix/users/${row.id}`, payload)
-  ElMessage.success('权限已保存')
 }
 
 onMounted(load)
