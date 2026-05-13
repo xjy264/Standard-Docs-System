@@ -188,7 +188,7 @@ class FileAccessServiceTest {
     }
 
     @Test
-    void sectionUploadedFileAllowsSameSectionOnlyIgnoringHistoricalScope() {
+    void sectionUploadedFileAllowsAllUsersIgnoringHistoricalScope() {
         SysFileMapper fileMapper = mock(SysFileMapper.class);
         SysFilePermissionMapper filePermissionMapper = mock(SysFilePermissionMapper.class);
         SysFileCopyMapper fileCopyMapper = mock(SysFileCopyMapper.class);
@@ -212,9 +212,9 @@ class FileAccessServiceTest {
         FileAccessService service = new FileAccessService(fileMapper, filePermissionMapper, fileCopyMapper, deptMapper);
 
         assertThat(service.canAccess(32L, 25L, false, 1L)).isTrue();
-        assertThat(service.canAccess(33L, 26L, false, 1L)).isFalse();
-        assertThat(service.canAccess(30L, 7L, false, 1L)).isFalse();
-        assertThat(service.canAccess(31L, 8L, false, 1L)).isFalse();
+        assertThat(service.canAccess(33L, 26L, false, 1L)).isTrue();
+        assertThat(service.canAccess(30L, 7L, false, 1L)).isTrue();
+        assertThat(service.canAccess(31L, 8L, false, 1L)).isTrue();
     }
 
     @Test

@@ -107,7 +107,7 @@ public class FileAccessService {
         Long fileTopDeptId = OrgScopeSupport.topLevelDeptId(file.getDeptId(), depts);
         Long userTopDeptId = OrgScopeSupport.topLevelDeptId(userDeptId, depts);
         if (agencyDeptId != null && agencyDeptId.equals(fileTopDeptId)) {
-            return userDeptId.equals(file.getDeptId());
+            return true;
         }
         if (agencyDeptId != null && agencyDeptId.equals(userTopDeptId)) {
             return true;
