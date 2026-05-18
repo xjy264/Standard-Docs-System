@@ -23,7 +23,14 @@
     </div>
     <div class="section">
       <el-table :data="files" stripe>
-        <el-table-column prop="fileName" label="文件名称" min-width="260" />
+        <el-table-column label="文件名称" min-width="260">
+          <template #default="{ row }">
+            <div class="file-name-cell">
+              <FileTypeIcon :extension="row.extension" :file-name="row.fileName" :size="26" />
+              <span>{{ row.fileName }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="extension" label="类型" min-width="120" />
         <el-table-column prop="fileSize" label="大小" min-width="140" :formatter="sizeText" />
         <el-table-column prop="ownerDeptName" label="所属组织" min-width="170" />
@@ -89,8 +96,9 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { http, apiDelete, apiGet } from '../api/http'
+import FileTypeIcon from '../components/FileTypeIcon.vue'
 import { useAuthStore } from '../stores/auth'
 
 interface FileTypeOption {
@@ -103,11 +111,16 @@ const props = withDefaults(defineProps<{
   mine?: boolean
   manageOwnerFiles?: boolean
   showUpload?: boolean
+  deptId?: number
+  folderId?: number
+  uploadFolderId?: number
+  unfiled?: boolean
 }>(), {
   title: '文件库',
   mine: false,
   manageOwnerFiles: false,
-  showUpload: true
+  showUpload: true,
+  unfiled: false
 })
 
 const auth = useAuthStore()
@@ -141,6 +154,15 @@ async function load() {
   const params: Record<string, unknown> = { ...query }
   if (props.mine) {
     params.mine = true
+  }
+  if (props.deptId) {
+    params.deptId = props.deptId
+  }
+  if (props.folderId) {
+    params.folderId = props.folderId
+  }
+  if (props.unfiled) {
+    params.unfiled = true
   }
   if (dateRange.value?.length === 2) {
     params.uploadStart = dateRange.value[0]
@@ -231,6 +253,12 @@ async function uploadSelectedFiles(uploadFiles: UploadRawFile[]) {
 async function uploadSingleFile(file: UploadRawFile) {
   const form = new FormData()
   form.append('file', file)
+  if (props.deptId) {
+    form.append('deptId', String(props.deptId))
+  }
+  if (props.uploadFolderId) {
+    form.append('folderId', String(props.uploadFolderId))
+  }
   await http.post('/files/upload', form, { headers: { 'X-Silent-Error': '1' } })
 }
 
@@ -327,11 +355,18 @@ function sizeText(_row: any, _column: any, value: number) {
 }
 
 onMounted(load)
+watch(() => [props.deptId, props.folderId, props.unfiled, props.mine], load)
 </script>
 
 <style scoped>
 .file-upload-drag {
   width: 100%;
+}
+
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .file-upload-drag :deep(.el-upload),

@@ -3,11 +3,13 @@ package cn.datong.standard.service;
 import cn.datong.standard.dto.FileSearchRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysFile;
+import cn.datong.standard.entity.SysFolder;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.enums.VisibilityScope;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysFileMapper;
 import cn.datong.standard.mapper.SysFilePermissionMapper;
+import cn.datong.standard.mapper.SysFolderMapper;
 import cn.datong.standard.mapper.SysRecycleBinMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
@@ -15,6 +17,7 @@ import cn.datong.standard.storage.StoredObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -22,6 +25,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -72,11 +76,12 @@ class FileServiceTest {
                 mock(PermissionService.class),
                 mock(OperationLogService.class),
                 mock(SysUserMapper.class),
-                mock(SysDeptMapper.class)
+                mock(SysDeptMapper.class),
+                mock(SysFolderMapper.class)
         );
 
         List<SysFile> result = service.search(30L, 21L, false,
-                new FileSearchRequest(null, null, null, null, null, null, null, null, null, false));
+                new FileSearchRequest(null, null, null, null, null, null, null, null, null, false, false));
 
         assertThat(result).containsExactly(visible);
     }
@@ -107,11 +112,12 @@ class FileServiceTest {
                 mock(PermissionService.class),
                 mock(OperationLogService.class),
                 mock(SysUserMapper.class),
-                mock(SysDeptMapper.class)
+                mock(SysDeptMapper.class),
+                mock(SysFolderMapper.class)
         );
 
         List<SysFile> result = service.search(30L, 21L, false,
-                new FileSearchRequest(null, null, null, null, null, null, null, null, null, true));
+                new FileSearchRequest(null, null, null, null, null, null, null, null, null, true, false));
 
         assertThat(result).containsExactly(own);
     }
@@ -154,11 +160,12 @@ class FileServiceTest {
                 mock(PermissionService.class),
                 mock(OperationLogService.class),
                 userMapper,
-                deptMapper
+                deptMapper,
+                mock(SysFolderMapper.class)
         );
 
         List<SysFile> result = service.search(20L, 31L, false,
-                new FileSearchRequest(null, null, null, null, null, null, null, null, null, false));
+                new FileSearchRequest(null, null, null, null, null, null, null, null, null, false, false));
 
         assertThat(result).singleElement()
                 .satisfies(item -> {
@@ -221,13 +228,200 @@ class FileServiceTest {
                 mock(PermissionService.class),
                 mock(OperationLogService.class),
                 userMapper,
-                deptMapper
+                deptMapper,
+                mock(SysFolderMapper.class)
         );
 
         List<SysFile> result = service.search(20L, 31L, false,
-                new FileSearchRequest(null, null, null, null, "技术科", "张", null, null, null, false));
+                new FileSearchRequest(null, null, null, null, "技术科", "张", null, null, null, false, false));
 
         assertThat(result).containsExactly(matched);
+    }
+
+    @Test
+    void unfiledSearchReturnsOnlyRootDirectoryFiles() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        FileAccessService fileAccessService = mock(FileAccessService.class);
+        SysFile unfiled = SysFile.builder()
+                .id(1L)
+                .fileName("根目录文件.pdf")
+                .deptId(25L)
+                .folderId(null)
+                .build();
+        SysFile filed = SysFile.builder()
+                .id(2L)
+                .fileName("文件夹内文件.pdf")
+                .deptId(25L)
+                .folderId(100L)
+                .build();
+        when(fileMapper.selectList(any())).thenReturn(List.of(unfiled, filed));
+        when(fileAccessService.canAccess(30L, 25L, false, 1L)).thenReturn(true);
+        when(fileAccessService.canAccess(30L, 25L, false, 2L)).thenReturn(true);
+        FileService service = new FileService(
+                fileMapper,
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                mock(FileStorageService.class),
+                fileAccessService,
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class),
+                mock(SysFolderMapper.class)
+        );
+
+        List<SysFile> result = service.search(30L, 25L, false,
+                new FileSearchRequest(null, null, null, null, null, null, 25L, null, null, false, true));
+
+        assertThat(result).containsExactly(unfiled);
+    }
+
+    @Test
+    void uploadRejectsFolderFromOtherOrganization() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        SysFolderMapper folderMapper = mock(SysFolderMapper.class);
+        SysFolder folder = new SysFolder();
+        folder.setId(100L);
+        folder.setDeptId(7L);
+        when(folderMapper.selectById(100L)).thenReturn(folder);
+        FileService service = new FileService(
+                fileMapper,
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                mock(FileStorageService.class),
+                mock(FileAccessService.class),
+                permissionService,
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class),
+                folderMapper
+        );
+
+        assertThatThrownBy(() -> service.upload(30L, 25L, false, mock(MultipartFile.class), 100L,
+                null, null, null, null, null))
+                .isInstanceOf(cn.datong.standard.common.BusinessException.class)
+                .hasMessage("文件夹不属于当前组织");
+    }
+
+    @Test
+    void uploadStoresFileInCurrentFolderWhenFolderBelongsToUserOrganization() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        FileStorageService storageService = mock(FileStorageService.class);
+        SysFolderMapper folderMapper = mock(SysFolderMapper.class);
+        MultipartFile multipartFile = mock(MultipartFile.class);
+        SysFolder folder = new SysFolder();
+        folder.setId(100L);
+        folder.setDeptId(25L);
+        when(folderMapper.selectById(100L)).thenReturn(folder);
+        when(multipartFile.getOriginalFilename()).thenReturn("文件夹内文件.pdf");
+        when(storageService.upload(any(), any())).thenReturn(new StoredObject("bucket", "docs/folder.pdf", 12L,
+                "application/pdf"));
+        FileService service = new FileService(
+                fileMapper,
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                storageService,
+                mock(FileAccessService.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class),
+                folderMapper
+        );
+
+        SysFile result = service.upload(30L, 25L, false, multipartFile, 100L,
+                null, null, null, null, null);
+
+        ArgumentCaptor<SysFile> fileCaptor = ArgumentCaptor.forClass(SysFile.class);
+        verify(fileMapper).insert(fileCaptor.capture());
+        assertThat(result.getFolderId()).isEqualTo(100L);
+        assertThat(fileCaptor.getValue().getFolderId()).isEqualTo(100L);
+    }
+
+    @Test
+    void uploadAllowsRootDirectoryFileWithoutFolder() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        FileStorageService storageService = mock(FileStorageService.class);
+        SysFolderMapper folderMapper = mock(SysFolderMapper.class);
+        MultipartFile multipartFile = mock(MultipartFile.class);
+        when(multipartFile.getOriginalFilename()).thenReturn("根目录文件.pdf");
+        when(storageService.upload(any(), any())).thenReturn(new StoredObject("bucket", "docs/root.pdf", 12L,
+                "application/pdf"));
+        FileService service = new FileService(
+                fileMapper,
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                storageService,
+                mock(FileAccessService.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class),
+                folderMapper
+        );
+
+        SysFile result = service.upload(30L, 25L, false, multipartFile, null,
+                null, null, null, null, null);
+
+        ArgumentCaptor<SysFile> fileCaptor = ArgumentCaptor.forClass(SysFile.class);
+        verify(fileMapper).insert(fileCaptor.capture());
+        verify(folderMapper, never()).selectById(any());
+        assertThat(result.getFolderId()).isNull();
+        assertThat(result.getDeptId()).isEqualTo(25L);
+        assertThat(fileCaptor.getValue().getFileName()).isEqualTo("根目录文件.pdf");
+    }
+
+    @Test
+    void uploadRejectsRootDirectoryUploadToOtherOrganization() {
+        FileService service = new FileService(
+                mock(SysFileMapper.class),
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                mock(FileStorageService.class),
+                mock(FileAccessService.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class),
+                mock(SysFolderMapper.class)
+        );
+
+        assertThatThrownBy(() -> service.upload(30L, 25L, false, mock(MultipartFile.class), null,
+                7L, null, null, null, null))
+                .isInstanceOf(cn.datong.standard.common.BusinessException.class)
+                .hasMessage("只能上传到自己组织");
+    }
+
+    @Test
+    void superAdminCanUploadRootDirectoryFileToTargetOrganization() {
+        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        FileStorageService storageService = mock(FileStorageService.class);
+        MultipartFile multipartFile = mock(MultipartFile.class);
+        when(multipartFile.getOriginalFilename()).thenReturn("超管上传.docx");
+        when(storageService.upload(any(), any())).thenReturn(new StoredObject("bucket", "docs/super.docx", 18L,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+        FileService service = new FileService(
+                fileMapper,
+                mock(SysFilePermissionMapper.class),
+                mock(SysRecycleBinMapper.class),
+                storageService,
+                mock(FileAccessService.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(SysUserMapper.class),
+                mock(SysDeptMapper.class),
+                mock(SysFolderMapper.class)
+        );
+
+        SysFile result = service.upload(1L, null, true, multipartFile, null,
+                7L, null, null, null, null);
+
+        ArgumentCaptor<SysFile> fileCaptor = ArgumentCaptor.forClass(SysFile.class);
+        verify(fileMapper).insert(fileCaptor.capture());
+        assertThat(result.getDeptId()).isEqualTo(7L);
+        assertThat(fileCaptor.getValue().getDeptId()).isEqualTo(7L);
+        assertThat(fileCaptor.getValue().getFolderId()).isNull();
     }
 
     @Test
@@ -414,7 +608,8 @@ class FileServiceTest {
                 mock(PermissionService.class),
                 mock(OperationLogService.class),
                 mock(SysUserMapper.class),
-                mock(SysDeptMapper.class)
+                mock(SysDeptMapper.class),
+                mock(SysFolderMapper.class)
         );
     }
 }

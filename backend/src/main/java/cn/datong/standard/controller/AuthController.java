@@ -86,7 +86,7 @@ public class AuthController {
                 localStorage.setItem('token', %s);
                 localStorage.setItem('user', JSON.stringify(%s));
                 localStorage.setItem('permissions', JSON.stringify(%s));
-                location.replace('/dashboard');
+                location.replace('/org');
                 </script>
                 """.formatted(
                 objectMapper.writeValueAsString(response.token()),

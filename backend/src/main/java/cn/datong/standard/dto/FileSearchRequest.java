@@ -14,6 +14,7 @@ public record FileSearchRequest(
         Long deptId,
         Long folderId,
         VisibilityScope visibilityScope,
-        Boolean mine
+        Boolean mine,
+        Boolean unfiled
 ) {
 }

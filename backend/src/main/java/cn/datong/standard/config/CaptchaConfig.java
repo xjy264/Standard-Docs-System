@@ -1,9 +1,12 @@
 package cn.datong.standard.config;
 
+import cloud.tianai.captcha.cache.CacheStore;
+import cloud.tianai.captcha.cache.impl.LocalCacheStore;
 import cloud.tianai.captcha.resource.CrudResourceStore;
 import cloud.tianai.captcha.resource.ImageCaptchaResourceManager;
 import cloud.tianai.captcha.resource.ResourceStore;
 import cloud.tianai.captcha.resource.common.model.dto.Resource;
+import cloud.tianai.captcha.resource.impl.LocalMemoryResourceStore;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,6 +39,16 @@ public class CaptchaConfig {
             "captcha/backgrounds/bg-19.jpg",
             "captcha/backgrounds/bg-20.jpg"
     };
+
+    @Bean(destroyMethod = "close")
+    public CacheStore captchaLocalCacheStore() {
+        return new LocalCacheStore();
+    }
+
+    @Bean
+    public ResourceStore captchaLocalResourceStore() {
+        return new LocalMemoryResourceStore();
+    }
 
     @Bean
     public ApplicationRunner captchaResourceInitializer(ImageCaptchaResourceManager resourceManager) {

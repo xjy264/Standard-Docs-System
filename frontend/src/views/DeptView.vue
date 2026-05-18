@@ -69,7 +69,7 @@ function edit(row: any) {
 }
 
 function view(row: any) {
-  router.push(`/depts/${row.id}`)
+  router.push(`/console/depts/${row.id}`)
 }
 
 async function save() {

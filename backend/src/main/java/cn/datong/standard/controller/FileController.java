@@ -39,13 +39,14 @@ public class FileController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<SysFile> upload(@RequestParam MultipartFile file,
                                        @RequestParam(required = false) Long folderId,
+                                       @RequestParam(required = false) Long deptId,
                                        @RequestParam(required = false) VisibilityScope visibilityScope,
                                        @RequestParam(required = false) List<Long> userIds,
                                        @RequestParam(required = false) List<Long> deptIds,
                                        HttpServletRequest request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(fileService.upload(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(),
-                file, folderId, visibilityScope, userIds, deptIds, request));
+                file, folderId, deptId, visibilityScope, userIds, deptIds, request));
     }
 
     @GetMapping

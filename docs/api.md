@@ -29,6 +29,7 @@
 ## 组织与用户
 
 - `GET /api/depts/tree`：组织树。
+- `GET /api/depts/navigation`：当前用户可见的组织侧边栏导航树，顶层固定返回 `科室`、`车间` 两个分组，子节点为真实组织。
 - `POST /api/depts`：新建组织节点。
 - `PUT /api/depts/{id}`：修改组织节点。
 - `DELETE /api/depts/{id}`：删除组织节点。
@@ -49,8 +50,8 @@
 
 ## 文件
 
-- `POST /api/files/upload`：上传文件。
-- `GET /api/files`：文件列表和搜索，支持 `keyword`、`extension`、`ownerDeptName`、`ownerName`、`uploadStart`、`uploadEnd`、`mine` 等查询参数。
+- `POST /api/files/upload`：上传文件；支持可选 `deptId`。不传 `folderId` 时文件放在指定组织或当前用户所属组织根目录，传 `folderId` 时文件放入对应文件夹并校验组织一致性。
+- `GET /api/files`：文件列表和搜索，支持 `keyword`、`extension`、`ownerDeptName`、`ownerName`、`uploadStart`、`uploadEnd`、`deptId`、`folderId`、`unfiled`、`mine` 等查询参数；`unfiled=true` 表示查询指定组织下 `folder_id` 为空的根目录文件。
 - `GET /api/files/{id}`：文件详情。
 - `GET /api/files/{id}/download`：文件下载。
 - `GET /api/files/{id}/preview`：文件预览配置。
@@ -58,6 +59,10 @@
 - `DELETE /api/files/{id}`：软删除。
 - `POST /api/files/{id}/restore`：恢复。
 - `DELETE /api/files/{id}/remove`：彻底删除。
+- `GET /api/folders?deptId=1`：查询当前用户可见组织下的文件夹列表。
+- `POST /api/folders`：新增文件夹，请求体包含 `folderName`、`deptId`、`parentId`。
+- `PUT /api/folders/{id}`：修改文件夹，当前用于文件夹重命名。
+- `DELETE /api/folders/{id}`：删除文件夹。
 
 ## 抄送与通知
 

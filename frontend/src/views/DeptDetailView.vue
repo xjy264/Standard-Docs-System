@@ -2,7 +2,7 @@
   <div>
     <div class="page-title">
       <h2>{{ detail?.dept?.deptName || '组织详情' }}</h2>
-      <el-button @click="$router.push('/depts')">返回组织管理</el-button>
+      <el-button @click="$router.push('/console/depts')">返回组织管理</el-button>
     </div>
 
     <el-alert
@@ -91,7 +91,7 @@ async function load() {
   try {
     detail.value = await apiGet(`/depts/${route.params.id}/detail`)
   } catch {
-    router.push('/depts')
+    router.push('/console/depts')
   }
 }
 

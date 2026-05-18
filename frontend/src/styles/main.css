@@ -74,6 +74,20 @@ body {
   font-weight: 700;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.console-button.el-button {
+  --el-button-bg-color: #fff;
+  --el-button-text-color: var(--rail-blue-dark);
+  --el-button-border-color: #fff;
+  --el-button-hover-bg-color: #eef5ff;
+  --el-button-hover-text-color: var(--rail-blue-dark);
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 224px 1fr;

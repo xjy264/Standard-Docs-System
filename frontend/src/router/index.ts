@@ -4,7 +4,9 @@ import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import LayoutView from '../views/LayoutView.vue'
 import DashboardView from '../views/DashboardView.vue'
-import FileLibraryView from '../views/FileLibraryView.vue'
+import OrgHomeRedirectView from '../views/OrgHomeRedirectView.vue'
+import OrgFilesView from '../views/OrgFilesView.vue'
+import SearchView from '../views/SearchView.vue'
 import PersonalSpaceView from '../views/PersonalSpaceView.vue'
 import RecycleBinView from '../views/RecycleBinView.vue'
 import UsersView from '../views/UsersView.vue'
@@ -25,16 +27,26 @@ const router = createRouter({
     {
       path: '/',
       component: LayoutView,
-      redirect: '/dashboard',
+      redirect: '/org',
       children: [
         { path: 'dashboard', component: DashboardView },
-        { path: 'files', component: FileLibraryView },
-        { path: 'personal', component: PersonalSpaceView },
+        { path: 'files', redirect: '/org' },
+        { path: 'search', component: SearchView },
+        { path: 'org', name: 'org-home', component: OrgHomeRedirectView },
+        { path: 'org/:deptId', name: 'org-root', component: OrgFilesView },
+        { path: 'org/:deptId/folders/:folderId', name: 'org-folder', component: OrgFilesView },
+        { path: 'org/:deptId/unfiled', redirect: (to) => `/org/${to.params.deptId}` },
+        { path: 'console', redirect: '/console/personal' },
+        { path: 'console/personal', component: PersonalSpaceView },
+        { path: 'console/depts', component: DeptView },
+        { path: 'console/depts/:id', component: DeptDetailView },
+        { path: 'console/users', component: UsersView },
+        { path: 'personal', redirect: '/console/personal' },
         { path: 'recycle-bin', component: RecycleBinView },
-        { path: 'depts', component: DeptView },
-        { path: 'depts/:id', component: DeptDetailView },
+        { path: 'depts', redirect: '/console/depts' },
+        { path: 'depts/:id', redirect: (to) => `/console/depts/${to.params.id}` },
         { path: 'approvals', component: ApprovalView },
-        { path: 'users', component: UsersView },
+        { path: 'users', redirect: '/console/users' },
         { path: 'roles', component: RolesView },
         { path: 'permission-matrix', component: PermissionMatrixView },
         { path: 'logs', component: LogsView },
@@ -51,7 +63,7 @@ router.beforeEach((to) => {
     return '/login'
   }
   if (auth.token && to.path === '/login') {
-    return '/dashboard'
+    return '/org'
   }
   return true
 })

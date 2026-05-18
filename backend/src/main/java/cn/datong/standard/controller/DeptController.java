@@ -2,6 +2,7 @@ package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
 import cn.datong.standard.dto.CurrentUser;
+import cn.datong.standard.dto.DeptNavigationItem;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.mapper.SysDeptMapper;
@@ -11,6 +12,7 @@ import cn.datong.standard.service.DeptAdminCoverage;
 import cn.datong.standard.service.DeptDetail;
 import cn.datong.standard.service.DeptOverview;
 import cn.datong.standard.service.DeptOverviewService;
+import cn.datong.standard.service.DeptNavigationService;
 import cn.datong.standard.service.OrgAssignmentService;
 import cn.datong.standard.service.PermissionService;
 import cn.datong.standard.service.UserAdminService;
@@ -39,12 +41,19 @@ public class DeptController {
     private final UserAdminService userAdminService;
     private final OrgAssignmentService orgAssignmentService;
     private final DeptOverviewService deptOverviewService;
+    private final DeptNavigationService deptNavigationService;
 
     @GetMapping("/tree")
     public ApiResponse<List<SysDept>> tree() {
         return ApiResponse.success(deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
                 .eq(SysDept::getDeleted, 0)
                 .orderByAsc(SysDept::getSortOrder)));
+    }
+
+    @GetMapping("/navigation")
+    public ApiResponse<List<DeptNavigationItem>> navigation() {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(deptNavigationService.navigation(currentUser.deptId(), currentUser.superAdmin()));
     }
 
     @GetMapping("/assignable")

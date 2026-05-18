@@ -5,6 +5,7 @@ import cn.datong.standard.dto.FileSearchRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysFile;
 import cn.datong.standard.entity.SysFilePermissionRow;
+import cn.datong.standard.entity.SysFolder;
 import cn.datong.standard.entity.SysRecycleBin;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.enums.TargetType;
@@ -12,6 +13,7 @@ import cn.datong.standard.enums.VisibilityScope;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysFileMapper;
 import cn.datong.standard.mapper.SysFilePermissionMapper;
+import cn.datong.standard.mapper.SysFolderMapper;
 import cn.datong.standard.mapper.SysRecycleBinMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
@@ -46,11 +48,14 @@ public class FileService {
     private final OperationLogService logService;
     private final SysUserMapper userMapper;
     private final SysDeptMapper deptMapper;
+    private final SysFolderMapper folderMapper;
 
-    public SysFile upload(Long userId, Long deptId, boolean superAdmin, MultipartFile multipartFile, Long folderId,
+    public SysFile upload(Long userId, Long userDeptId, boolean superAdmin, MultipartFile multipartFile, Long folderId,
+                          Long targetDeptId,
                           VisibilityScope visibilityScope, List<Long> userIds, List<Long> deptIds,
                           HttpServletRequest request) {
         permissionService.require(userId, superAdmin, "file:upload");
+        Long effectiveDeptId = resolveUploadDeptId(userDeptId, superAdmin, targetDeptId, folderId);
         String original = multipartFile.getOriginalFilename() == null ? "未命名文件" : multipartFile.getOriginalFilename();
         String extension = extension(original);
         String objectName = LocalDateTime.now().toLocalDate() + "/" + UUID.randomUUID() + "." + extension;
@@ -65,7 +70,7 @@ public class FileService {
         file.setStorageBucket(storedObject.bucket());
         file.setStoragePath(storedObject.objectName());
         file.setFolderId(folderId);
-        file.setDeptId(deptId);
+        file.setDeptId(effectiveDeptId);
         file.setUploadUserId(userId);
         file.setVisibilityScope(visibilityScope == null ? VisibilityScope.DEPT : visibilityScope);
         file.setStatus("NORMAL");
@@ -89,6 +94,7 @@ public class FileService {
                 .in(!extensions.isEmpty(), SysFile::getExtension, extensions)
                 .eq(request.deptId() != null, SysFile::getDeptId, request.deptId())
                 .eq(request.folderId() != null, SysFile::getFolderId, request.folderId())
+                .isNull(Boolean.TRUE.equals(request.unfiled()), SysFile::getFolderId)
                 .eq(request.visibilityScope() != null, SysFile::getVisibilityScope, request.visibilityScope())
                 .eq(Boolean.TRUE.equals(request.mine()), SysFile::getUploadUserId, userId)
                 .ge(request.uploadStart() != null, SysFile::getCreatedAt, request.uploadStart() == null ? null : request.uploadStart().atStartOfDay())
@@ -96,6 +102,7 @@ public class FileService {
                 .orderByDesc(SysFile::getCreatedAt);
         List<SysFile> files = fileMapper.selectList(wrapper).stream()
                 .filter(file -> !Boolean.TRUE.equals(request.mine()) || userId.equals(file.getUploadUserId()))
+                .filter(file -> !Boolean.TRUE.equals(request.unfiled()) || file.getFolderId() == null)
                 .filter(file -> fileAccessService.canAccess(userId, deptId, superAdmin, file.getId()))
                 .toList();
         fillOwnerInfo(files);
@@ -213,6 +220,32 @@ public class FileService {
         if (userId == null || !userId.equals(file.getUploadUserId())) {
             throw new BusinessException(403, "只有文件所有者可以改动删除该文件");
         }
+    }
+
+    private Long resolveUploadDeptId(Long userDeptId, boolean superAdmin, Long targetDeptId, Long folderId) {
+        if (folderId != null) {
+            SysFolder folder = folderMapper.selectById(folderId);
+            if (folder == null || folder.getDeleted() != null && folder.getDeleted() == 1) {
+                throw new BusinessException("文件夹不存在");
+            }
+            if (!superAdmin && (userDeptId == null || !userDeptId.equals(folder.getDeptId()))) {
+                throw new BusinessException(403, "文件夹不属于当前组织");
+            }
+            if (targetDeptId != null && !targetDeptId.equals(folder.getDeptId())) {
+                throw new BusinessException(403, "所属组织与文件夹不一致");
+            }
+            return folder.getDeptId();
+        }
+        if (targetDeptId != null) {
+            if (!superAdmin && (userDeptId == null || !userDeptId.equals(targetDeptId))) {
+                throw new BusinessException(403, "只能上传到自己组织");
+            }
+            return targetDeptId;
+        }
+        if (superAdmin || userDeptId == null) {
+            throw new BusinessException("请选择所属组织");
+        }
+        return userDeptId;
     }
 
     private void requireOwnerOrSuperAdmin(Long userId, boolean superAdmin, SysFile file) {
