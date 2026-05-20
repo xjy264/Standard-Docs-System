@@ -9,16 +9,15 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("sys_dept")
-public class SysDept {
+@TableName("sys_doc_category")
+public class SysDocCategory {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long parentId;
-    private String deptName;
-    private String deptCode;
-    private String deptType;
+    private Long sectionDeptId;
+    private String categoryName;
     private Integer sortOrder;
     private String status;
+    private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic

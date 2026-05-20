@@ -18,16 +18,7 @@
             <el-menu-item v-if="auth.hasPermission('user:view')" index="/console/users">用户管理</el-menu-item>
           </template>
           <template v-else>
-            <el-menu-item index="/search">搜索</el-menu-item>
-            <template v-for="dept in navigation" :key="dept.id">
-              <el-sub-menu v-if="dept.children.length" :index="`dept-${dept.id}`">
-                <template #title>{{ dept.deptName }}</template>
-                <el-menu-item v-for="child in dept.children" :key="child.id" :index="`/org/${child.id}`">
-                  {{ child.deptName }}
-                </el-menu-item>
-              </el-sub-menu>
-              <el-menu-item v-else :index="`/org/${dept.id}`">{{ dept.deptName }}</el-menu-item>
-            </template>
+            <el-menu-item v-for="dept in navigation" :key="dept.id" :index="`/org/${dept.id}`">{{ dept.deptName }}</el-menu-item>
           </template>
         </el-menu>
       </aside>
@@ -67,7 +58,7 @@ function logout() {
 }
 
 async function loadNavigation() {
-  navigation.value = await apiGet('/depts/navigation')
+  navigation.value = await apiGet('/sections/navigation')
 }
 
 async function refreshCurrentUser() {

@@ -16,23 +16,9 @@ interface DeptNavigationItem {
 
 const router = useRouter()
 
-function firstEntry(items: DeptNavigationItem[]): DeptNavigationItem | undefined {
-  for (const item of items) {
-    if (item.children?.length) {
-      const child = firstEntry(item.children)
-      if (child) {
-        return child
-      }
-    } else {
-      return item
-    }
-  }
-  return undefined
-}
-
 onMounted(async () => {
-  const navigation = await apiGet<DeptNavigationItem[]>('/depts/navigation')
-  const entry = firstEntry(navigation)
+  const navigation = await apiGet<DeptNavigationItem[]>('/sections/navigation')
+  const entry = navigation[0]
   if (entry) {
     router.replace(`/org/${entry.id}`)
   }

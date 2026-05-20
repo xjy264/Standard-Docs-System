@@ -1,14 +1,14 @@
 SET NAMES utf8mb4;
 
-INSERT INTO sys_dept (id, parent_id, dept_name, dept_code, sort_order, status, deleted)
+INSERT INTO sys_dept (id, parent_id, dept_name, dept_code, dept_type, sort_order, status, deleted)
 VALUES
-  (1, 0, '机关', 'AGENCY', 1, 'ENABLED', 0),
-  (2, 1, '办公室', 'OFFICE', 10, 'ENABLED', 0),
-  (3, 1, '技术科', 'TECH', 20, 'ENABLED', 0),
-  (4, 1, '安全科', 'SAFETY', 30, 'ENABLED', 0),
-  (5, 0, '房建车间', 'HOUSE_WORKSHOP', 40, 'ENABLED', 0),
-  (6, 0, '公寓车间', 'APARTMENT_WORKSHOP', 50, 'ENABLED', 0)
-ON DUPLICATE KEY UPDATE dept_name = VALUES(dept_name);
+  (1, 0, '机关', 'AGENCY', 'AGENCY', 1, 'ENABLED', 0),
+  (2, 1, '办公室', 'OFFICE', 'SECTION', 10, 'ENABLED', 0),
+  (3, 1, '技术科', 'TECH', 'SECTION', 20, 'ENABLED', 0),
+  (4, 1, '安全科', 'SAFETY', 'SECTION', 30, 'ENABLED', 0),
+  (5, 0, '房建车间', 'HOUSE_WORKSHOP', 'WORKSHOP', 40, 'ENABLED', 0),
+  (6, 0, '公寓车间', 'APARTMENT_WORKSHOP', 'WORKSHOP', 50, 'ENABLED', 0)
+ON DUPLICATE KEY UPDATE dept_name = VALUES(dept_name), dept_type = VALUES(dept_type);
 
 INSERT INTO sys_permission (permission_name, permission_code, permission_type, description, sort_order, status)
 VALUES

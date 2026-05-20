@@ -34,7 +34,7 @@ const router = createRouter({
         { path: 'search', component: SearchView },
         { path: 'org', name: 'org-home', component: OrgHomeRedirectView },
         { path: 'org/:deptId', name: 'org-root', component: OrgFilesView },
-        { path: 'org/:deptId/folders/:folderId', name: 'org-folder', component: OrgFilesView },
+        { path: 'org/:deptId/folders/:folderId', redirect: (to) => `/org/${to.params.deptId}` },
         { path: 'org/:deptId/unfiled', redirect: (to) => `/org/${to.params.deptId}` },
         { path: 'console', redirect: '/console/personal' },
         { path: 'console/personal', component: PersonalSpaceView },

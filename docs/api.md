@@ -29,7 +29,8 @@
 ## 组织与用户
 
 - `GET /api/depts/tree`：组织树。
-- `GET /api/depts/navigation`：当前用户可见的组织侧边栏导航树，顶层固定返回 `科室`、`车间` 两个分组，子节点为真实组织。
+- `GET /api/depts/navigation`：旧组织导航接口，保留兼容控制台和历史页面。
+- `GET /api/sections/navigation`：资料主页一级侧边栏科室列表，只返回真实科室节点，不返回搜索、车间或虚拟父级。
 - `POST /api/depts`：新建组织节点。
 - `PUT /api/depts/{id}`：修改组织节点。
 - `DELETE /api/depts/{id}`：删除组织节点。
@@ -50,6 +51,7 @@
 
 ## 文件
 
+- 新版资料主页不再使用旧文件库作为主流程；旧文件接口保留用于个人空间、回收站等历史页面兼容。
 - `POST /api/files/upload`：上传文件；支持可选 `deptId`。不传 `folderId` 时文件放在指定组织或当前用户所属组织根目录，传 `folderId` 时文件放入对应文件夹并校验组织一致性。
 - `GET /api/files`：文件列表和搜索，支持 `keyword`、`extension`、`ownerDeptName`、`ownerName`、`uploadStart`、`uploadEnd`、`deptId`、`folderId`、`unfiled`、`mine` 等查询参数；`unfiled=true` 表示查询指定组织下 `folder_id` 为空的根目录文件。
 - `GET /api/files/{id}`：文件详情。
@@ -63,6 +65,24 @@
 - `POST /api/folders`：新增文件夹，请求体包含 `folderName`、`deptId`、`parentId`。
 - `PUT /api/folders/{id}`：修改文件夹，当前用于文件夹重命名。
 - `DELETE /api/folders/{id}`：删除文件夹。
+
+## 科室资料与车间填报
+
+- `GET /api/doc-categories?sectionDeptId=1`：查询科室下二级侧边栏。
+- `POST /api/doc-categories`：本科室用户或超级管理员新增二级侧边栏。
+- `PUT /api/doc-categories/{id}`：本科室用户或超级管理员修改二级侧边栏名称、排序和状态。
+- `DELETE /api/doc-categories/{id}`：本科室用户或超级管理员删除二级侧边栏。
+- `GET /api/doc-items?categoryId=1`：查询二级侧边栏下资料入口表格。
+- `GET /api/doc-items/{id}`：查询资料入口详情。
+- `POST /api/doc-items`：本科室用户或超级管理员新增资料入口。
+- `PUT /api/doc-items/{id}`：本科室用户或超级管理员修改资料入口、收集开关、附件开关和排序。
+- `DELETE /api/doc-items/{id}`：本科室用户或超级管理员删除资料入口。
+- `GET /api/doc-items/{id}/fields`：查询资料入口收集字段。
+- `PUT /api/doc-items/{id}/fields`：整体保存收集字段，字段类型支持 `TEXT`、`DATE`、`NUMBER`。
+- `POST /api/doc-items/{id}/submissions`：车间用户提交资料，使用 `multipart/form-data`，包含 `valuesJson` 和可选 `files`。
+- `GET /api/doc-categories/{id}/submissions`：查询当前二级侧边栏上传记录；科室用户看全部车间记录，车间用户只看本车间记录。
+- `GET /api/submissions/{id}`：查看上传记录详情。
+- `GET /api/doc-attachments/{id}/download`：下载上传记录附件。
 
 ## 抄送与通知
 
