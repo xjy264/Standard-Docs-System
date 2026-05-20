@@ -17,19 +17,14 @@ public class SysDocItem {
     private Long categoryId;
     private String itemName;
     private String contentHtml;
-    private Integer collectEnabled;
     private Integer attachmentEnabled;
-    private Integer attachmentRequired;
     private Integer sortOrder;
-    private String status;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic
     private Integer deleted;
 
-    @TableField(exist = false)
-    private Integer fieldCount;
     @TableField(exist = false)
     private Integer submissionCount;
     @TableField(exist = false)

@@ -8,9 +8,7 @@ import OrgHomeRedirectView from '../views/OrgHomeRedirectView.vue'
 import OrgFilesView from '../views/OrgFilesView.vue'
 import DocItemDetailView from '../views/DocItemDetailView.vue'
 import DocCategorySettingsView from '../views/DocCategorySettingsView.vue'
-import SearchView from '../views/SearchView.vue'
 import PersonalSpaceView from '../views/PersonalSpaceView.vue'
-import RecycleBinView from '../views/RecycleBinView.vue'
 import UsersView from '../views/UsersView.vue'
 import ApprovalView from '../views/ApprovalView.vue'
 import DeptView from '../views/DeptView.vue'
@@ -33,12 +31,9 @@ const router = createRouter({
       children: [
         { path: 'dashboard', component: DashboardView },
         { path: 'files', redirect: '/org' },
-        { path: 'search', component: SearchView },
         { path: 'org', name: 'org-home', component: OrgHomeRedirectView },
         { path: 'org/:deptId', name: 'org-root', component: OrgFilesView },
         { path: 'org/:deptId/items/:itemId', name: 'doc-item-detail', component: DocItemDetailView },
-        { path: 'org/:deptId/folders/:folderId', redirect: (to) => `/org/${to.params.deptId}` },
-        { path: 'org/:deptId/unfiled', redirect: (to) => `/org/${to.params.deptId}` },
         { path: 'console', redirect: '/console/personal' },
         { path: 'console/personal', component: PersonalSpaceView },
         { path: 'console/doc-categories', component: DocCategorySettingsView },
@@ -46,7 +41,6 @@ const router = createRouter({
         { path: 'console/depts/:id', component: DeptDetailView },
         { path: 'console/users', component: UsersView },
         { path: 'personal', redirect: '/console/personal' },
-        { path: 'recycle-bin', component: RecycleBinView },
         { path: 'depts', redirect: '/console/depts' },
         { path: 'depts/:id', redirect: (to) => `/console/depts/${to.params.id}` },
         { path: 'approvals', component: ApprovalView },

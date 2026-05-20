@@ -34,7 +34,5 @@ public class SysDocSubmission {
     @TableField(exist = false)
     private Integer attachmentCount;
     @TableField(exist = false)
-    private List<SysDocSubmissionValue> values;
-    @TableField(exist = false)
     private List<SysDocAttachment> attachments;
 }

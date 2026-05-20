@@ -2,7 +2,7 @@
   <div>
     <div class="page-title"><h2>存储管理</h2></div>
     <div class="stats-grid">
-      <div class="stat-item"><div class="stat-value">{{ stats.fileCount || 0 }}</div><div class="stat-label">文件总数</div></div>
+      <div class="stat-item"><div class="stat-value">{{ stats.fileCount || 0 }}</div><div class="stat-label">附件总数</div></div>
       <div class="stat-item"><div class="stat-value">{{ sizeText(stats.totalSize || 0) }}</div><div class="stat-label">总容量</div></div>
       <div class="stat-item"><div class="stat-value">MinIO</div><div class="stat-label">默认对象存储</div></div>
     </div>

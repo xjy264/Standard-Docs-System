@@ -2,7 +2,6 @@ package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
 import cn.datong.standard.dto.CurrentUser;
-import cn.datong.standard.entity.SysDocField;
 import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.security.SecurityUtils;
@@ -55,17 +54,6 @@ public class DocItemController {
         CurrentUser currentUser = SecurityUtils.currentUser();
         docWorkspaceService.deleteItem(currentUser.deptId(), currentUser.superAdmin(), id);
         return ApiResponse.success();
-    }
-
-    @GetMapping("/{id}/fields")
-    public ApiResponse<List<SysDocField>> fields(@PathVariable Long id) {
-        return ApiResponse.success(docWorkspaceService.fields(id));
-    }
-
-    @PutMapping("/{id}/fields")
-    public ApiResponse<List<SysDocField>> saveFields(@PathVariable Long id, @RequestBody List<SysDocField> fields) {
-        CurrentUser currentUser = SecurityUtils.currentUser();
-        return ApiResponse.success(docWorkspaceService.saveFields(currentUser.deptId(), currentUser.superAdmin(), id, fields));
     }
 
     @GetMapping("/{id}/submissions")

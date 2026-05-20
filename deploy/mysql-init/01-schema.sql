@@ -78,53 +78,11 @@ CREATE TABLE IF NOT EXISTS sys_user_permission (
   UNIQUE KEY uk_user_permission (user_id, permission_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS sys_folder (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  parent_id BIGINT NOT NULL DEFAULT 0,
-  folder_name VARCHAR(128) NOT NULL,
-  dept_id BIGINT,
-  owner_user_id BIGINT,
-  sort_order INT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted TINYINT(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_file (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_name VARCHAR(255) NOT NULL,
-  original_file_name VARCHAR(255) NOT NULL,
-  extension VARCHAR(32),
-  mime_type VARCHAR(128),
-  file_size BIGINT NOT NULL DEFAULT 0,
-  storage_bucket VARCHAR(128) NOT NULL,
-  storage_path VARCHAR(500) NOT NULL,
-  folder_id BIGINT,
-  dept_id BIGINT,
-  upload_user_id BIGINT NOT NULL,
-  visibility_scope VARCHAR(32) NOT NULL,
-  status VARCHAR(32) NOT NULL DEFAULT 'NORMAL',
-  version_no INT NOT NULL DEFAULT 1,
-  download_count BIGINT NOT NULL DEFAULT 0,
-  preview_count BIGINT NOT NULL DEFAULT 0,
-  last_view_time DATETIME NULL,
-  last_edit_time DATETIME NULL,
-  deleted TINYINT(1) NOT NULL DEFAULT 0,
-  deleted_by BIGINT NULL,
-  deleted_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  remark VARCHAR(500),
-  INDEX idx_file_search (deleted, extension, created_at),
-  INDEX idx_file_owner (upload_user_id, dept_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS sys_doc_category (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   section_dept_id BIGINT NOT NULL,
   category_name VARCHAR(128) NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
-  status VARCHAR(32) NOT NULL DEFAULT 'ENABLED',
   created_by BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -137,29 +95,13 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   category_id BIGINT NOT NULL,
   item_name VARCHAR(128) NOT NULL,
   content_html MEDIUMTEXT,
-  collect_enabled TINYINT(1) NOT NULL DEFAULT 1,
   attachment_enabled TINYINT(1) NOT NULL DEFAULT 0,
-  attachment_required TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0,
-  status VARCHAR(32) NOT NULL DEFAULT 'ENABLED',
   created_by BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_doc_item_category (category_id, deleted, sort_order)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_doc_field (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  item_id BIGINT NOT NULL,
-  field_name VARCHAR(128) NOT NULL,
-  field_type VARCHAR(32) NOT NULL,
-  required TINYINT(1) NOT NULL DEFAULT 0,
-  sort_order INT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted TINYINT(1) NOT NULL DEFAULT 0,
-  INDEX idx_doc_field_item (item_id, deleted, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_doc_submission (
@@ -171,15 +113,8 @@ CREATE TABLE IF NOT EXISTS sys_doc_submission (
   upload_user_id BIGINT NOT NULL,
   submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_doc_submission_category (category_id, submitted_at),
-  INDEX idx_doc_submission_workshop (workshop_dept_id, submitted_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_doc_submission_value (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  submission_id BIGINT NOT NULL,
-  field_id BIGINT NOT NULL,
-  field_value TEXT,
-  INDEX idx_doc_submission_value (submission_id, field_id)
+  INDEX idx_doc_submission_workshop (workshop_dept_id, submitted_at),
+  INDEX idx_doc_submission_item (item_id, submitted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_doc_attachment (
@@ -196,42 +131,6 @@ CREATE TABLE IF NOT EXISTS sys_doc_attachment (
   INDEX idx_doc_attachment_submission (submission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS sys_file_permission (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_id BIGINT NOT NULL,
-  target_type VARCHAR(16) NOT NULL,
-  target_id BIGINT NOT NULL,
-  access_type VARCHAR(16) NOT NULL DEFAULT 'ACCESS',
-  created_by BIGINT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_file_permission (file_id, target_type, target_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_file_version (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_id BIGINT NOT NULL,
-  version_no INT NOT NULL,
-  storage_bucket VARCHAR(128) NOT NULL,
-  storage_path VARCHAR(500) NOT NULL,
-  file_size BIGINT NOT NULL DEFAULT 0,
-  created_by BIGINT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_file_copy (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_id BIGINT NOT NULL,
-  sender_id BIGINT NOT NULL,
-  receiver_type VARCHAR(16) NOT NULL,
-  receiver_id BIGINT NOT NULL,
-  receiver_user_id BIGINT NOT NULL,
-  read_status VARCHAR(16) NOT NULL DEFAULT 'UNREAD',
-  read_time DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_file_copy_receiver (receiver_user_id, read_status),
-  INDEX idx_file_copy_sender (sender_id, file_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS sys_notification (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
@@ -243,17 +142,6 @@ CREATE TABLE IF NOT EXISTS sys_notification (
   read_time DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_notification_user (user_id, read_status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_recycle_bin (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_id BIGINT NOT NULL,
-  original_path VARCHAR(500),
-  deleted_by BIGINT,
-  deleted_at DATETIME NOT NULL,
-  dept_id BIGINT,
-  file_size BIGINT,
-  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_operation_log (
@@ -297,44 +185,4 @@ CREATE TABLE IF NOT EXISTS sys_system_config (
   description VARCHAR(255),
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_storage_stat (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  stat_type VARCHAR(32) NOT NULL,
-  target_id BIGINT,
-  file_count BIGINT NOT NULL DEFAULT 0,
-  total_size BIGINT NOT NULL DEFAULT 0,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_file_favorite (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
-  file_id BIGINT NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_favorite (user_id, file_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_file_tag (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  tag_name VARCHAR(64) NOT NULL,
-  created_by BIGINT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_file_tag_rel (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  file_id BIGINT NOT NULL,
-  tag_id BIGINT NOT NULL,
-  UNIQUE KEY uk_file_tag (file_id, tag_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_file_access_record (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
-  file_id BIGINT NOT NULL,
-  access_type VARCHAR(32) NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_access_record (user_id, access_type, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

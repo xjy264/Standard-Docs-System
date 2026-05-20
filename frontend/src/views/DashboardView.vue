@@ -10,10 +10,10 @@
       <h3>演示主线</h3>
       <el-steps :active="4" finish-status="success">
         <el-step title="注册审批" />
-        <el-step title="组织权限" />
-        <el-step title="文件上传" />
-        <el-step title="访问隔离" />
-        <el-step title="抄送提醒" />
+        <el-step title="目录配置" />
+        <el-step title="文件详情" />
+        <el-step title="附件填报" />
+        <el-step title="记录查看" />
       </el-steps>
     </div>
   </div>
