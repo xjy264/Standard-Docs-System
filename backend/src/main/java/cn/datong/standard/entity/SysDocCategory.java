@@ -16,7 +16,6 @@ public class SysDocCategory {
     private Long sectionDeptId;
     private String categoryName;
     private Integer sortOrder;
-    private String status;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

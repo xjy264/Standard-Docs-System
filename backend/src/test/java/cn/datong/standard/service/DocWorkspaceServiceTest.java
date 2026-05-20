@@ -3,20 +3,16 @@ package cn.datong.standard.service;
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocCategory;
-import cn.datong.standard.entity.SysDocField;
 import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
-import cn.datong.standard.mapper.SysDocFieldMapper;
 import cn.datong.standard.mapper.SysDocItemMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
-import cn.datong.standard.mapper.SysDocSubmissionValueMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -87,7 +83,7 @@ class DocWorkspaceServiceTest {
     @Test
     void workshopSubmissionRequiresAttachmentEnabled() {
         Fixtures fx = fixtures();
-        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true, false, false));
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, false));
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
 
@@ -99,7 +95,7 @@ class DocWorkspaceServiceTest {
     @Test
     void workshopSubmissionUploadsAttachmentWhenEnabled() {
         Fixtures fx = fixtures();
-        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true, true, false));
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
         when(fx.submissionMapper.selectById(any())).thenReturn(submission(1L, 8L, 6L, 2L, 5L));
@@ -114,7 +110,6 @@ class DocWorkspaceServiceTest {
         when(fx.itemMapper.selectList(any())).thenReturn(List.of());
         when(fx.attachmentMapper.selectCount(any())).thenReturn(1L);
         when(fx.attachmentMapper.selectList(any())).thenReturn(List.of());
-        when(fx.valueMapper.selectList(any())).thenReturn(List.of());
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("合同.pdf");
@@ -147,7 +142,7 @@ class DocWorkspaceServiceTest {
     @Test
     void itemSubmissionQueryFiltersWorkshopRecords() {
         Fixtures fx = fixtures();
-        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true, true, false));
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
         SysDocSubmission own = new SysDocSubmission();
@@ -170,9 +165,7 @@ class DocWorkspaceServiceTest {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         SysDocCategoryMapper categoryMapper = mock(SysDocCategoryMapper.class);
         SysDocItemMapper itemMapper = mock(SysDocItemMapper.class);
-        SysDocFieldMapper fieldMapper = mock(SysDocFieldMapper.class);
         SysDocSubmissionMapper submissionMapper = mock(SysDocSubmissionMapper.class);
-        SysDocSubmissionValueMapper valueMapper = mock(SysDocSubmissionValueMapper.class);
         SysDocAttachmentMapper attachmentMapper = mock(SysDocAttachmentMapper.class);
         FileStorageService storageService = mock(FileStorageService.class);
         DocWorkspaceService service = new DocWorkspaceService(
@@ -180,14 +173,11 @@ class DocWorkspaceServiceTest {
                 userMapper,
                 categoryMapper,
                 itemMapper,
-                fieldMapper,
                 submissionMapper,
-                valueMapper,
                 attachmentMapper,
-                storageService,
-                new ObjectMapper()
+                storageService
         );
-        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, fieldMapper, submissionMapper, valueMapper, attachmentMapper, storageService, service);
+        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, submissionMapper, attachmentMapper, storageService, service);
     }
 
     private SysDept dept(Long id, Long parentId, String name, String type) {
@@ -211,15 +201,12 @@ class DocWorkspaceServiceTest {
         return category;
     }
 
-    private SysDocItem item(Long id, Long categoryId, boolean collect, boolean attachment, boolean attachmentRequired) {
+    private SysDocItem item(Long id, Long categoryId, boolean attachment) {
         SysDocItem item = new SysDocItem();
         item.setId(id);
         item.setCategoryId(categoryId);
         item.setItemName("施工合同");
-        item.setCollectEnabled(collect ? 1 : 0);
         item.setAttachmentEnabled(attachment ? 1 : 0);
-        item.setAttachmentRequired(attachmentRequired ? 1 : 0);
-        item.setStatus("ENABLED");
         item.setDeleted(0);
         return item;
     }
@@ -240,9 +227,7 @@ class DocWorkspaceServiceTest {
             SysUserMapper userMapper,
             SysDocCategoryMapper categoryMapper,
             SysDocItemMapper itemMapper,
-            SysDocFieldMapper fieldMapper,
             SysDocSubmissionMapper submissionMapper,
-            SysDocSubmissionValueMapper valueMapper,
             SysDocAttachmentMapper attachmentMapper,
             FileStorageService storageService,
             DocWorkspaceService service

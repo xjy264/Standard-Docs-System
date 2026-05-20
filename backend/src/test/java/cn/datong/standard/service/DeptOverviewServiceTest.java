@@ -1,12 +1,14 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.entity.SysDept;
-import cn.datong.standard.entity.SysFile;
+import cn.datong.standard.entity.SysDocCategory;
+import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysRole;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.entity.SysUserRole;
 import cn.datong.standard.mapper.SysDeptMapper;
-import cn.datong.standard.mapper.SysFileMapper;
+import cn.datong.standard.mapper.SysDocCategoryMapper;
+import cn.datong.standard.mapper.SysDocItemMapper;
 import cn.datong.standard.mapper.SysRoleMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.mapper.SysUserRoleMapper;
@@ -25,7 +27,8 @@ class DeptOverviewServiceTest {
     void overviewCountsDirectUsersAndFilesAndAdminStatus() {
         SysDeptMapper deptMapper = mock(SysDeptMapper.class);
         SysUserMapper userMapper = mock(SysUserMapper.class);
-        SysFileMapper fileMapper = mock(SysFileMapper.class);
+        SysDocCategoryMapper categoryMapper = mock(SysDocCategoryMapper.class);
+        SysDocItemMapper itemMapper = mock(SysDocItemMapper.class);
         SysUserRoleMapper userRoleMapper = mock(SysUserRoleMapper.class);
         SysRoleMapper roleMapper = mock(SysRoleMapper.class);
         OrgAssignmentService orgAssignmentService = new OrgAssignmentService(deptMapper, userMapper, userRoleMapper, roleMapper);
@@ -42,15 +45,20 @@ class DeptOverviewServiceTest {
                 dept(7L, 0L, "秦皇岛房建车间")
         ));
         when(userMapper.selectList(any())).thenReturn(List.of(admin, sectionUser, childUser));
-        when(fileMapper.selectList(any())).thenReturn(List.of(
-                file(1L, 25L),
-                file(2L, 25L),
-                file(3L, 26L),
-                file(4L, 7L)
+        when(categoryMapper.selectList(any())).thenReturn(List.of(
+                category(100L, 25L),
+                category(101L, 26L),
+                category(102L, 7L)
+        ));
+        when(itemMapper.selectList(any())).thenReturn(List.of(
+                item(1L, 100L),
+                item(2L, 100L),
+                item(3L, 101L),
+                item(4L, 102L)
         ));
         when(roleMapper.selectOne(any())).thenReturn(role(2L, "SEGMENT_ADMIN"));
         when(userRoleMapper.selectList(any())).thenReturn(List.of(adminRole));
-        DeptOverviewService service = new DeptOverviewService(deptMapper, userMapper, fileMapper, orgAssignmentService);
+        DeptOverviewService service = new DeptOverviewService(deptMapper, userMapper, categoryMapper, itemMapper, orgAssignmentService);
 
         List<DeptOverview> result = service.overview(true);
 
@@ -98,11 +106,18 @@ class DeptOverviewServiceTest {
         return user;
     }
 
-    private SysFile file(Long id, Long deptId) {
-        return SysFile.builder()
-                .id(id)
-                .deptId(deptId)
-                .build();
+    private SysDocCategory category(Long id, Long sectionDeptId) {
+        SysDocCategory category = new SysDocCategory();
+        category.setId(id);
+        category.setSectionDeptId(sectionDeptId);
+        return category;
+    }
+
+    private SysDocItem item(Long id, Long categoryId) {
+        SysDocItem item = new SysDocItem();
+        item.setId(id);
+        item.setCategoryId(categoryId);
+        return item;
     }
 
     private SysRole role(Long id, String roleCode) {

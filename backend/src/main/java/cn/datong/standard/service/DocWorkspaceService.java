@@ -5,24 +5,18 @@ import cn.datong.standard.dto.DeptNavigationItem;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocAttachment;
 import cn.datong.standard.entity.SysDocCategory;
-import cn.datong.standard.entity.SysDocField;
 import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocSubmission;
-import cn.datong.standard.entity.SysDocSubmissionValue;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
-import cn.datong.standard.mapper.SysDocFieldMapper;
 import cn.datong.standard.mapper.SysDocItemMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
-import cn.datong.standard.mapper.SysDocSubmissionValueMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,14 +24,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -45,18 +36,13 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class DocWorkspaceService {
-    private static final Set<String> FIELD_TYPES = Set.of("TEXT", "DATE", "NUMBER");
-
     private final SysDeptMapper deptMapper;
     private final SysUserMapper userMapper;
     private final SysDocCategoryMapper categoryMapper;
     private final SysDocItemMapper itemMapper;
-    private final SysDocFieldMapper fieldMapper;
     private final SysDocSubmissionMapper submissionMapper;
-    private final SysDocSubmissionValueMapper valueMapper;
     private final SysDocAttachmentMapper attachmentMapper;
     private final FileStorageService storageService;
-    private final ObjectMapper objectMapper;
 
     public List<DeptNavigationItem> sections() {
         return sectionDepts().stream()
@@ -86,7 +72,6 @@ public class DocWorkspaceService {
         category.setSectionDeptId(request.getSectionDeptId());
         category.setCategoryName(requiredText(request.getCategoryName(), "请输入二级菜单名称"));
         category.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
-        category.setStatus(blankToDefault(request.getStatus(), "ENABLED"));
         category.setCreatedBy(userId);
         category.setCreatedAt(LocalDateTime.now());
         category.setUpdatedAt(LocalDateTime.now());
@@ -100,7 +85,6 @@ public class DocWorkspaceService {
         requireManageSection(userDeptId, superAdmin, existing.getSectionDeptId());
         existing.setCategoryName(requiredText(request.getCategoryName(), "请输入二级菜单名称"));
         existing.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
-        existing.setStatus(blankToDefault(request.getStatus(), "ENABLED"));
         existing.setUpdatedAt(LocalDateTime.now());
         categoryMapper.updateById(existing);
         return existing;
@@ -159,43 +143,6 @@ public class DocWorkspaceService {
         SysDocCategory category = requireCategory(item.getCategoryId());
         requireManageSection(userDeptId, superAdmin, category.getSectionDeptId());
         itemMapper.deleteById(id);
-    }
-
-    public List<SysDocField> fields(Long itemId) {
-        requireItem(itemId);
-        return fieldMapper.selectList(new LambdaQueryWrapper<SysDocField>()
-                .eq(SysDocField::getItemId, itemId)
-                .eq(SysDocField::getDeleted, 0)
-                .orderByAsc(SysDocField::getSortOrder)
-                .orderByAsc(SysDocField::getId));
-    }
-
-    @Transactional
-    public List<SysDocField> saveFields(Long userDeptId, boolean superAdmin, Long itemId, List<SysDocField> requests) {
-        SysDocItem item = requireItem(itemId);
-        SysDocCategory category = requireCategory(item.getCategoryId());
-        requireManageSection(userDeptId, superAdmin, category.getSectionDeptId());
-        List<SysDocField> existing = fields(itemId);
-        existing.forEach(field -> fieldMapper.deleteById(field.getId()));
-        int index = 0;
-        for (SysDocField request : requests == null ? List.<SysDocField>of() : requests) {
-            SysDocField field = new SysDocField();
-            field.setItemId(itemId);
-            field.setFieldName(requiredText(request.getFieldName(), "字段名称不能为空"));
-            String type = requiredText(request.getFieldType(), "字段类型不能为空").toUpperCase(Locale.ROOT);
-            if (!FIELD_TYPES.contains(type)) {
-                throw new BusinessException("字段类型只支持 TEXT、DATE、NUMBER");
-            }
-            field.setFieldType(type);
-            field.setRequired(request.getRequired() != null && request.getRequired() == 1 ? 1 : 0);
-            field.setSortOrder(request.getSortOrder() == null ? index : request.getSortOrder());
-            field.setCreatedAt(LocalDateTime.now());
-            field.setUpdatedAt(LocalDateTime.now());
-            field.setDeleted(0);
-            fieldMapper.insert(field);
-            index++;
-        }
-        return fields(itemId);
     }
 
     @Transactional
@@ -272,19 +219,6 @@ public class DocWorkspaceService {
         }
         requireSubmissionVisible(userDeptId, superAdmin, submission);
         fillSubmissionInfo(List.of(submission));
-        List<SysDocSubmissionValue> values = valueMapper.selectList(new LambdaQueryWrapper<SysDocSubmissionValue>()
-                .eq(SysDocSubmissionValue::getSubmissionId, submissionId));
-        Map<Long, SysDocField> fieldMap = fieldMapper.selectList(new LambdaQueryWrapper<SysDocField>()
-                        .eq(SysDocField::getDeleted, 0))
-                .stream().collect(Collectors.toMap(SysDocField::getId, Function.identity()));
-        for (SysDocSubmissionValue value : values) {
-            SysDocField field = fieldMap.get(value.getFieldId());
-            if (field != null) {
-                value.setFieldName(field.getFieldName());
-                value.setFieldType(field.getFieldType());
-            }
-        }
-        submission.setValues(values);
         submission.setAttachments(attachments(submissionId));
         return submission;
     }
@@ -305,52 +239,8 @@ public class DocWorkspaceService {
     private void applyItemRequest(SysDocItem item, SysDocItem request) {
         item.setItemName(requiredText(request.getItemName(), "请输入文件名称"));
         item.setContentHtml(request.getContentHtml() == null ? "" : request.getContentHtml());
-        item.setCollectEnabled(1);
         item.setAttachmentEnabled(request.getAttachmentEnabled() != null && request.getAttachmentEnabled() == 1 ? 1 : 0);
-        item.setAttachmentRequired(0);
         item.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
-        item.setStatus("ENABLED");
-    }
-
-    private void validateValues(List<SysDocField> fields, Map<Long, String> values) {
-        for (SysDocField field : fields) {
-            String value = values.get(field.getId());
-            if (field.getRequired() != null && field.getRequired() == 1 && (value == null || value.isBlank())) {
-                throw new BusinessException("请填写：" + field.getFieldName());
-            }
-            if (value == null || value.isBlank()) {
-                continue;
-            }
-            if ("DATE".equals(field.getFieldType())) {
-                try {
-                    LocalDate.parse(value.trim());
-                } catch (RuntimeException ex) {
-                    throw new BusinessException(field.getFieldName() + " 日期格式不正确");
-                }
-            }
-            if ("NUMBER".equals(field.getFieldType())) {
-                try {
-                    Double.parseDouble(value.trim());
-                } catch (RuntimeException ex) {
-                    throw new BusinessException(field.getFieldName() + " 必须是数字");
-                }
-            }
-        }
-    }
-
-    private Map<Long, String> parseValues(String valuesJson) {
-        if (valuesJson == null || valuesJson.isBlank()) {
-            return new HashMap<>();
-        }
-        try {
-            Map<String, String> raw = objectMapper.readValue(valuesJson, new TypeReference<>() {
-            });
-            Map<Long, String> result = new HashMap<>();
-            raw.forEach((key, value) -> result.put(Long.valueOf(key), value));
-            return result;
-        } catch (Exception ex) {
-            throw new BusinessException("填报数据格式不正确");
-        }
     }
 
     private void saveAttachment(Long userId, Long submissionId, MultipartFile file) {
@@ -380,9 +270,6 @@ public class DocWorkspaceService {
 
     private void fillItemCounts(List<SysDocItem> items) {
         for (SysDocItem item : items) {
-            item.setFieldCount(Math.toIntExact(fieldMapper.selectCount(new LambdaQueryWrapper<SysDocField>()
-                    .eq(SysDocField::getItemId, item.getId())
-                    .eq(SysDocField::getDeleted, 0))));
             item.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                     .eq(SysDocSubmission::getItemId, item.getId()))));
         }
@@ -519,19 +406,11 @@ public class DocWorkspaceService {
         return dept.getDeptName() != null && dept.getDeptName().contains("车间");
     }
 
-    private boolean enabled(String status) {
-        return status == null || status.isBlank() || "ENABLED".equals(status);
-    }
-
     private String requiredText(String value, String message) {
         if (value == null || value.trim().isBlank()) {
             throw new BusinessException(message);
         }
         return value.trim();
-    }
-
-    private String blankToDefault(String value, String defaultValue) {
-        return value == null || value.isBlank() ? defaultValue : value;
     }
 
     private String extension(String filename) {

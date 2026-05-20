@@ -14,11 +14,6 @@ WHERE id IN (1, 2, 3, 4, 5, 6);
 
 UPDATE sys_permission
 SET permission_name = CASE permission_code
-  WHEN 'file:upload' THEN '文件上传'
-  WHEN 'file:delete' THEN '文件删除'
-  WHEN 'file:restore' THEN '文件恢复'
-  WHEN 'file:remove' THEN '文件彻底删除'
-  WHEN 'file:manage' THEN '文件管理'
   WHEN 'user:view' THEN '用户查看'
   WHEN 'user:manage' THEN '用户管理'
   WHEN 'user:approve' THEN '注册审批'
@@ -33,11 +28,6 @@ SET permission_name = CASE permission_code
   ELSE permission_name
 END,
 description = CASE permission_code
-  WHEN 'file:upload' THEN '允许上传文件'
-  WHEN 'file:delete' THEN '允许软删除文件'
-  WHEN 'file:restore' THEN '允许恢复回收站文件'
-  WHEN 'file:remove' THEN '允许物理删除文件'
-  WHEN 'file:manage' THEN '允许管理共享文件'
   WHEN 'user:view' THEN '允许查看用户'
   WHEN 'user:manage' THEN '允许管理用户'
   WHEN 'user:approve' THEN '允许审批注册用户'
@@ -52,7 +42,6 @@ description = CASE permission_code
   ELSE description
 END
 WHERE permission_code IN (
-  'file:upload', 'file:delete', 'file:restore', 'file:remove', 'file:manage',
   'user:view', 'user:manage', 'user:approve',
   'dept:view', 'dept:manage',
   'role:view', 'role:manage',
@@ -91,17 +80,9 @@ WHERE id = 1;
 
 UPDATE sys_system_config
 SET description = CASE config_key
-  WHEN 'onlyoffice.enabled' THEN 'OnlyOffice 在线预览和编辑是否启用'
-  WHEN 'onlyoffice.url' THEN 'OnlyOffice Document Server 地址'
-  WHEN 'cad.preview.enabled' THEN 'CAD 预览转换服务是否启用'
-  WHEN 'recycle.retention.days' THEN '回收站保留天数'
   WHEN 'storage.provider' THEN '默认文件存储服务'
   ELSE description
 END
 WHERE config_key IN (
-  'onlyoffice.enabled',
-  'onlyoffice.url',
-  'cad.preview.enabled',
-  'recycle.retention.days',
   'storage.provider'
 );

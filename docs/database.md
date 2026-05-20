@@ -9,30 +9,17 @@
 - `sys_user_role`：用户和角色模板关联表。
 - `sys_role_permission`：角色模板和系统级权限关联表。
 - `sys_user_permission`：用户单独系统级权限表，支持 `allow` 和 `deny`。
-- `sys_file`：旧文件库元数据表，保留兼容历史接口。
-- `sys_folder`：旧文件库文件夹表，保留兼容历史接口。
-- `sys_file_permission`：文件指定授权表。
-- `sys_file_version`：文件版本表。
-- `sys_file_copy`：文件抄送表。
 - `sys_notification`：系统内通知表。
-- `sys_recycle_bin`：回收站记录表。
 - `sys_operation_log`：操作日志表。
 - `sys_login_log`：登录日志表。
 - `sys_register_approval`：注册审批表。
 - `sys_system_config`：系统配置表。
-- `sys_storage_stat`：存储统计表。
 
-## 补充表
+## 资料填报表
 
-- `sys_file_favorite`：文件收藏。
-- `sys_file_tag`：文件标签。
-- `sys_file_tag_rel`：文件标签关联。
-- `sys_file_access_record`：最近查看、最近编辑、最近下载记录。
 - `sys_doc_category`：科室资料二级侧边栏。
 - `sys_doc_item`：二级侧边栏下的文件入口，包含 `content_html` 富文本文件内容和附件上传开关。
-- `sys_doc_field`：历史清单字段表，当前文件详情填报不再使用，保留结构兼容。
 - `sys_doc_submission`：车间用户上传记录。
-- `sys_doc_submission_value`：历史上传记录字段值表，当前文件详情填报不再写入，保留结构兼容。
 - `sys_doc_attachment`：上传记录附件元数据，真实文件保存在 MinIO。
 
 ## 初始化数据
@@ -42,4 +29,5 @@
 - `01-schema.sql`：建表脚本。
 - `02-init-data.sql`：默认部门、权限点、角色模板、管理员账号和系统配置。
 - `03-org-agency-migration.sql`：组织结构兼容迁移，并补齐 `dept_type`。
-- `05-doc-submission-system.sql`：新增科室资料填报表，清空旧文件库数据库记录，不删除 MinIO 对象。
+- `05-doc-submission-system.sql`：新增科室资料填报表。
+- `07-drop-legacy-file-library.sql`：删除旧文件库、旧动态字段和值表以及旧权限配置。

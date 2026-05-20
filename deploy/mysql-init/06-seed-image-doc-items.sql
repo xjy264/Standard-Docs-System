@@ -142,7 +142,6 @@ INSERT INTO sys_doc_category (
   section_dept_id,
   category_name,
   sort_order,
-  status,
   created_at,
   updated_at,
   deleted
@@ -151,7 +150,6 @@ SELECT
   d.id,
   c.category_name,
   c.sort_order,
-  'ENABLED',
   NOW(),
   NOW(),
   0
@@ -177,7 +175,6 @@ JOIN tmp_image_doc_categories seed
   ON seed.section_name = d.dept_name
  AND seed.category_name = category.category_name
 SET category.sort_order = seed.sort_order,
-    category.status = 'ENABLED',
     category.updated_at = NOW()
 WHERE category.deleted = 0;
 
@@ -185,11 +182,8 @@ INSERT INTO sys_doc_item (
   category_id,
   item_name,
   content_html,
-  collect_enabled,
   attachment_enabled,
-  attachment_required,
   sort_order,
-  status,
   created_at,
   updated_at,
   deleted
@@ -199,10 +193,7 @@ SELECT
   seed.item_name,
   '',
   1,
-  1,
-  0,
   seed.sort_order,
-  'ENABLED',
   NOW(),
   NOW(),
   0
@@ -236,10 +227,7 @@ JOIN tmp_image_doc_items seed
  AND seed.category_name = category.category_name
  AND seed.item_name = item.item_name
 SET item.attachment_enabled = 1,
-    item.collect_enabled = 1,
-    item.attachment_required = 0,
     item.sort_order = seed.sort_order,
-    item.status = 'ENABLED',
     item.updated_at = NOW()
 WHERE item.deleted = 0;
 

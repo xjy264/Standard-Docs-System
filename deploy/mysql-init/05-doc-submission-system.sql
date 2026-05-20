@@ -36,7 +36,6 @@ CREATE TABLE IF NOT EXISTS sys_doc_category (
   section_dept_id BIGINT NOT NULL,
   category_name VARCHAR(128) NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
-  status VARCHAR(32) NOT NULL DEFAULT 'ENABLED',
   created_by BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -49,11 +48,8 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   category_id BIGINT NOT NULL,
   item_name VARCHAR(128) NOT NULL,
   content_html MEDIUMTEXT,
-  collect_enabled TINYINT(1) NOT NULL DEFAULT 1,
   attachment_enabled TINYINT(1) NOT NULL DEFAULT 0,
-  attachment_required TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0,
-  status VARCHAR(32) NOT NULL DEFAULT 'ENABLED',
   created_by BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -74,21 +70,18 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-UPDATE sys_doc_category SET status = 'ENABLED' WHERE status <> 'ENABLED' OR status IS NULL;
-UPDATE sys_doc_item SET status = 'ENABLED', collect_enabled = 1, attachment_required = 0 WHERE status <> 'ENABLED' OR status IS NULL OR collect_enabled <> 1 OR attachment_required <> 0;
-
-CREATE TABLE IF NOT EXISTS sys_doc_field (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  item_id BIGINT NOT NULL,
-  field_name VARCHAR(128) NOT NULL,
-  field_type VARCHAR(32) NOT NULL,
-  required TINYINT(1) NOT NULL DEFAULT 0,
-  sort_order INT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted TINYINT(1) NOT NULL DEFAULT 0,
-  INDEX idx_doc_field_item (item_id, deleted, sort_order)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+SET @doc_item_attachment_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_item'
+    AND COLUMN_NAME = 'attachment_enabled'
+);
+SET @sql := IF(@doc_item_attachment_exists = 0,
+  'ALTER TABLE sys_doc_item ADD COLUMN attachment_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER content_html',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS sys_doc_submission (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -99,15 +92,8 @@ CREATE TABLE IF NOT EXISTS sys_doc_submission (
   upload_user_id BIGINT NOT NULL,
   submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_doc_submission_category (category_id, submitted_at),
-  INDEX idx_doc_submission_workshop (workshop_dept_id, submitted_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS sys_doc_submission_value (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  submission_id BIGINT NOT NULL,
-  field_id BIGINT NOT NULL,
-  field_value TEXT,
-  INDEX idx_doc_submission_value (submission_id, field_id)
+  INDEX idx_doc_submission_workshop (workshop_dept_id, submitted_at),
+  INDEX idx_doc_submission_item (item_id, submitted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_doc_attachment (
@@ -123,14 +109,3 @@ CREATE TABLE IF NOT EXISTS sys_doc_attachment (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_doc_attachment_submission (submission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-DELETE FROM sys_recycle_bin;
-DELETE FROM sys_file_access_record;
-DELETE FROM sys_file_tag_rel;
-DELETE FROM sys_file_tag;
-DELETE FROM sys_file_favorite;
-DELETE FROM sys_file_copy;
-DELETE FROM sys_file_version;
-DELETE FROM sys_file_permission;
-DELETE FROM sys_folder;
-DELETE FROM sys_file;

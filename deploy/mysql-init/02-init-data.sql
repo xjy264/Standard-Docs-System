@@ -12,11 +12,6 @@ ON DUPLICATE KEY UPDATE dept_name = VALUES(dept_name), dept_type = VALUES(dept_t
 
 INSERT INTO sys_permission (permission_name, permission_code, permission_type, description, sort_order, status)
 VALUES
-  ('文件上传', 'file:upload', 'SYSTEM', '允许上传文件', 10, 'ENABLED'),
-  ('文件删除', 'file:delete', 'SYSTEM', '允许软删除文件', 20, 'ENABLED'),
-  ('文件恢复', 'file:restore', 'SYSTEM', '允许恢复回收站文件', 30, 'ENABLED'),
-  ('文件彻底删除', 'file:remove', 'SYSTEM', '允许物理删除文件', 40, 'ENABLED'),
-  ('文件管理', 'file:manage', 'SYSTEM', '允许管理共享文件', 50, 'ENABLED'),
   ('用户查看', 'user:view', 'SYSTEM', '允许查看用户', 60, 'ENABLED'),
   ('用户管理', 'user:manage', 'SYSTEM', '允许管理用户', 70, 'ENABLED'),
   ('注册审批', 'user:approve', 'SYSTEM', '允许审批注册用户', 80, 'ENABLED'),
@@ -46,11 +41,10 @@ ON DUPLICATE KEY UPDATE permission_code = VALUES(permission_code);
 
 INSERT INTO sys_role_permission (role_id, permission_code)
 VALUES
-  (2, 'file:upload'), (2, 'user:view'), (2, 'user:approve'), (2, 'dept:view'),
-  (3, 'file:upload'), (3, 'file:delete'), (3, 'file:restore'), (3, 'file:manage'),
+  (2, 'user:view'), (2, 'user:approve'), (2, 'dept:view'),
   (3, 'user:view'), (3, 'dept:view'), (3, 'role:view'), (3, 'storage:view'),
-  (4, 'file:upload'), (4, 'file:delete'), (4, 'dept:view'),
-  (5, 'file:upload'), (5, 'dept:view')
+  (4, 'dept:view'),
+  (5, 'dept:view')
 ON DUPLICATE KEY UPDATE permission_code = VALUES(permission_code);
 
 INSERT INTO sys_user (id, username, password, real_name, phone, dept_id, status, approval_status, is_super_admin, deleted)
@@ -63,9 +57,5 @@ ON DUPLICATE KEY UPDATE role_id = VALUES(role_id);
 
 INSERT INTO sys_system_config (config_key, config_value, description)
 VALUES
-  ('onlyoffice.enabled', 'false', 'OnlyOffice 在线预览和编辑是否启用'),
-  ('onlyoffice.url', '', 'OnlyOffice Document Server 地址'),
-  ('cad.preview.enabled', 'false', 'CAD 预览转换服务是否启用'),
-  ('recycle.retention.days', '30', '回收站保留天数'),
   ('storage.provider', 'minio', '默认文件存储服务')
 ON DUPLICATE KEY UPDATE config_value = VALUES(config_value), description = VALUES(description);

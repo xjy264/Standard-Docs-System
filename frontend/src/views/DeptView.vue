@@ -12,7 +12,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="userCount" label="组织用户数" min-width="170" />
-        <el-table-column prop="fileCount" label="组织文件数" min-width="170" />
+        <el-table-column prop="fileCount" label="资料入口数" min-width="170" />
         <el-table-column label="管理员设置情况" min-width="320">
           <template #default="{ row }">
             <el-tag v-if="row.adminRequired && row.missingAdmin" type="warning">未设置管理员</el-tag>

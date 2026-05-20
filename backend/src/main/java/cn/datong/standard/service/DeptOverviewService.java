@@ -2,10 +2,12 @@ package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.entity.SysDept;
-import cn.datong.standard.entity.SysFile;
+import cn.datong.standard.entity.SysDocCategory;
+import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.mapper.SysDeptMapper;
-import cn.datong.standard.mapper.SysFileMapper;
+import cn.datong.standard.mapper.SysDocCategoryMapper;
+import cn.datong.standard.mapper.SysDocItemMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +24,8 @@ import java.util.stream.Collectors;
 public class DeptOverviewService {
     private final SysDeptMapper deptMapper;
     private final SysUserMapper userMapper;
-    private final SysFileMapper fileMapper;
+    private final SysDocCategoryMapper categoryMapper;
+    private final SysDocItemMapper itemMapper;
     private final OrgAssignmentService orgAssignmentService;
 
     public List<DeptOverview> overview(boolean currentUserSuperAdmin) {
@@ -33,7 +36,8 @@ public class DeptOverviewService {
                 .eq(SysDept::getDeleted, 0)
                 .orderByAsc(SysDept::getSortOrder));
         List<SysUser> users = userMapper.selectList(new LambdaQueryWrapper<SysUser>().eq(SysUser::getDeleted, 0));
-        List<SysFile> files = fileMapper.selectList(new LambdaQueryWrapper<SysFile>().eq(SysFile::getDeleted, 0));
+        List<SysDocCategory> categories = categoryMapper.selectList(new LambdaQueryWrapper<SysDocCategory>().eq(SysDocCategory::getDeleted, 0));
+        List<SysDocItem> items = itemMapper.selectList(new LambdaQueryWrapper<SysDocItem>().eq(SysDocItem::getDeleted, 0));
         Set<Long> adminUserIds = orgAssignmentService.adminUserIds();
         Set<Long> adminRequiredDeptIds = orgAssignmentService.assignableDepts().stream()
                 .map(SysDept::getId)
@@ -41,9 +45,12 @@ public class DeptOverviewService {
         Map<Long, List<SysUser>> usersByDept = users.stream()
                 .filter(user -> user.getDeptId() != null)
                 .collect(Collectors.groupingBy(SysUser::getDeptId));
-        Map<Long, Long> fileCountByDept = files.stream()
-                .filter(file -> file.getDeptId() != null)
-                .collect(Collectors.groupingBy(SysFile::getDeptId, Collectors.counting()));
+        Map<Long, Long> sectionIdByCategoryId = categories.stream()
+                .collect(Collectors.toMap(SysDocCategory::getId, SysDocCategory::getSectionDeptId, (a, b) -> a));
+        Map<Long, Long> fileCountByDept = items.stream()
+                .map(item -> sectionIdByCategoryId.get(item.getCategoryId()))
+                .filter(sectionDeptId -> sectionDeptId != null)
+                .collect(Collectors.groupingBy(sectionDeptId -> sectionDeptId, Collectors.counting()));
 
         return depts.stream()
                 .sorted(Comparator.comparing(SysDept::getSortOrder, Comparator.nullsLast(Integer::compareTo)))
