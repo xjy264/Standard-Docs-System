@@ -2,464 +2,596 @@
   <div>
     <div class="page-title">
       <div>
-        <h2>{{ pageTitle }}</h2>
-        <el-breadcrumb class="org-breadcrumb" separator="/">
-          <el-breadcrumb-item :to="{ path: `/org/${deptId}` }">{{ currentDept?.deptName || '组织资料' }}</el-breadcrumb-item>
-          <el-breadcrumb-item v-for="item in folderPath" :key="item.id" :to="{ path: `/org/${deptId}/folders/${item.id}` }">
-            {{ item.folderName }}
-          </el-breadcrumb-item>
-        </el-breadcrumb>
+        <h2>{{ currentSection?.deptName || '科室资料' }}</h2>
+        <p class="page-subtitle">按二级侧边栏维护资料入口，车间用户按清单填报并上传附件。</p>
       </div>
       <div class="page-actions">
-        <el-button v-if="canOperate" @click="openCreateFolder">新增文件夹</el-button>
-        <el-button v-if="canUpload" type="primary" @click="openUpload">新增文件</el-button>
+        <el-button v-if="canManageSection" @click="openCategoryDialog()">新增二级菜单</el-button>
+        <el-button v-if="canManageSection && activeCategory" type="primary" @click="openItemDialog()">新增文件</el-button>
       </div>
     </div>
 
-    <div class="finder-panel">
-      <div class="finder-toolbar">
-        <el-button v-if="folderId" @click="goParent">返回上级</el-button>
-      </div>
-      <div class="finder-grid">
-        <div v-for="folder in childFolders" :key="`folder-${folder.id}`" class="finder-item finder-folder-item">
-          <el-dropdown
-            v-if="canOperate"
-            class="finder-more-dropdown"
-            trigger="click"
-            placement="bottom-end"
-            @command="(command: string | number | object) => handleFolderCommand(folder, command)"
-          >
-            <button class="finder-more-button" type="button" @click.stop>
-              <el-icon><MoreFilled /></el-icon>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="rename">修改文件夹名称</el-dropdown-item>
-              </el-dropdown-menu>
+    <div class="doc-workspace">
+      <aside class="doc-category-sidebar">
+        <div class="doc-category-header">
+          <span>二级侧边栏</span>
+        </div>
+        <button
+          v-for="category in categories"
+          :key="category.id"
+          class="doc-category-item"
+          :class="{ active: category.id === activeCategoryId }"
+          type="button"
+          @click="selectCategory(category.id)"
+        >
+          <span>{{ category.categoryName }}</span>
+          <small>{{ category.status === 'ENABLED' ? '启用' : '停用' }}</small>
+        </button>
+        <el-empty v-if="categories.length === 0" description="暂无二级菜单" />
+      </aside>
+
+      <section class="doc-main-panel">
+        <div v-if="activeCategory" class="doc-main-toolbar">
+          <div>
+            <h3>{{ activeCategory.categoryName }}</h3>
+            <span>资料入口</span>
+          </div>
+          <div class="toolbar-actions">
+            <el-button @click="openRecords">上传记录</el-button>
+            <el-button v-if="canManageSection" @click="openCategoryDialog(activeCategory)">编辑二级菜单</el-button>
+          </div>
+        </div>
+
+        <el-table v-if="activeCategory" :data="items" stripe>
+          <el-table-column type="index" label="序号" width="70" />
+          <el-table-column prop="itemName" label="文件名称" min-width="180" />
+          <el-table-column label="收集信息" width="110">
+            <template #default="{ row }">{{ row.collectEnabled ? '需要' : '不需要' }}</template>
+          </el-table-column>
+          <el-table-column label="附件" width="120">
+            <template #default="{ row }">
+              {{ row.attachmentRequired ? '必传' : row.attachmentEnabled ? '可传' : '不需要' }}
             </template>
-          </el-dropdown>
-          <button class="finder-main" type="button" @click="openFolder(folder)">
-            <el-icon class="finder-icon folder-icon"><FolderOpened /></el-icon>
-            <span class="finder-name">{{ folder.folderName }}</span>
-          </button>
-        </div>
-        <div v-for="file in files" :key="`file-${file.id}`" class="finder-item">
-          <button class="finder-main" type="button" @click="download(file)">
-            <FileTypeIcon :extension="file.extension" :file-name="file.fileName" :size="50" />
-            <span class="finder-name">{{ file.fileName }}</span>
-          </button>
-        </div>
-        <el-empty v-if="childFolders.length === 0 && files.length === 0" class="finder-empty" description="暂无文件夹和文件" />
-      </div>
+          </el-table-column>
+          <el-table-column prop="fieldCount" label="字段数" width="90" />
+          <el-table-column prop="submissionCount" label="记录数" width="90" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column label="操作" width="260" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="canManageSection" link type="primary" @click="openItemDialog(row)">编辑文件</el-button>
+              <el-button v-if="canManageSection" link type="primary" @click="openFieldDialog(row)">配置清单</el-button>
+              <el-button v-if="isWorkshopUser && row.collectEnabled" link type="primary" @click="openSubmitDialog(row)">填写</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-else description="请选择或新增二级菜单" />
+      </section>
     </div>
 
-    <el-dialog v-model="folderDialogOpen" :title="folderDialogTitle" width="420px">
+    <el-dialog v-model="categoryDialogOpen" :title="editingCategory ? '编辑二级菜单' : '新增二级菜单'" width="420px">
       <el-form label-position="top">
-        <el-form-item label="文件夹名称"><el-input v-model="folderForm.folderName" maxlength="128" /></el-form-item>
+        <el-form-item label="名称"><el-input v-model="categoryForm.categoryName" maxlength="128" /></el-form-item>
+        <el-form-item label="排序"><el-input-number v-model="categoryForm.sortOrder" :min="0" /></el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="categoryForm.status">
+            <el-option label="启用" value="ENABLED" />
+            <el-option label="停用" value="DISABLED" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="folderDialogOpen = false">取消</el-button>
-        <el-button type="primary" @click="submitFolder">{{ folderDialogConfirmText }}</el-button>
+        <el-button @click="categoryDialogOpen = false">取消</el-button>
+        <el-button type="primary" @click="submitCategory">保存</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="uploadOpen"
-      title="新增文件"
-      width="520px"
-      :close-on-click-modal="!uploading"
-      :close-on-press-escape="!uploading"
-      :show-close="!uploading"
-      @closed="resetUploadForm"
-    >
+    <el-dialog v-model="itemDialogOpen" :title="editingItem ? '编辑文件' : '新增文件'" width="520px">
       <el-form label-position="top">
-        <el-form-item label="选择文件">
+        <el-form-item label="文件名称"><el-input v-model="itemForm.itemName" maxlength="128" /></el-form-item>
+        <el-form-item label="排序"><el-input-number v-model="itemForm.sortOrder" :min="0" /></el-form-item>
+        <el-form-item label="收集设置">
+          <el-checkbox v-model="itemForm.collectEnabled">需要收集信息</el-checkbox>
+          <el-checkbox v-model="itemForm.attachmentEnabled">允许上传附件</el-checkbox>
+          <el-checkbox v-model="itemForm.attachmentRequired">附件必传</el-checkbox>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="itemForm.status">
+            <el-option label="启用" value="ENABLED" />
+            <el-option label="停用" value="DISABLED" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="itemDialogOpen = false">取消</el-button>
+        <el-button type="primary" @click="submitItem">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="fieldDialogOpen" title="配置收集信息清单" width="760px">
+      <div class="field-actions">
+        <el-button @click="addField">新增字段</el-button>
+      </div>
+      <el-table :data="fieldDrafts" border>
+        <el-table-column label="字段名称" min-width="180">
+          <template #default="{ row }"><el-input v-model="row.fieldName" maxlength="128" /></template>
+        </el-table-column>
+        <el-table-column label="类型" width="140">
+          <template #default="{ row }">
+            <el-select v-model="row.fieldType">
+              <el-option label="文本" value="TEXT" />
+              <el-option label="日期" value="DATE" />
+              <el-option label="数字" value="NUMBER" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="必填" width="90">
+          <template #default="{ row }"><el-checkbox v-model="row.required" /></template>
+        </el-table-column>
+        <el-table-column label="排序" width="120">
+          <template #default="{ row }"><el-input-number v-model="row.sortOrder" :min="0" /></template>
+        </el-table-column>
+        <el-table-column label="操作" width="90">
+          <template #default="{ $index }"><el-button link type="danger" @click="fieldDrafts.splice($index, 1)">删除</el-button></template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="fieldDialogOpen = false">取消</el-button>
+        <el-button type="primary" @click="submitFieldConfig">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="submitDialogOpen" :title="submitItemTarget?.itemName || '填写资料'" width="620px" @closed="resetSubmitForm">
+      <el-form label-position="top">
+        <el-form-item v-for="field in submitFields" :key="field.id" :label="field.fieldName" :required="Boolean(field.required)">
+          <el-date-picker
+            v-if="field.fieldType === 'DATE'"
+            v-model="submitValues[field.id]"
+            type="date"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+          <el-input-number v-else-if="field.fieldType === 'NUMBER'" v-model="submitValues[field.id]" style="width: 100%" />
+          <el-input v-else v-model="submitValues[field.id]" />
+        </el-form-item>
+        <el-form-item v-if="submitItemTarget?.attachmentEnabled" :label="submitItemTarget.attachmentRequired ? '附件（必传）' : '附件'">
           <el-upload
-            ref="uploadRef"
-            class="file-upload-drag"
+            ref="submitUploadRef"
+            class="submission-upload"
             drag
             multiple
             :auto-upload="false"
-            :limit="uploadLimit"
-            :on-change="onFileChange"
-            :on-remove="onFileRemove"
-            :on-exceed="onFileExceed"
+            :on-change="onSubmitFileChange"
+            :on-remove="onSubmitFileRemove"
           >
-            <div>拖拽多个文件到此处，或点击选择文件</div>
+            <div>拖拽附件到此处，或点击选择文件</div>
           </el-upload>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button :disabled="uploading" @click="uploadOpen = false">取消</el-button>
-        <el-button type="primary" :loading="uploading" :disabled="uploading || selectedFiles.length === 0" @click="submitUpload">新增</el-button>
+        <el-button :disabled="submitting" @click="submitDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitRecord">提交</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog v-model="recordsOpen" title="上传记录" width="980px">
+      <el-table :data="records" stripe>
+        <el-table-column prop="submittedAt" label="上传时间" width="180" />
+        <el-table-column prop="sectionDeptName" label="所属科室" width="120" />
+        <el-table-column prop="categoryName" label="二级菜单" width="140" />
+        <el-table-column prop="itemName" label="文件名称" min-width="150" />
+        <el-table-column prop="workshopDeptName" label="所属车间" width="130" />
+        <el-table-column prop="uploadUserName" label="上传人" width="120" />
+        <el-table-column prop="attachmentCount" label="附件数" width="90" />
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }"><el-button link type="primary" @click="openRecordDetail(row)">查看</el-button></template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <el-dialog v-model="recordDetailOpen" title="上传记录详情" width="720px">
+      <el-descriptions v-if="recordDetail" :column="2" border>
+        <el-descriptions-item label="文件名称">{{ recordDetail.itemName }}</el-descriptions-item>
+        <el-descriptions-item label="上传时间">{{ recordDetail.submittedAt }}</el-descriptions-item>
+        <el-descriptions-item label="所属车间">{{ recordDetail.workshopDeptName }}</el-descriptions-item>
+        <el-descriptions-item label="上传人">{{ recordDetail.uploadUserName }}</el-descriptions-item>
+      </el-descriptions>
+      <el-table v-if="recordDetail" :data="recordDetail.values || []" style="margin-top: 14px" border>
+        <el-table-column prop="fieldName" label="字段" width="180" />
+        <el-table-column prop="fieldValue" label="内容" />
+      </el-table>
+      <el-table v-if="recordDetail" :data="recordDetail.attachments || []" style="margin-top: 14px" border>
+        <el-table-column prop="originalFileName" label="附件" />
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }"><el-button link type="primary" @click="downloadAttachment(row)">下载</el-button></template>
+        </el-table-column>
+      </el-table>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { FolderOpened, MoreFilled } from '@element-plus/icons-vue'
 import { ElMessage, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import FileTypeIcon from '../components/FileTypeIcon.vue'
-import { apiGet, apiPost, apiPut, http } from '../api/http'
+import { useRoute } from 'vue-router'
+import { apiDelete, apiGet, apiPost, apiPut, http } from '../api/http'
 import { useAuthStore } from '../stores/auth'
 
-interface DeptNavigationItem {
+interface SectionItem {
   id: number
   deptName: string
-  children: DeptNavigationItem[]
 }
 
-interface FolderItem {
+interface DocCategory {
   id: number
-  parentId: number
-  folderName: string
-  deptId: number
+  sectionDeptId: number
+  categoryName: string
+  sortOrder: number
+  status: string
 }
 
-interface FileItem {
+interface DocItem {
   id: number
-  fileName: string
-  extension?: string
-  originalFileName?: string
+  categoryId: number
+  itemName: string
+  collectEnabled: number
+  attachmentEnabled: number
+  attachmentRequired: number
+  sortOrder: number
+  status: string
+  fieldCount?: number
+  submissionCount?: number
+}
+
+interface DocField {
+  id: number
+  itemId: number
+  fieldName: string
+  fieldType: 'TEXT' | 'DATE' | 'NUMBER'
+  required: number
+  sortOrder: number
+}
+
+interface DocSubmission {
+  id: number
+  itemName: string
+  categoryName: string
+  sectionDeptName: string
+  workshopDeptName: string
+  uploadUserName: string
+  submittedAt: string
+  attachmentCount: number
+  values?: Array<{ fieldName: string; fieldValue: string }>
+  attachments?: Array<{ id: number; originalFileName: string }>
+}
+
+interface FieldDraft {
+  id?: number
+  fieldName: string
+  fieldType: 'TEXT' | 'DATE' | 'NUMBER'
+  required: boolean
+  sortOrder: number
 }
 
 const route = useRoute()
-const router = useRouter()
 const auth = useAuthStore()
-const navigation = ref<DeptNavigationItem[]>([])
-const folders = ref<FolderItem[]>([])
-const files = ref<FileItem[]>([])
-const folderDialogOpen = ref(false)
-const uploadOpen = ref(false)
-const selectedFiles = ref<UploadRawFile[]>([])
-const uploading = ref(false)
-const uploadRef = ref<any>()
-const folderForm = reactive({ folderName: '' })
-const editingFolder = ref<FolderItem>()
 const deptId = computed(() => Number(route.params.deptId))
-const folderId = computed(() => route.params.folderId ? Number(route.params.folderId) : undefined)
-const canOperate = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === deptId.value)
-const canUpload = computed(() => canOperate.value && auth.hasPermission('file:upload'))
-const currentDept = computed(() => flattenDepts(navigation.value).find((item) => item.id === deptId.value))
-const childFolders = computed(() => {
-  const parentId = folderId.value || 0
-  return folders.value.filter((item) => Number(item.parentId || 0) === parentId)
-})
-const folderPath = computed(() => {
-  if (!folderId.value) {
-    return []
-  }
-  const result: FolderItem[] = []
-  const map = new Map(folders.value.map((item) => [Number(item.id), item]))
-  let current = map.get(folderId.value)
-  while (current) {
-    result.unshift(current)
-    current = Number(current.parentId || 0) ? map.get(Number(current.parentId)) : undefined
-  }
-  return result
-})
-const pageTitle = computed(() => {
-  const currentFolder = folderPath.value[folderPath.value.length - 1]
-  return currentFolder ? currentFolder.folderName : `${currentDept.value?.deptName || '组织'}资料`
-})
-const folderDialogTitle = computed(() => editingFolder.value ? '修改文件夹名称' : '新增文件夹')
-const folderDialogConfirmText = computed(() => editingFolder.value ? '修改' : '保存')
-const uploadLimit = 20
+const sections = ref<SectionItem[]>([])
+const categories = ref<DocCategory[]>([])
+const items = ref<DocItem[]>([])
+const activeCategoryId = ref<number>()
+const categoryDialogOpen = ref(false)
+const itemDialogOpen = ref(false)
+const fieldDialogOpen = ref(false)
+const submitDialogOpen = ref(false)
+const recordsOpen = ref(false)
+const recordDetailOpen = ref(false)
+const editingCategory = ref<DocCategory>()
+const editingItem = ref<DocItem>()
+const fieldItemTarget = ref<DocItem>()
+const submitItemTarget = ref<DocItem>()
+const records = ref<DocSubmission[]>([])
+const recordDetail = ref<DocSubmission>()
+const fieldDrafts = ref<FieldDraft[]>([])
+const submitFields = ref<DocField[]>([])
+const submitValues = reactive<Record<number, string | number | undefined>>({})
+const submitFiles = ref<UploadRawFile[]>([])
+const submitting = ref(false)
+const submitUploadRef = ref<any>()
+const categoryForm = reactive({ categoryName: '', sortOrder: 0, status: 'ENABLED' })
+const itemForm = reactive({ itemName: '', sortOrder: 0, status: 'ENABLED', collectEnabled: true, attachmentEnabled: false, attachmentRequired: false })
+
+const currentSection = computed(() => sections.value.find((item) => item.id === deptId.value))
+const activeCategory = computed(() => categories.value.find((item) => item.id === activeCategoryId.value))
+const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === deptId.value)
+const isWorkshopUser = computed(() => Boolean(auth.user?.deptId) && !auth.user?.isSuperAdmin && !sections.value.some((item) => item.id === auth.user?.deptId))
 
 async function load() {
-  if (!deptId.value) {
+  sections.value = await apiGet<SectionItem[]>('/sections/navigation')
+  categories.value = await apiGet<DocCategory[]>('/doc-categories', { sectionDeptId: deptId.value })
+  if (!categories.value.some((item) => item.id === activeCategoryId.value)) {
+    activeCategoryId.value = categories.value[0]?.id
+  }
+  await loadItems()
+}
+
+async function loadItems() {
+  items.value = activeCategoryId.value ? await apiGet<DocItem[]>('/doc-items', { categoryId: activeCategoryId.value }) : []
+}
+
+function selectCategory(id: number) {
+  activeCategoryId.value = id
+  loadItems()
+}
+
+function openCategoryDialog(category?: DocCategory) {
+  editingCategory.value = category
+  categoryForm.categoryName = category?.categoryName || ''
+  categoryForm.sortOrder = category?.sortOrder || 0
+  categoryForm.status = category?.status || 'ENABLED'
+  categoryDialogOpen.value = true
+}
+
+async function submitCategory() {
+  if (!categoryForm.categoryName.trim()) {
+    ElMessage.warning('请输入二级菜单名称')
     return
   }
-  const [navResult, folderResult, fileResult] = await Promise.all([
-    apiGet<DeptNavigationItem[]>('/depts/navigation'),
-    apiGet<FolderItem[]>('/folders', { deptId: deptId.value }),
-    folderId.value
-      ? apiGet<FileItem[]>('/files', { deptId: deptId.value, folderId: folderId.value })
-      : apiGet<FileItem[]>('/files', { deptId: deptId.value, unfiled: true })
-  ])
-  navigation.value = navResult
-  folders.value = folderResult
-  files.value = fileResult
-}
-
-function flattenDepts(items: DeptNavigationItem[]) {
-  const result: DeptNavigationItem[] = []
-  const visit = (nodes: DeptNavigationItem[]) => {
-    nodes.forEach((node) => {
-      result.push(node)
-      visit(node.children || [])
-    })
-  }
-  visit(items)
-  return result
-}
-
-function openCreateFolder() {
-  editingFolder.value = undefined
-  folderForm.folderName = ''
-  folderDialogOpen.value = true
-}
-
-function openRenameFolder(folder: FolderItem) {
-  editingFolder.value = folder
-  folderForm.folderName = folder.folderName
-  folderDialogOpen.value = true
-}
-
-function handleFolderCommand(folder: FolderItem, command: string | number | object) {
-  if (command === 'rename') {
-    openRenameFolder(folder)
-  }
-}
-
-async function submitFolder() {
-  if (!folderForm.folderName.trim()) {
-    ElMessage.warning('请输入文件夹名称')
-    return
-  }
-  if (editingFolder.value) {
-    await apiPut(`/folders/${editingFolder.value.id}`, {
-      folderName: folderForm.folderName.trim(),
-      deptId: editingFolder.value.deptId,
-      parentId: editingFolder.value.parentId || 0
-    })
+  const body = { ...categoryForm, sectionDeptId: deptId.value, categoryName: categoryForm.categoryName.trim() }
+  if (editingCategory.value) {
+    await apiPut(`/doc-categories/${editingCategory.value.id}`, body)
     ElMessage.success('修改成功')
   } else {
-    await apiPost('/folders', {
-      folderName: folderForm.folderName.trim(),
-      deptId: deptId.value,
-      parentId: folderId.value || 0
-    })
+    await apiPost('/doc-categories', body)
     ElMessage.success('新增成功')
   }
-  folderDialogOpen.value = false
-  editingFolder.value = undefined
+  categoryDialogOpen.value = false
   await load()
 }
 
-function openFolder(folder: FolderItem) {
-  router.push(`/org/${deptId.value}/folders/${folder.id}`)
+function openItemDialog(item?: DocItem) {
+  editingItem.value = item
+  itemForm.itemName = item?.itemName || ''
+  itemForm.sortOrder = item?.sortOrder || 0
+  itemForm.status = item?.status || 'ENABLED'
+  itemForm.collectEnabled = item ? Boolean(item.collectEnabled) : true
+  itemForm.attachmentEnabled = item ? Boolean(item.attachmentEnabled) : false
+  itemForm.attachmentRequired = item ? Boolean(item.attachmentRequired) : false
+  itemDialogOpen.value = true
 }
 
-function goParent() {
-  const current = folderPath.value[folderPath.value.length - 1]
-  if (current?.parentId) {
-    router.push(`/org/${deptId.value}/folders/${current.parentId}`)
-  } else {
-    router.push(`/org/${deptId.value}`)
-  }
-}
-
-function openUpload() {
-  resetUploadForm()
-  uploadOpen.value = true
-}
-
-function onFileChange(_file: UploadFile, uploadFiles: UploadFiles) {
-  syncSelectedFiles(uploadFiles)
-}
-
-function onFileRemove(_file: UploadFile, uploadFiles: UploadFiles) {
-  syncSelectedFiles(uploadFiles)
-}
-
-function onFileExceed() {
-  ElMessage.warning(`单次最多选择 ${uploadLimit} 个文件，请分批上传`)
-}
-
-function syncSelectedFiles(uploadFiles: UploadFiles) {
-  selectedFiles.value = uploadFiles
-    .map((item) => item.raw)
-    .filter((file): file is UploadRawFile => Boolean(file))
-}
-
-async function submitUpload() {
-  if (selectedFiles.value.length === 0) {
-    ElMessage.warning('请选择文件')
+async function submitItem() {
+  if (!activeCategoryId.value || !itemForm.itemName.trim()) {
+    ElMessage.warning('请输入文件名称')
     return
   }
-  uploading.value = true
+  const body = {
+    categoryId: activeCategoryId.value,
+    itemName: itemForm.itemName.trim(),
+    sortOrder: itemForm.sortOrder,
+    status: itemForm.status,
+    collectEnabled: itemForm.collectEnabled ? 1 : 0,
+    attachmentEnabled: itemForm.attachmentEnabled || itemForm.attachmentRequired ? 1 : 0,
+    attachmentRequired: itemForm.attachmentRequired ? 1 : 0
+  }
+  if (editingItem.value) {
+    await apiPut(`/doc-items/${editingItem.value.id}`, body)
+    ElMessage.success('修改成功')
+  } else {
+    await apiPost('/doc-items', body)
+    ElMessage.success('新增成功')
+  }
+  itemDialogOpen.value = false
+  await loadItems()
+}
+
+async function openFieldDialog(item: DocItem) {
+  fieldItemTarget.value = item
+  const fields = await apiGet<DocField[]>(`/doc-items/${item.id}/fields`)
+  fieldDrafts.value = fields.map((field) => ({
+    id: field.id,
+    fieldName: field.fieldName,
+    fieldType: field.fieldType,
+    required: Boolean(field.required),
+    sortOrder: field.sortOrder || 0
+  }))
+  fieldDialogOpen.value = true
+}
+
+function addField() {
+  fieldDrafts.value.push({ fieldName: '', fieldType: 'TEXT', required: false, sortOrder: fieldDrafts.value.length })
+}
+
+async function submitFieldConfig() {
+  if (!fieldItemTarget.value) {
+    return
+  }
+  if (fieldDrafts.value.some((field) => !field.fieldName.trim())) {
+    ElMessage.warning('字段名称不能为空')
+    return
+  }
+  await apiPut(`/doc-items/${fieldItemTarget.value.id}/fields`, fieldDrafts.value.map((field) => ({
+    fieldName: field.fieldName.trim(),
+    fieldType: field.fieldType,
+    required: field.required ? 1 : 0,
+    sortOrder: field.sortOrder || 0
+  })))
+  ElMessage.success('清单已保存')
+  fieldDialogOpen.value = false
+  await loadItems()
+}
+
+async function openSubmitDialog(item: DocItem) {
+  submitItemTarget.value = item
+  submitFields.value = await apiGet<DocField[]>(`/doc-items/${item.id}/fields`)
+  submitDialogOpen.value = true
+}
+
+function onSubmitFileChange(_file: UploadFile, uploadFiles: UploadFiles) {
+  syncSubmitFiles(uploadFiles)
+}
+
+function onSubmitFileRemove(_file: UploadFile, uploadFiles: UploadFiles) {
+  syncSubmitFiles(uploadFiles)
+}
+
+function syncSubmitFiles(uploadFiles: UploadFiles) {
+  submitFiles.value = uploadFiles.map((item) => item.raw).filter((file): file is UploadRawFile => Boolean(file))
+}
+
+async function submitRecord() {
+  if (!submitItemTarget.value) {
+    return
+  }
+  submitting.value = true
   try {
-    for (const file of selectedFiles.value) {
-      const form = new FormData()
-      form.append('file', file)
-      form.append('deptId', String(deptId.value))
-      if (folderId.value) {
-        form.append('folderId', String(folderId.value))
+    const form = new FormData()
+    const values: Record<string, string> = {}
+    submitFields.value.forEach((field) => {
+      const value = submitValues[field.id]
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        values[String(field.id)] = String(value)
       }
-      await http.post('/files/upload', form)
-    }
-    ElMessage.success(`新增成功，共 ${selectedFiles.value.length} 个文件`)
-    uploadOpen.value = false
-    await load()
+    })
+    form.append('valuesJson', JSON.stringify(values))
+    submitFiles.value.forEach((file) => form.append('files', file))
+    await http.post(`/doc-items/${submitItemTarget.value.id}/submissions`, form)
+    ElMessage.success('提交成功')
+    submitDialogOpen.value = false
+    await loadItems()
   } finally {
-    uploading.value = false
-    resetUploadForm()
+    submitting.value = false
   }
 }
 
-async function download(file: FileItem) {
-  const response = await http.get(`/files/${file.id}/download`, { responseType: 'blob' })
+function resetSubmitForm() {
+  Object.keys(submitValues).forEach((key) => delete submitValues[Number(key)])
+  submitFiles.value = []
+  submitUploadRef.value?.clearFiles()
+}
+
+async function openRecords() {
+  if (!activeCategoryId.value) {
+    return
+  }
+  records.value = await apiGet<DocSubmission[]>(`/doc-categories/${activeCategoryId.value}/submissions`)
+  recordsOpen.value = true
+}
+
+async function openRecordDetail(record: DocSubmission) {
+  recordDetail.value = await apiGet<DocSubmission>(`/submissions/${record.id}`)
+  recordDetailOpen.value = true
+}
+
+async function downloadAttachment(attachment: { id: number; originalFileName: string }) {
+  const response = await http.get(`/doc-attachments/${attachment.id}/download`, { responseType: 'blob' })
   const blob = new Blob([response.data])
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = file.originalFileName || file.fileName || 'download'
+  link.download = attachment.originalFileName || '附件'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
 }
 
-function resetUploadForm() {
-  selectedFiles.value = []
-  uploadRef.value?.clearFiles()
-}
-
 onMounted(load)
-watch(() => [route.params.deptId, route.params.folderId], load)
+watch(() => route.params.deptId, () => {
+  activeCategoryId.value = undefined
+  load()
+})
 </script>
 
 <style scoped>
-.org-breadcrumb {
-  margin-top: 8px;
+.page-subtitle {
+  margin: 8px 0 0;
+  color: #637083;
 }
 
-.page-actions {
+.page-actions,
+.toolbar-actions,
+.field-actions {
   display: flex;
   gap: 10px;
 }
 
-.finder-panel {
-  min-height: 520px;
+.doc-workspace {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 560px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 14px;
 }
 
-.finder-toolbar {
+.doc-category-sidebar {
+  border-right: 1px solid var(--line);
+  padding: 12px;
+}
+
+.doc-category-header {
+  height: 34px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  min-height: 32px;
-  margin-bottom: 14px;
-  color: #637083;
+  font-weight: 700;
+  color: #1f2d3d;
 }
 
-.finder-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-  gap: 22px 18px;
-  align-items: start;
-}
-
-.finder-empty {
-  grid-column: 1 / -1;
-  min-height: 420px;
+.doc-category-item {
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.finder-item {
-  position: relative;
-  min-height: 136px;
-  padding: 10px 8px;
-  border: 1px solid transparent;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
   border-radius: 6px;
   background: transparent;
   color: #1f2d3d;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.finder-main {
-  width: 100%;
-  min-height: 108px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: space-between;
+  text-align: left;
 }
 
-.finder-item:hover {
+.doc-category-item:hover,
+.doc-category-item.active {
   background: #eef5ff;
-  border-color: #c8ddf5;
+  color: var(--rail-blue-dark);
 }
 
-.finder-more-dropdown {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  z-index: 2;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.18s ease;
+.doc-category-item small {
+  color: #8a96a8;
 }
 
-.finder-folder-item:hover .finder-more-dropdown,
-.finder-more-dropdown:focus-within {
-  opacity: 1;
-  pointer-events: auto;
+.doc-main-panel {
+  padding: 14px;
+  min-width: 0;
 }
 
-.finder-more-button {
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
+.doc-main-toolbar {
+  min-height: 46px;
+  margin-bottom: 12px;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: #6a7687;
-  cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease;
+  justify-content: space-between;
 }
 
-.finder-more-button:hover,
-.finder-more-button:active {
-  background: rgb(220 233 251 / 92%);
-  color: #2f5fa8;
+.doc-main-toolbar h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
 }
 
-.finder-more-button :deep(svg) {
-  font-size: 13px;
+.doc-main-toolbar span {
+  color: #637083;
 }
 
-.finder-icon {
-  font-size: 56px;
+.field-actions {
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
-.folder-icon {
-  color: #2f9bd8;
-}
-
-.finder-name {
-  width: 100%;
-  margin-top: 10px;
-  line-height: 1.35;
-  text-align: center;
-  word-break: break-word;
-  font-size: 13px;
-}
-
-.file-upload-drag {
-  width: 100%;
-}
-
-.file-upload-drag :deep(.el-upload),
-.file-upload-drag :deep(.el-upload-dragger) {
+.submission-upload,
+.submission-upload :deep(.el-upload),
+.submission-upload :deep(.el-upload-dragger) {
   width: 100%;
 }
 </style>
