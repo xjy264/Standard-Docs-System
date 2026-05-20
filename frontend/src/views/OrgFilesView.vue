@@ -59,9 +59,6 @@
       <el-form label-position="top">
         <el-form-item label="文件名称"><el-input v-model="itemForm.itemName" maxlength="128" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="itemForm.sortOrder" :min="0" /></el-form-item>
-        <el-form-item label="收集设置">
-          <el-checkbox v-model="itemForm.attachmentEnabled">允许上传附件</el-checkbox>
-        </el-form-item>
         <el-form-item label="文件内容">
           <div class="editor-box">
             <Toolbar :editor="editorRef" :default-config="toolbarConfig" mode="default" />
@@ -73,6 +70,9 @@
               @on-created="handleEditorCreated"
             />
           </div>
+        </el-form-item>
+        <el-form-item label="收集设置">
+          <el-checkbox v-model="itemForm.attachmentEnabled">允许上传附件</el-checkbox>
         </el-form-item>
       </el-form>
       <template #footer>
