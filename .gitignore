@@ -1,6 +1,7 @@
 .DS_Store
 .runtime/
 .vite/
+backups/
 
 # Java
 backend/target/
