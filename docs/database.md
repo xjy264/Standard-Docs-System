@@ -29,10 +29,10 @@
 - `sys_file_tag_rel`：文件标签关联。
 - `sys_file_access_record`：最近查看、最近编辑、最近下载记录。
 - `sys_doc_category`：科室资料二级侧边栏。
-- `sys_doc_item`：二级侧边栏下的三级资料入口。
-- `sys_doc_field`：资料入口收集字段，支持文本、日期和数字。
+- `sys_doc_item`：二级侧边栏下的文件入口，包含 `content_html` 富文本文件内容和附件上传开关。
+- `sys_doc_field`：历史清单字段表，当前文件详情填报不再使用，保留结构兼容。
 - `sys_doc_submission`：车间用户上传记录。
-- `sys_doc_submission_value`：上传记录字段值。
+- `sys_doc_submission_value`：历史上传记录字段值表，当前文件详情填报不再写入，保留结构兼容。
 - `sys_doc_attachment`：上传记录附件元数据，真实文件保存在 MinIO。
 
 ## 初始化数据

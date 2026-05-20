@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   category_id BIGINT NOT NULL,
   item_name VARCHAR(128) NOT NULL,
+  content_html MEDIUMTEXT,
   collect_enabled TINYINT(1) NOT NULL DEFAULT 1,
   attachment_enabled TINYINT(1) NOT NULL DEFAULT 0,
   attachment_required TINYINT(1) NOT NULL DEFAULT 0,
@@ -59,6 +60,22 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   deleted TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_doc_item_category (category_id, deleted, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET @doc_item_content_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_item'
+    AND COLUMN_NAME = 'content_html'
+);
+SET @sql := IF(@doc_item_content_exists = 0,
+  'ALTER TABLE sys_doc_item ADD COLUMN content_html MEDIUMTEXT AFTER item_name',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE sys_doc_category SET status = 'ENABLED' WHERE status <> 'ENABLED' OR status IS NULL;
+UPDATE sys_doc_item SET status = 'ENABLED', collect_enabled = 1, attachment_required = 0 WHERE status <> 'ENABLED' OR status IS NULL OR collect_enabled <> 1 OR attachment_required <> 0;
 
 CREATE TABLE IF NOT EXISTS sys_doc_field (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

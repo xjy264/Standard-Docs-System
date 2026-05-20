@@ -70,17 +70,15 @@
 
 - `GET /api/doc-categories?sectionDeptId=1`：查询科室下二级侧边栏。
 - `POST /api/doc-categories`：本科室用户或超级管理员新增二级侧边栏。
-- `PUT /api/doc-categories/{id}`：本科室用户或超级管理员修改二级侧边栏名称、排序和状态。
+- `PUT /api/doc-categories/{id}`：本科室用户或超级管理员修改二级侧边栏名称和排序。
 - `DELETE /api/doc-categories/{id}`：本科室用户或超级管理员删除二级侧边栏。
 - `GET /api/doc-items?categoryId=1`：查询二级侧边栏下资料入口表格。
-- `GET /api/doc-items/{id}`：查询资料入口详情。
-- `POST /api/doc-items`：本科室用户或超级管理员新增资料入口。
-- `PUT /api/doc-items/{id}`：本科室用户或超级管理员修改资料入口、收集开关、附件开关和排序。
+- `GET /api/doc-items/{id}`：查询资料入口详情，包含富文本文件内容、所属科室、二级菜单和附件上传开关。
+- `POST /api/doc-items`：本科室用户或超级管理员新增资料入口，请求体包含 `categoryId`、`itemName`、`contentHtml`、`attachmentEnabled`、`sortOrder`。
+- `PUT /api/doc-items/{id}`：本科室用户或超级管理员修改资料入口名称、富文本内容、附件上传开关和排序。
 - `DELETE /api/doc-items/{id}`：本科室用户或超级管理员删除资料入口。
-- `GET /api/doc-items/{id}/fields`：查询资料入口收集字段。
-- `PUT /api/doc-items/{id}/fields`：整体保存收集字段，字段类型支持 `TEXT`、`DATE`、`NUMBER`。
-- `POST /api/doc-items/{id}/submissions`：车间用户提交资料，使用 `multipart/form-data`，包含 `valuesJson` 和可选 `files`。
-- `GET /api/doc-categories/{id}/submissions`：查询当前二级侧边栏上传记录；科室用户看全部车间记录，车间用户只看本车间记录。
+- `POST /api/doc-items/{id}/submissions`：车间用户上传附件，使用 `multipart/form-data`，包含 `files`。
+- `GET /api/doc-items/{id}/submissions`：查询当前资料入口上传记录；科室用户看全部车间记录，车间用户只看本车间记录。
 - `GET /api/submissions/{id}`：查看上传记录详情。
 - `GET /api/doc-attachments/{id}/download`：下载上传记录附件。
 

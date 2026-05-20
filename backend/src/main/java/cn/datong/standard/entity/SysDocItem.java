@@ -16,6 +16,7 @@ public class SysDocItem {
     private Long id;
     private Long categoryId;
     private String itemName;
+    private String contentHtml;
     private Integer collectEnabled;
     private Integer attachmentEnabled;
     private Integer attachmentRequired;
@@ -31,4 +32,10 @@ public class SysDocItem {
     private Integer fieldCount;
     @TableField(exist = false)
     private Integer submissionCount;
+    @TableField(exist = false)
+    private String categoryName;
+    @TableField(exist = false)
+    private Long sectionDeptId;
+    @TableField(exist = false)
+    private String sectionDeptName;
 }

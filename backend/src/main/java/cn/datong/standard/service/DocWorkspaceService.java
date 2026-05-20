@@ -126,6 +126,7 @@ public class DocWorkspaceService {
     public SysDocItem item(Long id) {
         SysDocItem item = requireItem(id);
         fillItemCounts(List.of(item));
+        fillItemInfo(List.of(item));
         return item;
     }
 
@@ -200,25 +201,16 @@ public class DocWorkspaceService {
     @Transactional
     public SysDocSubmission submit(Long userId, Long userDeptId, Long itemId, String valuesJson, List<MultipartFile> files) {
         SysDocItem item = requireItem(itemId);
-        if (!enabled(item.getStatus())) {
-            throw new BusinessException("资料入口已停用");
-        }
-        if (item.getCollectEnabled() == null || item.getCollectEnabled() == 0) {
-            throw new BusinessException("该资料入口未开启填报");
-        }
         SysDept workshop = requireWorkshop(userDeptId);
         SysDocCategory category = requireCategory(item.getCategoryId());
-        Map<Long, String> values = parseValues(valuesJson);
-        List<SysDocField> fields = fields(itemId);
-        validateValues(fields, values);
         List<MultipartFile> uploadFiles = files == null ? List.of() : files.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
-        if (item.getAttachmentRequired() != null && item.getAttachmentRequired() == 1 && uploadFiles.isEmpty()) {
-            throw new BusinessException("请上传附件");
+        if (item.getAttachmentEnabled() == null || item.getAttachmentEnabled() == 0) {
+            throw new BusinessException("该文件未开启附件上传");
         }
-        if ((item.getAttachmentEnabled() == null || item.getAttachmentEnabled() == 0) && !uploadFiles.isEmpty()) {
-            throw new BusinessException("该资料入口未开启附件上传");
+        if (uploadFiles.isEmpty()) {
+            throw new BusinessException("请上传附件");
         }
 
         SysDocSubmission submission = new SysDocSubmission();
@@ -230,17 +222,6 @@ public class DocWorkspaceService {
         submission.setSubmittedAt(LocalDateTime.now());
         submissionMapper.insert(submission);
 
-        for (SysDocField field : fields) {
-            String value = values.get(field.getId());
-            if (value == null || value.isBlank()) {
-                continue;
-            }
-            SysDocSubmissionValue row = new SysDocSubmissionValue();
-            row.setSubmissionId(submission.getId());
-            row.setFieldId(field.getId());
-            row.setFieldValue(value.trim());
-            valueMapper.insert(row);
-        }
         for (MultipartFile file : uploadFiles) {
             saveAttachment(userId, submission.getId(), file);
         }
@@ -256,6 +237,25 @@ public class DocWorkspaceService {
         }
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getCategoryId, categoryId)
+                .orderByDesc(SysDocSubmission::getSubmittedAt);
+        if (!superAdmin && !sectionManager) {
+            wrapper.eq(SysDocSubmission::getWorkshopDeptId, userDeptId);
+        }
+        List<SysDocSubmission> result = submissionMapper.selectList(wrapper);
+        fillSubmissionInfo(result);
+        return result;
+    }
+
+    public List<SysDocSubmission> itemSubmissions(Long userId, Long userDeptId, boolean superAdmin, Long itemId) {
+        SysDocItem item = requireItem(itemId);
+        SysDocCategory category = requireCategory(item.getCategoryId());
+        boolean sectionManager = canManageSection(userDeptId, superAdmin, category.getSectionDeptId());
+        boolean workshopUser = isWorkshop(userDeptId);
+        if (!sectionManager && !workshopUser && !superAdmin) {
+            throw new BusinessException(403, "无权查看上传记录");
+        }
+        LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
+                .eq(SysDocSubmission::getItemId, itemId)
                 .orderByDesc(SysDocSubmission::getSubmittedAt);
         if (!superAdmin && !sectionManager) {
             wrapper.eq(SysDocSubmission::getWorkshopDeptId, userDeptId);
@@ -304,14 +304,12 @@ public class DocWorkspaceService {
 
     private void applyItemRequest(SysDocItem item, SysDocItem request) {
         item.setItemName(requiredText(request.getItemName(), "请输入文件名称"));
-        item.setCollectEnabled(request.getCollectEnabled() != null && request.getCollectEnabled() == 1 ? 1 : 0);
+        item.setContentHtml(request.getContentHtml() == null ? "" : request.getContentHtml());
+        item.setCollectEnabled(1);
         item.setAttachmentEnabled(request.getAttachmentEnabled() != null && request.getAttachmentEnabled() == 1 ? 1 : 0);
-        item.setAttachmentRequired(request.getAttachmentRequired() != null && request.getAttachmentRequired() == 1 ? 1 : 0);
-        if (item.getAttachmentRequired() == 1) {
-            item.setAttachmentEnabled(1);
-        }
+        item.setAttachmentRequired(0);
         item.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
-        item.setStatus(blankToDefault(request.getStatus(), "ENABLED"));
+        item.setStatus("ENABLED");
     }
 
     private void validateValues(List<SysDocField> fields, Map<Long, String> values) {
@@ -387,6 +385,26 @@ public class DocWorkspaceService {
                     .eq(SysDocField::getDeleted, 0))));
             item.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                     .eq(SysDocSubmission::getItemId, item.getId()))));
+        }
+    }
+
+    private void fillItemInfo(List<SysDocItem> items) {
+        if (items.isEmpty()) {
+            return;
+        }
+        Map<Long, SysDocCategory> categoryMap = categoryMapper.selectList(new LambdaQueryWrapper<SysDocCategory>()
+                        .eq(SysDocCategory::getDeleted, 0))
+                .stream().collect(Collectors.toMap(SysDocCategory::getId, Function.identity(), (a, b) -> a));
+        Map<Long, SysDept> deptMap = deptMapper.selectList(new LambdaQueryWrapper<SysDept>().eq(SysDept::getDeleted, 0))
+                .stream().collect(Collectors.toMap(SysDept::getId, Function.identity(), (a, b) -> a));
+        for (SysDocItem item : items) {
+            SysDocCategory category = categoryMap.get(item.getCategoryId());
+            if (category == null) {
+                continue;
+            }
+            item.setCategoryName(category.getCategoryName());
+            item.setSectionDeptId(category.getSectionDeptId());
+            item.setSectionDeptName(name(deptMap.get(category.getSectionDeptId())));
         }
     }
 

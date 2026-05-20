@@ -68,6 +68,12 @@ public class DocItemController {
         return ApiResponse.success(docWorkspaceService.saveFields(currentUser.deptId(), currentUser.superAdmin(), id, fields));
     }
 
+    @GetMapping("/{id}/submissions")
+    public ApiResponse<List<SysDocSubmission>> submissions(@PathVariable Long id) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.itemSubmissions(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id));
+    }
+
     @PostMapping(value = "/{id}/submissions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<SysDocSubmission> submit(@PathVariable Long id,
                                                 @RequestParam(required = false) String valuesJson,

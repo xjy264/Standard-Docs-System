@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   category_id BIGINT NOT NULL,
   item_name VARCHAR(128) NOT NULL,
+  content_html MEDIUMTEXT,
   collect_enabled TINYINT(1) NOT NULL DEFAULT 1,
   attachment_enabled TINYINT(1) NOT NULL DEFAULT 0,
   attachment_required TINYINT(1) NOT NULL DEFAULT 0,
