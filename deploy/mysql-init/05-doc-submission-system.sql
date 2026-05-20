@@ -88,13 +88,71 @@ CREATE TABLE IF NOT EXISTS sys_doc_submission (
   item_id BIGINT NOT NULL,
   category_id BIGINT NOT NULL,
   section_dept_id BIGINT NOT NULL,
-  workshop_dept_id BIGINT NOT NULL,
+  workshop_dept_id BIGINT NULL,
+  submitter_dept_id BIGINT NULL,
   upload_user_id BIGINT NOT NULL,
   submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_doc_submission_category (category_id, submitted_at),
   INDEX idx_doc_submission_workshop (workshop_dept_id, submitted_at),
+  INDEX idx_doc_submission_submitter (submitter_dept_id, submitted_at),
   INDEX idx_doc_submission_item (item_id, submitted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET @submitter_column_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_submission'
+    AND COLUMN_NAME = 'submitter_dept_id'
+);
+SET @sql := IF(@submitter_column_exists = 0,
+  'ALTER TABLE sys_doc_submission ADD COLUMN submitter_dept_id BIGINT NULL AFTER workshop_dept_id',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE sys_doc_submission
+SET submitter_dept_id = COALESCE(submitter_dept_id, workshop_dept_id, section_dept_id)
+WHERE submitter_dept_id IS NULL;
+
+SET @workshop_nullable := (
+  SELECT IS_NULLABLE FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_submission'
+    AND COLUMN_NAME = 'workshop_dept_id'
+);
+SET @sql := IF(@workshop_nullable = 'NO',
+  'ALTER TABLE sys_doc_submission MODIFY COLUMN workshop_dept_id BIGINT NULL',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @submitter_nullable := (
+  SELECT IS_NULLABLE FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_submission'
+    AND COLUMN_NAME = 'submitter_dept_id'
+);
+SET @sql := IF(@submitter_nullable = 'NO',
+  'ALTER TABLE sys_doc_submission MODIFY COLUMN submitter_dept_id BIGINT NULL',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @submitter_index_exists := (
+  SELECT COUNT(*) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_submission'
+    AND INDEX_NAME = 'idx_doc_submission_submitter'
+);
+SET @sql := IF(@submitter_index_exists = 0,
+  'CREATE INDEX idx_doc_submission_submitter ON sys_doc_submission (submitter_dept_id, submitted_at)',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS sys_doc_attachment (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

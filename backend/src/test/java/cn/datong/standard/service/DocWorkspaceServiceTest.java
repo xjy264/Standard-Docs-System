@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -98,7 +99,7 @@ class DocWorkspaceServiceTest {
         when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
-        when(fx.submissionMapper.selectById(any())).thenReturn(submission(1L, 8L, 6L, 2L, 5L));
+        when(fx.submissionMapper.selectById(any())).thenReturn(submission(1L, 8L, 6L, 2L, 5L, 5L));
         when(fx.submissionMapper.insert(any(SysDocSubmission.class))).thenAnswer(invocation -> {
             SysDocSubmission submission = invocation.getArgument(0);
             submission.setId(1L);
@@ -113,10 +114,101 @@ class DocWorkspaceServiceTest {
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("合同.pdf");
+        MultipartFile image = mock(MultipartFile.class);
+        when(image.isEmpty()).thenReturn(false);
+        when(image.getOriginalFilename()).thenReturn("照片.png");
         when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-submissions/test.pdf", 100L, "application/pdf"));
 
-        fx.service.submit(20L, 5L, 8L, null, List.of(file));
+        fx.service.submit(20L, 5L, 8L, null, List.of(file, image));
 
+        verify(fx.attachmentMapper, times(2)).insert(any(cn.datong.standard.entity.SysDocAttachment.class));
+    }
+
+    @Test
+    void sectionUserCanUploadOwnSectionAttachment() {
+        Fixtures fx = fixtures();
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
+        when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.submissionMapper.selectById(any())).thenReturn(submission(1L, 8L, 6L, 2L, null, 2L));
+        when(fx.submissionMapper.insert(any(SysDocSubmission.class))).thenAnswer(invocation -> {
+            SysDocSubmission submission = invocation.getArgument(0);
+            submission.setId(1L);
+            return 1;
+        });
+        when(fx.deptMapper.selectList(any())).thenReturn(List.of(dept(2L, 1L, "办公室", "SECTION")));
+        when(fx.userMapper.selectList(any())).thenReturn(List.of());
+        when(fx.categoryMapper.selectList(any())).thenReturn(List.of(category(6L, 2L)));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, 6L, true)));
+        when(fx.attachmentMapper.selectCount(any())).thenReturn(1L);
+        when(fx.attachmentMapper.selectList(any())).thenReturn(List.of());
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("说明.docx");
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-submissions/test.docx", 100L, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+
+        fx.service.submit(20L, 2L, 8L, null, List.of(file));
+
+        verify(fx.submissionMapper).insert(any(SysDocSubmission.class));
+        verify(fx.attachmentMapper).insert(any(cn.datong.standard.entity.SysDocAttachment.class));
+    }
+
+    @Test
+    void sectionUserCanUploadOtherSectionAttachment() {
+        Fixtures fx = fixtures();
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
+        when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 3L));
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.submissionMapper.selectById(any())).thenReturn(submission(1L, 8L, 6L, 3L, null, 2L));
+        when(fx.submissionMapper.insert(any(SysDocSubmission.class))).thenAnswer(invocation -> {
+            SysDocSubmission submission = invocation.getArgument(0);
+            submission.setId(1L);
+            return 1;
+        });
+        when(fx.deptMapper.selectList(any())).thenReturn(List.of(dept(2L, 1L, "办公室", "SECTION"), dept(3L, 1L, "技术科", "SECTION")));
+        when(fx.userMapper.selectList(any())).thenReturn(List.of());
+        when(fx.categoryMapper.selectList(any())).thenReturn(List.of(category(6L, 3L)));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, 6L, true)));
+        when(fx.attachmentMapper.selectCount(any())).thenReturn(1L);
+        when(fx.attachmentMapper.selectList(any())).thenReturn(List.of());
+
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("跨科室.pdf");
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-submissions/test.pdf", 100L, "application/pdf"));
+
+        fx.service.submit(20L, 2L, 8L, null, List.of(file));
+
+        verify(fx.submissionMapper).insert(any(SysDocSubmission.class));
+        verify(fx.attachmentMapper).insert(any(cn.datong.standard.entity.SysDocAttachment.class));
+    }
+
+    @Test
+    void userWithoutDeptCanUploadAttachment() {
+        Fixtures fx = fixtures();
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
+        when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
+        when(fx.submissionMapper.selectById(any())).thenReturn(submission(1L, 8L, 6L, 2L, null, null));
+        when(fx.submissionMapper.insert(any(SysDocSubmission.class))).thenAnswer(invocation -> {
+            SysDocSubmission submission = invocation.getArgument(0);
+            submission.setId(1L);
+            return 1;
+        });
+        when(fx.deptMapper.selectList(any())).thenReturn(List.of(dept(2L, 1L, "办公室", "SECTION")));
+        when(fx.userMapper.selectList(any())).thenReturn(List.of());
+        when(fx.categoryMapper.selectList(any())).thenReturn(List.of(category(6L, 2L)));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, 6L, true)));
+        when(fx.attachmentMapper.selectCount(any())).thenReturn(1L);
+        when(fx.attachmentMapper.selectList(any())).thenReturn(List.of());
+
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("无组织.pdf");
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-submissions/test.pdf", 100L, "application/pdf"));
+
+        fx.service.submit(1L, null, 8L, null, List.of(file));
+
+        verify(fx.submissionMapper).insert(any(SysDocSubmission.class));
         verify(fx.attachmentMapper).insert(any(cn.datong.standard.entity.SysDocAttachment.class));
     }
 
@@ -129,6 +221,7 @@ class DocWorkspaceServiceTest {
         own.setId(1L);
         own.setCategoryId(6L);
         own.setWorkshopDeptId(5L);
+        own.setSubmitterDeptId(5L);
         when(fx.submissionMapper.selectList(any())).thenReturn(List.of(own));
         when(fx.deptMapper.selectList(any())).thenReturn(List.of());
         when(fx.userMapper.selectList(any())).thenReturn(List.of());
@@ -150,6 +243,7 @@ class DocWorkspaceServiceTest {
         own.setItemId(8L);
         own.setCategoryId(6L);
         own.setWorkshopDeptId(5L);
+        own.setSubmitterDeptId(5L);
         when(fx.submissionMapper.selectList(any())).thenReturn(List.of(own));
         when(fx.deptMapper.selectList(any())).thenReturn(List.of());
         when(fx.userMapper.selectList(any())).thenReturn(List.of());
@@ -211,13 +305,14 @@ class DocWorkspaceServiceTest {
         return item;
     }
 
-    private SysDocSubmission submission(Long id, Long itemId, Long categoryId, Long sectionDeptId, Long workshopDeptId) {
+    private SysDocSubmission submission(Long id, Long itemId, Long categoryId, Long sectionDeptId, Long workshopDeptId, Long submitterDeptId) {
         SysDocSubmission submission = new SysDocSubmission();
         submission.setId(id);
         submission.setItemId(itemId);
         submission.setCategoryId(categoryId);
         submission.setSectionDeptId(sectionDeptId);
         submission.setWorkshopDeptId(workshopDeptId);
+        submission.setSubmitterDeptId(submitterDeptId);
         submission.setUploadUserId(20L);
         return submission;
     }

@@ -55,7 +55,13 @@
       </section>
     </div>
 
-    <el-dialog v-model="itemDialogOpen" :title="editingItem ? '编辑文件' : '新增文件'" width="920px" @closed="destroyEditor">
+    <el-dialog
+      v-model="itemDialogOpen"
+      :title="editingItem ? '编辑文件' : '新增文件'"
+      width="920px"
+      destroy-on-close
+      @closed="destroyEditor"
+    >
       <el-form label-position="top">
         <el-form-item label="文件名称"><el-input v-model="itemForm.itemName" maxlength="128" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="itemForm.sortOrder" :min="0" /></el-form-item>
@@ -67,6 +73,7 @@
               :default-config="editorConfig"
               mode="default"
               class="content-editor"
+              style="height: 300px; overflow-y: hidden"
               @on-created="handleEditorCreated"
             />
           </div>
@@ -288,7 +295,6 @@ watch(() => route.params.deptId, () => {
 }
 
 .content-editor {
-  height: 320px;
-  overflow-y: hidden;
+  min-height: 300px;
 }
 </style>

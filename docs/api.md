@@ -60,8 +60,8 @@
 - `POST /api/doc-items`：本科室用户或超级管理员新增资料入口，请求体包含 `categoryId`、`itemName`、`contentHtml`、`attachmentEnabled`、`sortOrder`。
 - `PUT /api/doc-items/{id}`：本科室用户或超级管理员修改资料入口名称、富文本内容、附件上传开关和排序。
 - `DELETE /api/doc-items/{id}`：本科室用户或超级管理员删除资料入口。
-- `POST /api/doc-items/{id}/submissions`：车间用户上传附件，使用 `multipart/form-data`，包含 `files`。
-- `GET /api/doc-items/{id}/submissions`：查询当前资料入口上传记录；科室用户看全部车间记录，车间用户只看本车间记录。
+- `POST /api/doc-items/{id}/submissions`：车间用户和本科室用户上传附件，使用 `multipart/form-data`，包含多个 `files`。
+- `GET /api/doc-items/{id}/submissions`：查询当前资料入口上传记录；返回 `submitterDeptName` 作为所属组织，科室用户看全部组织记录，车间用户只看本车间记录。
 - `GET /api/submissions/{id}`：查看上传记录详情。
 - `GET /api/doc-attachments/{id}/download`：下载上传记录附件。
 

@@ -109,11 +109,13 @@ CREATE TABLE IF NOT EXISTS sys_doc_submission (
   item_id BIGINT NOT NULL,
   category_id BIGINT NOT NULL,
   section_dept_id BIGINT NOT NULL,
-  workshop_dept_id BIGINT NOT NULL,
+  workshop_dept_id BIGINT NULL,
+  submitter_dept_id BIGINT NULL,
   upload_user_id BIGINT NOT NULL,
   submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_doc_submission_category (category_id, submitted_at),
   INDEX idx_doc_submission_workshop (workshop_dept_id, submitted_at),
+  INDEX idx_doc_submission_submitter (submitter_dept_id, submitted_at),
   INDEX idx_doc_submission_item (item_id, submitted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

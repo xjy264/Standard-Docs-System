@@ -34,7 +34,7 @@ public class DocSubmissionController {
     @GetMapping("/api/doc-attachments/{id}/download")
     public void download(@PathVariable Long id, HttpServletResponse response) throws Exception {
         CurrentUser currentUser = SecurityUtils.currentUser();
-        SysDocAttachment attachment = docWorkspaceService.requireAttachment(currentUser.deptId(), currentUser.superAdmin(), id);
+        SysDocAttachment attachment = docWorkspaceService.requireAttachment(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id);
         response.setContentType(attachment.getMimeType() == null ? "application/octet-stream" : attachment.getMimeType());
         response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''"
                 + URLEncoder.encode(attachment.getOriginalFileName(), StandardCharsets.UTF_8));

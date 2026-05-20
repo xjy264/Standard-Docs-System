@@ -6,7 +6,10 @@
         <h2>{{ item?.itemName || '文件详情' }}</h2>
         <p v-if="item" class="detail-meta">{{ item.sectionDeptName }} / {{ item.categoryName }}</p>
       </div>
-      <el-button @click="openRecords">上传记录</el-button>
+      <div class="header-actions">
+        <el-button v-if="canUploadAttachment" type="primary" @click="uploadOpen = true">上传附件</el-button>
+        <el-button @click="openRecords">上传记录</el-button>
+      </div>
     </div>
 
     <section class="detail-content">
@@ -14,8 +17,7 @@
       <el-empty v-else description="暂无文件内容" />
     </section>
 
-    <section v-if="canUploadAttachment" class="upload-panel">
-      <div class="panel-title">上传附件</div>
+    <el-dialog v-model="uploadOpen" title="上传附件" width="720px" @closed="resetUpload">
       <el-upload
         ref="uploadRef"
         class="attachment-upload"
@@ -30,7 +32,7 @@
       <div class="upload-actions">
         <el-button type="primary" :loading="submitting" @click="submitAttachment">上传附件</el-button>
       </div>
-    </section>
+    </el-dialog>
 
     <el-dialog v-model="recordsOpen" title="上传记录" width="980px">
       <el-table :data="records" stripe>
@@ -38,7 +40,7 @@
         <el-table-column prop="sectionDeptName" label="所属科室" width="120" />
         <el-table-column prop="categoryName" label="二级菜单" width="140" />
         <el-table-column prop="itemName" label="文件名称" min-width="150" />
-        <el-table-column prop="workshopDeptName" label="所属车间" width="130" />
+        <el-table-column prop="submitterDeptName" label="所属组织" width="130" />
         <el-table-column prop="uploadUserName" label="上传人" width="120" />
         <el-table-column prop="attachmentCount" label="附件数" width="90" />
         <el-table-column label="操作" width="90">
@@ -51,7 +53,7 @@
       <el-descriptions v-if="recordDetail" :column="2" border>
         <el-descriptions-item label="文件名称">{{ recordDetail.itemName }}</el-descriptions-item>
         <el-descriptions-item label="上传时间">{{ recordDetail.submittedAt }}</el-descriptions-item>
-        <el-descriptions-item label="所属车间">{{ recordDetail.workshopDeptName }}</el-descriptions-item>
+        <el-descriptions-item label="所属组织">{{ recordDetail.submitterDeptName }}</el-descriptions-item>
         <el-descriptions-item label="上传人">{{ recordDetail.uploadUserName }}</el-descriptions-item>
       </el-descriptions>
       <el-table v-if="recordDetail" :data="recordDetail.attachments || []" style="margin-top: 14px" border>
@@ -65,6 +67,7 @@
 </template>
 
 <script setup lang="ts">
+import '@wangeditor/editor/dist/css/style.css'
 import { ElMessage, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -92,7 +95,7 @@ interface DocSubmission {
   itemName: string
   categoryName: string
   sectionDeptName: string
-  workshopDeptName: string
+  submitterDeptName: string
   uploadUserName: string
   submittedAt: string
   attachmentCount: number
@@ -107,6 +110,7 @@ const itemId = computed(() => Number(route.params.itemId))
 const sections = ref<SectionItem[]>([])
 const item = ref<DocItem>()
 const recordsOpen = ref(false)
+const uploadOpen = ref(false)
 const recordDetailOpen = ref(false)
 const records = ref<DocSubmission[]>([])
 const recordDetail = ref<DocSubmission>()
@@ -114,8 +118,7 @@ const uploadFiles = ref<UploadRawFile[]>([])
 const uploadRef = ref<any>()
 const submitting = ref(false)
 
-const isWorkshopUser = computed(() => Boolean(auth.user?.deptId) && !auth.user?.isSuperAdmin && !sections.value.some((section) => section.id === auth.user?.deptId))
-const canUploadAttachment = computed(() => isWorkshopUser.value && Boolean(item.value?.attachmentEnabled))
+const canUploadAttachment = computed(() => Boolean(item.value?.attachmentEnabled))
 
 async function load() {
   sections.value = await apiGet<SectionItem[]>('/sections/navigation')
@@ -145,11 +148,18 @@ async function submitAttachment() {
     uploadFiles.value.forEach((file) => form.append('files', file))
     await http.post(`/doc-items/${itemId.value}/submissions`, form)
     ElMessage.success('上传成功')
-    uploadFiles.value = []
-    uploadRef.value?.clearFiles()
+    uploadOpen.value = false
+    if (recordsOpen.value) {
+      await openRecords()
+    }
   } finally {
     submitting.value = false
   }
+}
+
+function resetUpload() {
+  uploadFiles.value = []
+  uploadRef.value?.clearFiles()
 }
 
 async function openRecords() {
@@ -192,6 +202,12 @@ onMounted(load)
   gap: 16px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .detail-header h2 {
   margin: 8px 0 0;
 }
@@ -201,8 +217,7 @@ onMounted(load)
   color: #637083;
 }
 
-.detail-content,
-.upload-panel {
+.detail-content {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -213,15 +228,42 @@ onMounted(load)
   min-height: 280px;
   line-height: 1.8;
   color: #1f2d3d;
+  word-break: break-word;
 }
 
 .rich-content :deep(p) {
   margin: 0 0 10px;
 }
 
-.panel-title {
-  margin-bottom: 12px;
-  font-weight: 700;
+.rich-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+.rich-content :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.rich-content :deep(th),
+.rich-content :deep(td) {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+}
+
+.rich-content :deep(ul),
+.rich-content :deep(ol) {
+  padding-left: 22px;
+  margin: 8px 0 12px;
+}
+
+.rich-content :deep(blockquote) {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border-left: 4px solid #d8e3f2;
+  background: #f7f9fc;
+  color: #4b5b70;
 }
 
 .attachment-upload,

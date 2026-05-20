@@ -148,8 +148,8 @@ public class DocWorkspaceService {
     @Transactional
     public SysDocSubmission submit(Long userId, Long userDeptId, Long itemId, String valuesJson, List<MultipartFile> files) {
         SysDocItem item = requireItem(itemId);
-        SysDept workshop = requireWorkshop(userDeptId);
         SysDocCategory category = requireCategory(item.getCategoryId());
+        SysDept submitterDept = submitterDept(userDeptId);
         List<MultipartFile> uploadFiles = files == null ? List.of() : files.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
@@ -164,7 +164,8 @@ public class DocWorkspaceService {
         submission.setItemId(item.getId());
         submission.setCategoryId(category.getId());
         submission.setSectionDeptId(category.getSectionDeptId());
-        submission.setWorkshopDeptId(workshop.getId());
+        submission.setWorkshopDeptId(submitterDept != null && isWorkshop(submitterDept) ? submitterDept.getId() : null);
+        submission.setSubmitterDeptId(submitterDept == null ? null : submitterDept.getId());
         submission.setUploadUserId(userId);
         submission.setSubmittedAt(LocalDateTime.now());
         submissionMapper.insert(submission);
@@ -178,15 +179,15 @@ public class DocWorkspaceService {
     public List<SysDocSubmission> submissions(Long userId, Long userDeptId, boolean superAdmin, Long categoryId) {
         SysDocCategory category = requireCategory(categoryId);
         boolean sectionManager = canManageSection(userDeptId, superAdmin, category.getSectionDeptId());
-        boolean workshopUser = isWorkshop(userDeptId);
-        if (!sectionManager && !workshopUser && !superAdmin) {
-            throw new BusinessException(403, "无权查看上传记录");
-        }
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getCategoryId, categoryId)
                 .orderByDesc(SysDocSubmission::getSubmittedAt);
         if (!superAdmin && !sectionManager) {
-            wrapper.eq(SysDocSubmission::getWorkshopDeptId, userDeptId);
+            if (userDeptId == null) {
+                wrapper.eq(SysDocSubmission::getUploadUserId, userId);
+            } else {
+                wrapper.eq(SysDocSubmission::getSubmitterDeptId, userDeptId);
+            }
         }
         List<SysDocSubmission> result = submissionMapper.selectList(wrapper);
         fillSubmissionInfo(result);
@@ -197,15 +198,15 @@ public class DocWorkspaceService {
         SysDocItem item = requireItem(itemId);
         SysDocCategory category = requireCategory(item.getCategoryId());
         boolean sectionManager = canManageSection(userDeptId, superAdmin, category.getSectionDeptId());
-        boolean workshopUser = isWorkshop(userDeptId);
-        if (!sectionManager && !workshopUser && !superAdmin) {
-            throw new BusinessException(403, "无权查看上传记录");
-        }
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, itemId)
                 .orderByDesc(SysDocSubmission::getSubmittedAt);
         if (!superAdmin && !sectionManager) {
-            wrapper.eq(SysDocSubmission::getWorkshopDeptId, userDeptId);
+            if (userDeptId == null) {
+                wrapper.eq(SysDocSubmission::getUploadUserId, userId);
+            } else {
+                wrapper.eq(SysDocSubmission::getSubmitterDeptId, userDeptId);
+            }
         }
         List<SysDocSubmission> result = submissionMapper.selectList(wrapper);
         fillSubmissionInfo(result);
@@ -217,13 +218,13 @@ public class DocWorkspaceService {
         if (submission == null) {
             throw new BusinessException("上传记录不存在");
         }
-        requireSubmissionVisible(userDeptId, superAdmin, submission);
+        requireSubmissionVisible(userId, userDeptId, superAdmin, submission);
         fillSubmissionInfo(List.of(submission));
         submission.setAttachments(attachments(submissionId));
         return submission;
     }
 
-    public SysDocAttachment requireAttachment(Long userDeptId, boolean superAdmin, Long attachmentId) {
+    public SysDocAttachment requireAttachment(Long userId, Long userDeptId, boolean superAdmin, Long attachmentId) {
         SysDocAttachment attachment = attachmentMapper.selectById(attachmentId);
         if (attachment == null) {
             throw new BusinessException("附件不存在");
@@ -232,7 +233,7 @@ public class DocWorkspaceService {
         if (submission == null) {
             throw new BusinessException("上传记录不存在");
         }
-        requireSubmissionVisible(userDeptId, superAdmin, submission);
+        requireSubmissionVisible(userId, userDeptId, superAdmin, submission);
         return attachment;
     }
 
@@ -312,6 +313,8 @@ public class DocWorkspaceService {
         for (SysDocSubmission submission : submissions) {
             submission.setSectionDeptName(name(deptMap.get(submission.getSectionDeptId())));
             submission.setWorkshopDeptName(name(deptMap.get(submission.getWorkshopDeptId())));
+            Long submitterDeptId = submission.getSubmitterDeptId() == null ? submission.getWorkshopDeptId() : submission.getSubmitterDeptId();
+            submission.setSubmitterDeptName(submitterDeptId == null ? "无所属组织" : name(deptMap.get(submitterDeptId)));
             submission.setCategoryName(categoryMap.get(submission.getCategoryId()) == null ? null : categoryMap.get(submission.getCategoryId()).getCategoryName());
             submission.setItemName(itemMap.get(submission.getItemId()) == null ? null : itemMap.get(submission.getItemId()).getItemName());
             SysUser user = userMap.get(submission.getUploadUserId());
@@ -321,8 +324,12 @@ public class DocWorkspaceService {
         }
     }
 
-    private void requireSubmissionVisible(Long userDeptId, boolean superAdmin, SysDocSubmission submission) {
-        if (superAdmin || Objects.equals(userDeptId, submission.getSectionDeptId()) || Objects.equals(userDeptId, submission.getWorkshopDeptId())) {
+    private void requireSubmissionVisible(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission) {
+        Long submitterDeptId = submission.getSubmitterDeptId() == null ? submission.getWorkshopDeptId() : submission.getSubmitterDeptId();
+        if (superAdmin
+                || Objects.equals(userId, submission.getUploadUserId())
+                || Objects.equals(userDeptId, submission.getSectionDeptId())
+                || Objects.equals(userDeptId, submitterDeptId)) {
             return;
         }
         throw new BusinessException(403, "无权查看上传记录");
@@ -347,10 +354,13 @@ public class DocWorkspaceService {
         return dept;
     }
 
-    private SysDept requireWorkshop(Long workshopDeptId) {
-        SysDept dept = deptMapper.selectById(workshopDeptId);
-        if (dept == null || dept.getDeleted() != null && dept.getDeleted() == 1 || !isWorkshop(dept)) {
-            throw new BusinessException(403, "只有车间用户可以提交资料");
+    private SysDept submitterDept(Long userDeptId) {
+        if (userDeptId == null) {
+            return null;
+        }
+        SysDept dept = deptMapper.selectById(userDeptId);
+        if (dept == null || dept.getDeleted() != null && dept.getDeleted() == 1) {
+            return null;
         }
         return dept;
     }

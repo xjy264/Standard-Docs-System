@@ -19,7 +19,7 @@
 
 - `sys_doc_category`：科室资料二级侧边栏。
 - `sys_doc_item`：二级侧边栏下的文件入口，包含 `content_html` 富文本文件内容和附件上传开关。
-- `sys_doc_submission`：车间用户上传记录。
+- `sys_doc_submission`：附件上传记录，`submitter_dept_id` 记录实际上传人所属组织；无所属组织用户上传时允许为空。
 - `sys_doc_attachment`：上传记录附件元数据，真实文件保存在 MinIO。
 
 ## 初始化数据

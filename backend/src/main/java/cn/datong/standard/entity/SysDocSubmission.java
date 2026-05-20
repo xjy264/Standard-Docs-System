@@ -18,6 +18,7 @@ public class SysDocSubmission {
     private Long categoryId;
     private Long sectionDeptId;
     private Long workshopDeptId;
+    private Long submitterDeptId;
     private Long uploadUserId;
     private LocalDateTime submittedAt;
 
@@ -29,6 +30,8 @@ public class SysDocSubmission {
     private String itemName;
     @TableField(exist = false)
     private String workshopDeptName;
+    @TableField(exist = false)
+    private String submitterDeptName;
     @TableField(exist = false)
     private String uploadUserName;
     @TableField(exist = false)
