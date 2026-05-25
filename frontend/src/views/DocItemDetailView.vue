@@ -4,7 +4,7 @@
       <div>
         <el-button link type="primary" @click="router.push(`/org/${deptId}`)">返回文件菜单</el-button>
         <h2>{{ item?.itemName || '文件详情' }}</h2>
-        <p v-if="item" class="detail-meta">{{ item.sectionDeptName }} / {{ item.categoryName }}</p>
+        <p v-if="item" class="detail-meta">{{ [item.sectionDeptName, item.categoryName].filter(Boolean).join(' / ') }}</p>
       </div>
       <div class="header-actions">
         <el-button v-if="canUploadAttachment" type="primary" @click="uploadOpen = true">上传附件</el-button>
@@ -38,7 +38,7 @@
       <el-table :data="records" stripe>
         <el-table-column prop="submittedAt" label="上传时间" width="180" />
         <el-table-column prop="sectionDeptName" label="所属科室" width="120" />
-        <el-table-column prop="categoryName" label="二级菜单" width="140" />
+        <el-table-column prop="categoryName" label="所属目录" width="140" />
         <el-table-column prop="itemName" label="文件名称" min-width="150" />
         <el-table-column prop="submitterDeptName" label="所属组织" width="130" />
         <el-table-column prop="uploadUserName" label="上传人" width="120" />
@@ -81,7 +81,7 @@ interface SectionItem {
 
 interface DocItem {
   id: number
-  categoryId: number
+  categoryId?: number
   itemName: string
   contentHtml?: string
   attachmentEnabled: number
@@ -93,7 +93,7 @@ interface DocItem {
 interface DocSubmission {
   id: number
   itemName: string
-  categoryName: string
+  categoryName?: string
   sectionDeptName: string
   submitterDeptName: string
   uploadUserName: string

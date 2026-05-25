@@ -2,16 +2,19 @@ package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.DeptNavigationItem;
+import cn.datong.standard.dto.DocNodeRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocAttachment;
 import cn.datong.standard.entity.SysDocCategory;
 import cn.datong.standard.entity.SysDocItem;
+import cn.datong.standard.entity.SysDocNode;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
 import cn.datong.standard.mapper.SysDocItemMapper;
+import cn.datong.standard.mapper.SysDocNodeMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
@@ -24,11 +27,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -40,6 +45,7 @@ public class DocWorkspaceService {
     private final SysUserMapper userMapper;
     private final SysDocCategoryMapper categoryMapper;
     private final SysDocItemMapper itemMapper;
+    private final SysDocNodeMapper nodeMapper;
     private final SysDocSubmissionMapper submissionMapper;
     private final SysDocAttachmentMapper attachmentMapper;
     private final FileStorageService storageService;
@@ -64,6 +70,115 @@ public class DocWorkspaceService {
                 .eq(SysDocCategory::getDeleted, 0)
                 .orderByAsc(SysDocCategory::getSortOrder)
                 .orderByAsc(SysDocCategory::getId));
+    }
+
+    public List<SysDocNode> documentTree(Long sectionDeptId) {
+        requireSection(sectionDeptId);
+        List<SysDocNode> nodes = nodeMapper.selectList(new LambdaQueryWrapper<SysDocNode>()
+                .eq(SysDocNode::getSectionDeptId, sectionDeptId)
+                .eq(SysDocNode::getDeleted, 0)
+                .orderByAsc(SysDocNode::getSortOrder)
+                .orderByAsc(SysDocNode::getId));
+        fillNodeItemInfo(nodes);
+        Map<Long, SysDocNode> nodeMap = nodes.stream()
+                .peek(node -> node.setChildren(new ArrayList<>()))
+                .collect(Collectors.toMap(SysDocNode::getId, Function.identity(), (a, b) -> a));
+        List<SysDocNode> roots = new ArrayList<>();
+        for (SysDocNode node : nodes) {
+            if (node.getParentId() == null || !nodeMap.containsKey(node.getParentId())) {
+                roots.add(node);
+            } else {
+                nodeMap.get(node.getParentId()).getChildren().add(node);
+            }
+        }
+        return roots;
+    }
+
+    public SysDocNode createFolderNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
+        NodePlacement placement = resolvePlacement(userDeptId, superAdmin, request.sectionDeptId(), request.parentId());
+        SysDocNode node = new SysDocNode();
+        node.setSectionDeptId(placement.sectionDeptId());
+        node.setParentId(request.parentId());
+        node.setNodeType("FOLDER");
+        node.setNodeName(requiredText(request.nodeName(), "请输入文件夹名称"));
+        node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
+        node.setLevel(placement.level());
+        node.setCreatedBy(userId);
+        node.setCreatedAt(LocalDateTime.now());
+        node.setUpdatedAt(LocalDateTime.now());
+        node.setDeleted(0);
+        nodeMapper.insert(node);
+        return node;
+    }
+
+    @Transactional
+    public SysDocNode createFileNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
+        NodePlacement placement = resolvePlacement(userDeptId, superAdmin, request.sectionDeptId(), request.parentId());
+        SysDocItem item = new SysDocItem();
+        item.setSectionDeptId(placement.sectionDeptId());
+        item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
+        item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
+        item.setAttachmentEnabled(Boolean.TRUE.equals(request.attachmentEnabled()) ? 1 : 0);
+        item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
+        item.setCreatedBy(userId);
+        item.setCreatedAt(LocalDateTime.now());
+        item.setUpdatedAt(LocalDateTime.now());
+        item.setDeleted(0);
+        itemMapper.insert(item);
+
+        SysDocNode node = new SysDocNode();
+        node.setSectionDeptId(placement.sectionDeptId());
+        node.setParentId(request.parentId());
+        node.setNodeType("FILE");
+        node.setNodeName(item.getItemName());
+        node.setItemId(item.getId());
+        node.setSortOrder(item.getSortOrder());
+        node.setLevel(placement.level());
+        node.setCreatedBy(userId);
+        node.setCreatedAt(LocalDateTime.now());
+        node.setUpdatedAt(LocalDateTime.now());
+        node.setDeleted(0);
+        nodeMapper.insert(node);
+        return node;
+    }
+
+    public SysDocNode updateNode(Long userDeptId, boolean superAdmin, Long id, DocNodeRequest request) {
+        SysDocNode node = requireNode(id);
+        requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
+        node.setNodeName(requiredText(request.nodeName(), "请输入名称"));
+        node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
+        node.setUpdatedAt(LocalDateTime.now());
+        nodeMapper.updateById(node);
+        if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
+            SysDocItem item = requireItem(node.getItemId());
+            item.setItemName(node.getNodeName());
+            item.setSortOrder(node.getSortOrder());
+            if (request.contentHtml() != null) {
+                item.setContentHtml(request.contentHtml());
+            }
+            if (request.attachmentEnabled() != null) {
+                item.setAttachmentEnabled(Boolean.TRUE.equals(request.attachmentEnabled()) ? 1 : 0);
+            }
+            item.setUpdatedAt(LocalDateTime.now());
+            itemMapper.updateById(item);
+        }
+        return node;
+    }
+
+    @Transactional
+    public void deleteNode(Long userDeptId, boolean superAdmin, Long id) {
+        SysDocNode node = requireNode(id);
+        requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
+        Long children = nodeMapper.selectCount(new LambdaQueryWrapper<SysDocNode>()
+                .eq(SysDocNode::getParentId, id)
+                .eq(SysDocNode::getDeleted, 0));
+        if (children > 0) {
+            throw new BusinessException("文件夹下存在内容，无法删除");
+        }
+        if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
+            itemMapper.deleteById(node.getItemId());
+        }
+        nodeMapper.deleteById(id);
     }
 
     public SysDocCategory createCategory(Long userId, Long userDeptId, boolean superAdmin, SysDocCategory request) {
@@ -119,6 +234,7 @@ public class DocWorkspaceService {
         requireManageSection(userDeptId, superAdmin, category.getSectionDeptId());
         SysDocItem item = new SysDocItem();
         item.setCategoryId(category.getId());
+        item.setSectionDeptId(category.getSectionDeptId());
         applyItemRequest(item, request);
         item.setCreatedBy(userId);
         item.setCreatedAt(LocalDateTime.now());
@@ -130,8 +246,7 @@ public class DocWorkspaceService {
 
     public SysDocItem updateItem(Long userDeptId, boolean superAdmin, Long id, SysDocItem request) {
         SysDocItem item = requireItem(id);
-        SysDocCategory category = requireCategory(item.getCategoryId());
-        requireManageSection(userDeptId, superAdmin, category.getSectionDeptId());
+        requireManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
         applyItemRequest(item, request);
         item.setUpdatedAt(LocalDateTime.now());
         itemMapper.updateById(item);
@@ -140,15 +255,15 @@ public class DocWorkspaceService {
 
     public void deleteItem(Long userDeptId, boolean superAdmin, Long id) {
         SysDocItem item = requireItem(id);
-        SysDocCategory category = requireCategory(item.getCategoryId());
-        requireManageSection(userDeptId, superAdmin, category.getSectionDeptId());
+        requireManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
         itemMapper.deleteById(id);
     }
 
     @Transactional
     public SysDocSubmission submit(Long userId, Long userDeptId, Long itemId, String valuesJson, List<MultipartFile> files) {
         SysDocItem item = requireItem(itemId);
-        SysDocCategory category = requireCategory(item.getCategoryId());
+        SysDocCategory category = item.getCategoryId() == null ? null : requireCategory(item.getCategoryId());
+        Long sectionDeptId = itemSectionDeptId(item, category);
         SysDept submitterDept = submitterDept(userDeptId);
         List<MultipartFile> uploadFiles = files == null ? List.of() : files.stream()
                 .filter(file -> file != null && !file.isEmpty())
@@ -162,8 +277,8 @@ public class DocWorkspaceService {
 
         SysDocSubmission submission = new SysDocSubmission();
         submission.setItemId(item.getId());
-        submission.setCategoryId(category.getId());
-        submission.setSectionDeptId(category.getSectionDeptId());
+        submission.setCategoryId(category == null ? null : category.getId());
+        submission.setSectionDeptId(sectionDeptId);
         submission.setWorkshopDeptId(submitterDept != null && isWorkshop(submitterDept) ? submitterDept.getId() : null);
         submission.setSubmitterDeptId(submitterDept == null ? null : submitterDept.getId());
         submission.setUploadUserId(userId);
@@ -196,8 +311,7 @@ public class DocWorkspaceService {
 
     public List<SysDocSubmission> itemSubmissions(Long userId, Long userDeptId, boolean superAdmin, Long itemId) {
         SysDocItem item = requireItem(itemId);
-        SysDocCategory category = requireCategory(item.getCategoryId());
-        boolean sectionManager = canManageSection(userDeptId, superAdmin, category.getSectionDeptId());
+        boolean sectionManager = canManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, itemId)
                 .orderByDesc(SysDocSubmission::getSubmittedAt);
@@ -269,6 +383,29 @@ public class DocWorkspaceService {
                 .orderByAsc(SysDocAttachment::getId));
     }
 
+    private void fillNodeItemInfo(List<SysDocNode> nodes) {
+        Set<Long> itemIds = nodes.stream()
+                .filter(node -> "FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null)
+                .map(SysDocNode::getItemId)
+                .collect(Collectors.toSet());
+        if (itemIds.isEmpty()) {
+            return;
+        }
+        Map<Long, SysDocItem> itemMap = itemMapper.selectList(new LambdaQueryWrapper<SysDocItem>()
+                        .in(SysDocItem::getId, itemIds)
+                        .eq(SysDocItem::getDeleted, 0))
+                .stream().collect(Collectors.toMap(SysDocItem::getId, Function.identity(), (a, b) -> a));
+        for (SysDocNode node : nodes) {
+            SysDocItem item = itemMap.get(node.getItemId());
+            if (item == null) {
+                continue;
+            }
+            node.setAttachmentEnabled(item.getAttachmentEnabled());
+            node.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
+                    .eq(SysDocSubmission::getItemId, item.getId()))));
+        }
+    }
+
     private void fillItemCounts(List<SysDocItem> items) {
         for (SysDocItem item : items) {
             item.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
@@ -286,13 +423,12 @@ public class DocWorkspaceService {
         Map<Long, SysDept> deptMap = deptMapper.selectList(new LambdaQueryWrapper<SysDept>().eq(SysDept::getDeleted, 0))
                 .stream().collect(Collectors.toMap(SysDept::getId, Function.identity(), (a, b) -> a));
         for (SysDocItem item : items) {
-            SysDocCategory category = categoryMap.get(item.getCategoryId());
-            if (category == null) {
-                continue;
+            SysDocCategory category = item.getCategoryId() == null ? null : categoryMap.get(item.getCategoryId());
+            if (category != null) {
+                item.setCategoryName(category.getCategoryName());
+                item.setSectionDeptId(category.getSectionDeptId());
             }
-            item.setCategoryName(category.getCategoryName());
-            item.setSectionDeptId(category.getSectionDeptId());
-            item.setSectionDeptName(name(deptMap.get(category.getSectionDeptId())));
+            item.setSectionDeptName(name(deptMap.get(item.getSectionDeptId())));
         }
     }
 
@@ -346,6 +482,43 @@ public class DocWorkspaceService {
         }
     }
 
+    private NodePlacement resolvePlacement(Long userDeptId, boolean superAdmin, Long sectionDeptId, Long parentId) {
+        if (parentId == null) {
+            requireManageSection(userDeptId, superAdmin, sectionDeptId);
+            return new NodePlacement(sectionDeptId, 1);
+        }
+        SysDocNode parent = requireNode(parentId);
+        if (!"FOLDER".equalsIgnoreCase(parent.getNodeType())) {
+            throw new BusinessException("只能在文件夹下新增内容");
+        }
+        requireManageSection(userDeptId, superAdmin, parent.getSectionDeptId());
+        if (!Objects.equals(sectionDeptId, parent.getSectionDeptId())) {
+            throw new BusinessException("父级目录不属于当前科室");
+        }
+        int level = parent.getLevel() == null ? 2 : parent.getLevel() + 1;
+        if (level > 5) {
+            throw new BusinessException("目录层级最多支持五层");
+        }
+        return new NodePlacement(parent.getSectionDeptId(), level);
+    }
+
+    private Long itemSectionDeptId(SysDocItem item) {
+        if (item.getSectionDeptId() != null) {
+            return item.getSectionDeptId();
+        }
+        return requireCategory(item.getCategoryId()).getSectionDeptId();
+    }
+
+    private Long itemSectionDeptId(SysDocItem item, SysDocCategory category) {
+        if (item.getSectionDeptId() != null) {
+            return item.getSectionDeptId();
+        }
+        if (category != null) {
+            return category.getSectionDeptId();
+        }
+        throw new BusinessException("资料入口所属科室不存在");
+    }
+
     private SysDept requireSection(Long sectionDeptId) {
         SysDept dept = deptMapper.selectById(sectionDeptId);
         if (dept == null || dept.getDeleted() != null && dept.getDeleted() == 1 || !isSection(dept)) {
@@ -366,11 +539,25 @@ public class DocWorkspaceService {
     }
 
     private SysDocCategory requireCategory(Long id) {
+        if (id == null) {
+            throw new BusinessException("二级菜单不存在");
+        }
         SysDocCategory category = categoryMapper.selectById(id);
         if (category == null || category.getDeleted() != null && category.getDeleted() == 1) {
             throw new BusinessException("二级菜单不存在");
         }
         return category;
+    }
+
+    private SysDocNode requireNode(Long id) {
+        SysDocNode node = nodeMapper.selectById(id);
+        if (node == null || node.getDeleted() != null && node.getDeleted() == 1) {
+            throw new BusinessException("目录节点不存在");
+        }
+        return node;
+    }
+
+    private record NodePlacement(Long sectionDeptId, int level) {
     }
 
     private SysDocItem requireItem(Long id) {

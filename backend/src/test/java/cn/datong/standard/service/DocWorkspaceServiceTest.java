@@ -1,14 +1,17 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.dto.DocNodeRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocCategory;
 import cn.datong.standard.entity.SysDocItem;
+import cn.datong.standard.entity.SysDocNode;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
 import cn.datong.standard.mapper.SysDocItemMapper;
+import cn.datong.standard.mapper.SysDocNodeMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
@@ -40,6 +43,55 @@ class DocWorkspaceServiceTest {
 
         assertThat(fx.service.sections()).extracting(item -> item.deptName())
                 .containsExactly("办公室", "技术科");
+    }
+
+    @Test
+    void documentTreeBuildsMixedFolderAndFileHierarchy() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        SysDocNode folder = node(1L, 2L, null, "FOLDER", "技术规范", null, 1, 10);
+        SysDocNode file = node(2L, 2L, 1L, "FILE", "国铁集团技术规章", 8L, 2, 10);
+        SysDocNode childFolder = node(3L, 2L, 1L, "FOLDER", "有效文件", null, 2, 20);
+        when(fx.nodeMapper.selectList(any())).thenReturn(List.of(folder, file, childFolder));
+        when(fx.submissionMapper.selectCount(any())).thenReturn(3L);
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, null, 2L, true)));
+
+        List<SysDocNode> tree = fx.service.documentTree(2L);
+
+        assertThat(tree).extracting(SysDocNode::getNodeName).containsExactly("技术规范");
+        assertThat(tree.getFirst().getChildren()).extracting(SysDocNode::getNodeName)
+                .containsExactly("国铁集团技术规章", "有效文件");
+        assertThat(tree.getFirst().getChildren().getFirst().getSubmissionCount()).isEqualTo(3);
+        assertThat(tree.getFirst().getChildren().getFirst().getAttachmentEnabled()).isEqualTo(1);
+    }
+
+    @Test
+    void createFileCreatesItemAndTreeNodeWithoutLegacyCategory() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
+            SysDocItem item = invocation.getArgument(0);
+            item.setId(88L);
+            return 1;
+        });
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>");
+
+        fx.service.createFileNode(10L, 2L, false, request);
+
+        verify(fx.itemMapper).insert(any(SysDocItem.class));
+        verify(fx.nodeMapper).insert(any(SysDocNode.class));
+    }
+
+    @Test
+    void createFolderRejectsDepthGreaterThanFive() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, 4L, "FOLDER", "第五层", null, 5, 10));
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "第六层", 10, null, false, "");
+
+        assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, false, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("目录层级最多支持五层");
     }
 
     @Test
@@ -259,6 +311,7 @@ class DocWorkspaceServiceTest {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         SysDocCategoryMapper categoryMapper = mock(SysDocCategoryMapper.class);
         SysDocItemMapper itemMapper = mock(SysDocItemMapper.class);
+        SysDocNodeMapper nodeMapper = mock(SysDocNodeMapper.class);
         SysDocSubmissionMapper submissionMapper = mock(SysDocSubmissionMapper.class);
         SysDocAttachmentMapper attachmentMapper = mock(SysDocAttachmentMapper.class);
         FileStorageService storageService = mock(FileStorageService.class);
@@ -267,11 +320,12 @@ class DocWorkspaceServiceTest {
                 userMapper,
                 categoryMapper,
                 itemMapper,
+                nodeMapper,
                 submissionMapper,
                 attachmentMapper,
                 storageService
         );
-        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, submissionMapper, attachmentMapper, storageService, service);
+        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, nodeMapper, submissionMapper, attachmentMapper, storageService, service);
     }
 
     private SysDept dept(Long id, Long parentId, String name, String type) {
@@ -305,6 +359,27 @@ class DocWorkspaceServiceTest {
         return item;
     }
 
+    private SysDocItem item(Long id, Long categoryId, Long sectionDeptId, boolean attachment) {
+        SysDocItem item = item(id, categoryId, attachment);
+        item.setSectionDeptId(sectionDeptId);
+        return item;
+    }
+
+    private SysDocNode node(Long id, Long sectionDeptId, Long parentId, String nodeType, String nodeName,
+                            Long itemId, Integer level, Integer sortOrder) {
+        SysDocNode node = new SysDocNode();
+        node.setId(id);
+        node.setSectionDeptId(sectionDeptId);
+        node.setParentId(parentId);
+        node.setNodeType(nodeType);
+        node.setNodeName(nodeName);
+        node.setItemId(itemId);
+        node.setLevel(level);
+        node.setSortOrder(sortOrder);
+        node.setDeleted(0);
+        return node;
+    }
+
     private SysDocSubmission submission(Long id, Long itemId, Long categoryId, Long sectionDeptId, Long workshopDeptId, Long submitterDeptId) {
         SysDocSubmission submission = new SysDocSubmission();
         submission.setId(id);
@@ -322,6 +397,7 @@ class DocWorkspaceServiceTest {
             SysUserMapper userMapper,
             SysDocCategoryMapper categoryMapper,
             SysDocItemMapper itemMapper,
+            SysDocNodeMapper nodeMapper,
             SysDocSubmissionMapper submissionMapper,
             SysDocAttachmentMapper attachmentMapper,
             FileStorageService storageService,
