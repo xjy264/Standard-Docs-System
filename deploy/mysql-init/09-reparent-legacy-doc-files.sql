@@ -104,3 +104,47 @@ SET file_node.section_dept_id = category.section_dept_id,
 WHERE file_node.deleted = 0
   AND file_node.node_type = 'FILE'
   AND (file_node.parent_id IS NULL OR file_node.level <= folder.level);
+
+-- Some historical files may remain active while their original category has been soft-deleted.
+-- In that case, place them under the active root folder with the same section and sort order.
+INSERT INTO sys_doc_node (
+  section_dept_id,
+  parent_id,
+  node_type,
+  node_name,
+  item_id,
+  sort_order,
+  level,
+  created_by,
+  created_at,
+  updated_at,
+  deleted
+)
+SELECT
+  COALESCE(item.section_dept_id, category.section_dept_id),
+  folder.id,
+  'FILE',
+  item.item_name,
+  item.id,
+  item.sort_order,
+  folder.level + 1,
+  item.created_by,
+  item.created_at,
+  item.updated_at,
+  0
+FROM sys_doc_item item
+JOIN sys_doc_category category
+  ON category.id = item.category_id
+JOIN sys_doc_node folder
+  ON folder.section_dept_id = COALESCE(item.section_dept_id, category.section_dept_id)
+ AND folder.parent_id IS NULL
+ AND folder.node_type = 'FOLDER'
+ AND folder.sort_order = category.sort_order
+ AND folder.deleted = 0
+LEFT JOIN sys_doc_node existing
+  ON existing.item_id = item.id
+ AND existing.node_type = 'FILE'
+ AND existing.deleted = 0
+WHERE item.deleted = 0
+  AND category.deleted = 1
+  AND existing.id IS NULL;
