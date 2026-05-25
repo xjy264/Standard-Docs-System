@@ -51,10 +51,10 @@
 
 ## 科室资料与车间填报
 
-- `GET /api/doc-tree?sectionDeptId=1`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层。
+- `GET /api/doc-tree?sectionDeptId=1`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；文件节点返回 `fileType`。
 - `POST /api/doc-nodes/folders`：本科室用户或超级管理员新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`sortOrder`。
-- `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`contentHtml`、`attachmentEnabled`、`sortOrder`。
-- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件节点可同步修改富文本内容和附件上传开关。
+- `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`fileType`、`contentHtml`、`attachmentEnabled`、`sortOrder`。
+- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件节点可同步修改文件类型、富文本内容和附件上传开关。
 - `DELETE /api/doc-nodes/{id}`：本科室用户或超级管理员删除目录节点；文件夹存在子节点时禁止删除。
 - `GET /api/doc-categories?sectionDeptId=1`：查询科室下旧二级侧边栏，保留兼容历史页面和旧数据。
 - `POST /api/doc-categories`：本科室用户或超级管理员新增二级侧边栏。

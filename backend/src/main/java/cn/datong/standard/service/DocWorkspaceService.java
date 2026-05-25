@@ -117,6 +117,7 @@ public class DocWorkspaceService {
         SysDocItem item = new SysDocItem();
         item.setSectionDeptId(placement.sectionDeptId());
         item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
+        item.setFileType(normalizeFileType(request.fileType()));
         item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
         item.setAttachmentEnabled(Boolean.TRUE.equals(request.attachmentEnabled()) ? 1 : 0);
         item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
@@ -153,6 +154,7 @@ public class DocWorkspaceService {
             SysDocItem item = requireItem(node.getItemId());
             item.setItemName(node.getNodeName());
             item.setSortOrder(node.getSortOrder());
+            item.setFileType(normalizeFileType(request.fileType()));
             if (request.contentHtml() != null) {
                 item.setContentHtml(request.contentHtml());
             }
@@ -401,6 +403,7 @@ public class DocWorkspaceService {
                 continue;
             }
             node.setAttachmentEnabled(item.getAttachmentEnabled());
+            node.setFileType(item.getFileType());
             node.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                     .eq(SysDocSubmission::getItemId, item.getId()))));
         }
@@ -608,6 +611,17 @@ public class DocWorkspaceService {
             throw new BusinessException(message);
         }
         return value.trim();
+    }
+
+    private String normalizeFileType(String fileType) {
+        if (fileType == null || fileType.trim().isBlank()) {
+            return "OTHER";
+        }
+        String normalized = fileType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "WORD", "EXCEL", "PDF", "IMAGE", "OTHER" -> normalized;
+            default -> "OTHER";
+        };
     }
 
     private String extension(String filename) {

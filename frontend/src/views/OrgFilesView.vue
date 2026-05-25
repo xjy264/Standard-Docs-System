@@ -25,8 +25,10 @@
             <div class="doc-tree-title" @click="data.nodeType === 'FILE' && openItemDetail(data)">
               <el-icon class="doc-tree-icon">
                 <Folder v-if="data.nodeType === 'FOLDER'" />
-                <Document v-else />
               </el-icon>
+              <span v-if="data.nodeType === 'FILE'" class="doc-file-icon" :class="fileTypeClass(data)">
+                {{ fileTypeLabel(data) }}
+              </span>
               <span>{{ node.label }}</span>
               <el-tag v-if="data.nodeType === 'FILE' && data.attachmentEnabled" size="small" type="success">允许上传</el-tag>
               <span v-if="data.nodeType === 'FILE'" class="submission-count">上传记录：{{ data.submissionCount || 0 }}</span>
@@ -56,6 +58,16 @@
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="nodeForm.sortOrder" :min="0" /></el-form-item>
         <template v-if="nodeForm.nodeType === 'FILE'">
+          <el-form-item label="文件类型">
+            <el-select v-model="nodeForm.fileType" placeholder="请选择文件类型" style="width: 220px">
+              <el-option
+                v-for="option in fileTypeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
           <el-form-item label="文件内容">
             <div class="editor-box">
               <Toolbar :editor="editorRef" :default-config="toolbarConfig" mode="default" />
@@ -86,7 +98,7 @@
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
-import { Document, Folder } from '@element-plus/icons-vue'
+import { Folder } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -109,6 +121,7 @@ interface DocNode {
   level: number
   attachmentEnabled?: number
   submissionCount?: number
+  fileType?: FileType
   children?: DocNode[]
 }
 
@@ -118,9 +131,11 @@ interface DocItem {
   contentHtml?: string
   attachmentEnabled: number
   sortOrder: number
+  fileType?: FileType
 }
 
 type DialogMode = 'create' | 'edit'
+type FileType = 'WORD' | 'EXCEL' | 'PDF' | 'IMAGE' | 'OTHER'
 
 const route = useRoute()
 const router = useRouter()
@@ -134,13 +149,21 @@ const editingNode = ref<DocNode>()
 const editorRef = shallowRef<IDomEditor>()
 const toolbarConfig: Partial<IToolbarConfig> = {}
 const editorConfig: Partial<IEditorConfig> = { placeholder: '请输入文件内容' }
+const fileTypeOptions: Array<{ label: string; value: FileType }> = [
+  { label: 'Word', value: 'WORD' },
+  { label: 'Excel', value: 'EXCEL' },
+  { label: 'PDF', value: 'PDF' },
+  { label: '图片', value: 'IMAGE' },
+  { label: '其他', value: 'OTHER' }
+]
 const nodeForm = reactive({
   nodeType: 'FOLDER' as 'FOLDER' | 'FILE',
   parentId: undefined as number | undefined,
   nodeName: '',
   sortOrder: 0,
   attachmentEnabled: false,
-  contentHtml: ''
+  contentHtml: '',
+  fileType: '' as FileType | ''
 })
 
 const currentSection = computed(() => sections.value.find((item) => item.id === deptId.value))
@@ -170,6 +193,7 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.sortOrder = 0
   nodeForm.attachmentEnabled = type === 'FILE'
   nodeForm.contentHtml = ''
+  nodeForm.fileType = ''
 }
 
 function openFolderDialog(parent?: DocNode) {
@@ -191,10 +215,12 @@ async function openEditDialog(node: DocNode) {
   nodeForm.sortOrder = node.sortOrder || 0
   nodeForm.attachmentEnabled = Boolean(node.attachmentEnabled)
   nodeForm.contentHtml = ''
+  nodeForm.fileType = node.nodeType === 'FILE' ? node.fileType || guessFileType(node.nodeName) : ''
   if (node.nodeType === 'FILE' && node.itemId) {
     const item = await apiGet<DocItem>(`/doc-items/${node.itemId}`)
     nodeForm.contentHtml = item.contentHtml || ''
     nodeForm.attachmentEnabled = Boolean(item.attachmentEnabled)
+    nodeForm.fileType = item.fileType || node.fileType || guessFileType(node.nodeName)
   }
   nodeDialogOpen.value = true
 }
@@ -204,13 +230,18 @@ async function submitNode() {
     ElMessage.warning(nodeForm.nodeType === 'FOLDER' ? '请输入文件夹名称' : '请输入文件名称')
     return
   }
+  if (nodeForm.nodeType === 'FILE' && !nodeForm.fileType) {
+    ElMessage.warning('请选择文件类型')
+    return
+  }
   const body = {
     sectionDeptId: deptId.value,
     parentId: nodeForm.parentId,
     nodeName: nodeForm.nodeName.trim(),
     sortOrder: nodeForm.sortOrder,
     attachmentEnabled: nodeForm.attachmentEnabled,
-    contentHtml: nodeForm.contentHtml
+    contentHtml: nodeForm.contentHtml,
+    fileType: nodeForm.nodeType === 'FILE' ? nodeForm.fileType : undefined
   }
   if (dialogMode.value === 'edit' && editingNode.value) {
     await apiPut(`/doc-nodes/${editingNode.value.id}`, body)
@@ -238,6 +269,41 @@ function openItemDetail(node: DocNode) {
     return
   }
   router.push(`/org/${deptId.value}/items/${node.itemId}`)
+}
+
+function guessFileType(name: string): FileType {
+  const lower = name.toLowerCase()
+  if (/\.(doc|docx)$/.test(lower) || /文件|通知|报告|合同|说明/.test(name)) return 'WORD'
+  if (/\.(xls|xlsx|csv)$/.test(lower) || /表|台账|统计|明细|记录|清单/.test(name)) return 'EXCEL'
+  if (/\.pdf$/.test(lower)) return 'PDF'
+  if (/\.(png|jpg|jpeg)$/.test(lower) || /照片|影像|图纸|平面示意图/.test(name)) return 'IMAGE'
+  return 'OTHER'
+}
+
+function resolveFileType(node: DocNode): FileType {
+  return node.fileType || guessFileType(node.nodeName)
+}
+
+function fileTypeClass(node: DocNode) {
+  const classes: Record<FileType, string> = {
+    WORD: 'word',
+    EXCEL: 'excel',
+    PDF: 'pdf',
+    IMAGE: 'image',
+    OTHER: 'other'
+  }
+  return `is-${classes[resolveFileType(node)]}`
+}
+
+function fileTypeLabel(node: DocNode) {
+  const labels: Record<FileType, string> = {
+    WORD: 'W',
+    EXCEL: 'X',
+    PDF: 'P',
+    IMAGE: 'I',
+    OTHER: 'F'
+  }
+  return labels[resolveFileType(node)]
 }
 
 function handleEditorCreated(editor: IDomEditor) {
@@ -282,6 +348,47 @@ watch(() => route.params.deptId, load)
   align-items: stretch;
 }
 
+.doc-tree-panel :deep(.el-tree-node__expand-icon) {
+  width: 20px;
+  height: 42px;
+  margin-right: 4px;
+  color: var(--rail-blue-dark);
+  transform: none !important;
+}
+
+.doc-tree-panel :deep(.el-tree-node__expand-icon svg) {
+  display: none;
+}
+
+.doc-tree-panel :deep(.el-tree-node__expand-icon::before) {
+  content: "+";
+  width: 20px;
+  height: 20px;
+  margin: auto 0;
+  border: 1px solid #8ba7ca;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  background: #f7fbff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.doc-tree-panel :deep(.el-tree-node__expand-icon.expanded::before) {
+  content: "-";
+}
+
+.doc-tree-panel :deep(.el-tree-node__expand-icon.is-leaf::before) {
+  content: "";
+  border-color: transparent;
+  background: transparent;
+}
+
 .doc-tree-row {
   width: 100%;
   min-height: 42px;
@@ -309,6 +416,43 @@ watch(() => route.params.deptId, load)
 
 .doc-tree-icon {
   flex: 0 0 auto;
+  color: #d6952a;
+}
+
+.doc-file-icon {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 28px;
+  border-radius: 4px 4px 5px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+}
+
+.doc-file-icon.is-word {
+  background: #2f74d0;
+}
+
+.doc-file-icon.is-excel {
+  background: #238b45;
+}
+
+.doc-file-icon.is-pdf {
+  background: #d14343;
+}
+
+.doc-file-icon.is-image {
+  background: #7c5cc4;
+}
+
+.doc-file-icon.is-other {
+  background: #64748b;
 }
 
 .submission-count {

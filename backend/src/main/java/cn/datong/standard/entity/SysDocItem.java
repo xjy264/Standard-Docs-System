@@ -17,6 +17,7 @@ public class SysDocItem {
     private Long categoryId;
     private Long sectionDeptId;
     private String itemName;
+    private String fileType;
     private String contentHtml;
     private Integer attachmentEnabled;
     private Integer sortOrder;

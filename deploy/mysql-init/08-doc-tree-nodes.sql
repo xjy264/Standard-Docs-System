@@ -1,5 +1,18 @@
 SET NAMES utf8mb4;
 
+SET @item_file_type_column_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_item'
+    AND COLUMN_NAME = 'file_type'
+);
+SET @sql := IF(@item_file_type_column_exists = 0,
+  'ALTER TABLE sys_doc_item ADD COLUMN file_type VARCHAR(32) NULL AFTER item_name',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 SET @item_section_column_exists := (
   SELECT COUNT(*) FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE()

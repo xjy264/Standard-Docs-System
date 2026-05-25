@@ -19,7 +19,7 @@
 
 - `sys_doc_node`：科室资料多级目录节点，节点类型包含文件夹和文件，最高五层。
 - `sys_doc_category`：旧科室资料二级侧边栏，保留兼容历史数据。
-- `sys_doc_item`：文件入口，包含 `section_dept_id`、`content_html` 富文本文件内容和附件上传开关；新目录树中文件节点通过 `item_id` 关联该表。
+- `sys_doc_item`：文件入口，包含 `section_dept_id`、`file_type`、`content_html` 富文本文件内容和附件上传开关；新目录树中文件节点通过 `item_id` 关联该表。
 - `sys_doc_submission`：附件上传记录，`submitter_dept_id` 记录实际上传人所属组织；无所属组织用户上传时允许为空。
 - `sys_doc_attachment`：上传记录附件元数据，真实文件保存在 MinIO。
 

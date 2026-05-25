@@ -16,6 +16,7 @@ import cn.datong.standard.mapper.SysDocSubmissionMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -54,7 +55,7 @@ class DocWorkspaceServiceTest {
         SysDocNode childFolder = node(3L, 2L, 1L, "FOLDER", "有效文件", null, 2, 20);
         when(fx.nodeMapper.selectList(any())).thenReturn(List.of(folder, file, childFolder));
         when(fx.submissionMapper.selectCount(any())).thenReturn(3L);
-        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, null, 2L, true)));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, null, 2L, true, "EXCEL")));
 
         List<SysDocNode> tree = fx.service.documentTree(2L);
 
@@ -63,6 +64,7 @@ class DocWorkspaceServiceTest {
                 .containsExactly("国铁集团技术规章", "有效文件");
         assertThat(tree.getFirst().getChildren().getFirst().getSubmissionCount()).isEqualTo(3);
         assertThat(tree.getFirst().getChildren().getFirst().getAttachmentEnabled()).isEqualTo(1);
+        assertThat(tree.getFirst().getChildren().getFirst().getFileType()).isEqualTo("EXCEL");
     }
 
     @Test
@@ -74,12 +76,29 @@ class DocWorkspaceServiceTest {
             item.setId(88L);
             return 1;
         });
-        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>");
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD");
 
         fx.service.createFileNode(10L, 2L, false, request);
 
-        verify(fx.itemMapper).insert(any(SysDocItem.class));
+        ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
+        verify(fx.itemMapper).insert(itemCaptor.capture());
+        assertThat(itemCaptor.getValue().getFileType()).isEqualTo("WORD");
         verify(fx.nodeMapper).insert(any(SysDocNode.class));
+    }
+
+    @Test
+    void updateFileNodeCanChangeFileType() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(9L)).thenReturn(node(9L, 2L, null, "FILE", "旧文件", 88L, 1, 10));
+        when(fx.itemMapper.selectById(88L)).thenReturn(item(88L, null, 2L, true, "WORD"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新文件", 20, null, true, "<p>新内容</p>", "PDF");
+
+        fx.service.updateNode(2L, false, 9L, request);
+
+        ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
+        verify(fx.itemMapper).updateById(itemCaptor.capture());
+        assertThat(itemCaptor.getValue().getFileType()).isEqualTo("PDF");
     }
 
     @Test
@@ -87,7 +106,7 @@ class DocWorkspaceServiceTest {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, 4L, "FOLDER", "第五层", null, 5, 10));
-        DocNodeRequest request = new DocNodeRequest(2L, 5L, "第六层", 10, null, false, "");
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "第六层", 10, null, false, "", null);
 
         assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, false, request))
                 .isInstanceOf(BusinessException.class)
@@ -362,6 +381,12 @@ class DocWorkspaceServiceTest {
     private SysDocItem item(Long id, Long categoryId, Long sectionDeptId, boolean attachment) {
         SysDocItem item = item(id, categoryId, attachment);
         item.setSectionDeptId(sectionDeptId);
+        return item;
+    }
+
+    private SysDocItem item(Long id, Long categoryId, Long sectionDeptId, boolean attachment, String fileType) {
+        SysDocItem item = item(id, categoryId, sectionDeptId, attachment);
+        item.setFileType(fileType);
         return item;
     }
 

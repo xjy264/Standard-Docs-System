@@ -7,6 +7,7 @@ public record DocNodeRequest(
         Integer sortOrder,
         Long targetParentId,
         Boolean attachmentEnabled,
-        String contentHtml
+        String contentHtml,
+        String fileType
 ) {
 }

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   category_id BIGINT NOT NULL,
   item_name VARCHAR(128) NOT NULL,
+  file_type VARCHAR(32) NULL,
   content_html MEDIUMTEXT,
   attachment_enabled TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0,
@@ -65,6 +66,19 @@ SET @doc_item_content_exists := (
 );
 SET @sql := IF(@doc_item_content_exists = 0,
   'ALTER TABLE sys_doc_item ADD COLUMN content_html MEDIUMTEXT AFTER item_name',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @doc_item_file_type_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_item'
+    AND COLUMN_NAME = 'file_type'
+);
+SET @sql := IF(@doc_item_file_type_exists = 0,
+  'ALTER TABLE sys_doc_item ADD COLUMN file_type VARCHAR(32) NULL AFTER item_name',
   'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
