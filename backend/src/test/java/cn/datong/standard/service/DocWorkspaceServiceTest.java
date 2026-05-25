@@ -25,7 +25,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -111,6 +113,38 @@ class DocWorkspaceServiceTest {
         assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, false, request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("目录层级最多支持五层");
+    }
+
+    @Test
+    void createFolderUnderParentOnlyInsertsChildNode() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "父文件夹", null, 1, 10));
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "子文件夹", 20, null, false, "", null);
+
+        fx.service.createFolderNode(10L, 2L, false, request);
+
+        ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
+        verify(fx.nodeMapper).insert(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getParentId()).isEqualTo(5L);
+        assertThat(nodeCaptor.getValue().getLevel()).isEqualTo(2);
+        assertThat(nodeCaptor.getValue().getSectionDeptId()).isEqualTo(2L);
+        verify(fx.nodeMapper, never()).updateById(any(SysDocNode.class));
+        verify(fx.nodeMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void deleteFolderRejectsWhenNestedUndeletedFileExists() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "父文件夹", null, 1, 10));
+        SysDocNode childFolder = node(6L, 2L, 5L, "FOLDER", "子文件夹", null, 2, 10);
+        SysDocNode nestedFile = node(7L, 2L, 6L, "FILE", "未删除文件", 88L, 3, 10);
+        when(fx.nodeMapper.selectList(any())).thenReturn(List.of(childFolder, nestedFile));
+
+        assertThatThrownBy(() -> fx.service.deleteNode(2L, false, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("文件夹下存在未删除内容，无法删除");
     }
 
     @Test

@@ -2,7 +2,6 @@
   <div class="auth-page">
     <section class="auth-brand">
       <h1>标准化资料管理系统</h1>
-      <p>面向房建、公寓资料归档、共享、搜索和权限管理的统一平台，支持内网和公网部署。</p>
     </section>
     <section class="auth-panel">
       <h2>用户登录</h2>
@@ -64,7 +63,7 @@ async function login() {
   try {
     const result = await apiPost<{ token: string; user: any; permissions: string[] }>('/auth/login', form)
     auth.setSession(result.token, result.user, result.permissions)
-    router.push('/org')
+    router.push('/dashboard')
   } catch {
     resetCaptcha()
   } finally {

@@ -61,9 +61,10 @@ body {
 
 .topbar {
   height: 58px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
   padding: 0 24px;
   background: var(--rail-blue);
   color: #fff;
@@ -72,12 +73,23 @@ body {
 .brand {
   font-size: 19px;
   font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .top-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+
+.top-left {
+  justify-content: flex-start;
+}
+
+.top-right {
+  justify-content: flex-end;
 }
 
 .console-button.el-button {
@@ -166,6 +178,18 @@ body {
 
   .workspace {
     grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    height: auto;
+    grid-template-columns: 1fr;
+    padding: 12px 18px;
+  }
+
+  .top-left,
+  .top-right {
+    justify-content: center;
+    flex-wrap: wrap;
   }
 
   .sidebar {

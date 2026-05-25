@@ -171,11 +171,8 @@ public class DocWorkspaceService {
     public void deleteNode(Long userDeptId, boolean superAdmin, Long id) {
         SysDocNode node = requireNode(id);
         requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
-        Long children = nodeMapper.selectCount(new LambdaQueryWrapper<SysDocNode>()
-                .eq(SysDocNode::getParentId, id)
-                .eq(SysDocNode::getDeleted, 0));
-        if (children > 0) {
-            throw new BusinessException("文件夹下存在内容，无法删除");
+        if ("FOLDER".equalsIgnoreCase(node.getNodeType()) && hasUndeletedDescendant(node)) {
+            throw new BusinessException("文件夹下存在未删除内容，无法删除");
         }
         if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
             itemMapper.deleteById(node.getItemId());
@@ -503,6 +500,30 @@ public class DocWorkspaceService {
             throw new BusinessException("目录层级最多支持五层");
         }
         return new NodePlacement(parent.getSectionDeptId(), level);
+    }
+
+    private boolean hasUndeletedDescendant(SysDocNode folder) {
+        List<SysDocNode> nodes = nodeMapper.selectList(new LambdaQueryWrapper<SysDocNode>()
+                .eq(SysDocNode::getSectionDeptId, folder.getSectionDeptId()));
+        Map<Long, SysDocNode> nodeMap = nodes.stream()
+                .collect(Collectors.toMap(SysDocNode::getId, Function.identity(), (a, b) -> a));
+        for (SysDocNode node : nodes) {
+            if (Objects.equals(node.getId(), folder.getId()) || node.getDeleted() != null && node.getDeleted() == 1) {
+                continue;
+            }
+            Long parentId = node.getParentId();
+            while (parentId != null) {
+                if (Objects.equals(parentId, folder.getId())) {
+                    return true;
+                }
+                SysDocNode parent = nodeMap.get(parentId);
+                if (parent == null) {
+                    break;
+                }
+                parentId = parent.getParentId();
+            }
+        }
+        return false;
     }
 
     private Long itemSectionDeptId(SysDocItem item) {

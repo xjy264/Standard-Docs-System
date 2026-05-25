@@ -49,6 +49,10 @@
 - `GET /api/permission-matrix?deptId=1`：部门用户权限矩阵。
 - `POST /api/permission-matrix/users/{userId}`：保存用户权限。
 
+## 首页统计
+
+- `GET /api/dashboard/stats`：首页统计，返回 `userCount`、`fileCount`、`submissionCount`、`attachmentCount`、`pendingApprovalCount`、`unreadCount`、`uploadEnabledFileCount`、`sectionCount`。
+
 ## 科室资料与车间填报
 
 - `GET /api/doc-tree?sectionDeptId=1`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；文件节点返回 `fileType`。

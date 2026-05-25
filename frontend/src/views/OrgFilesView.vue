@@ -4,34 +4,29 @@
       <div>
         <h2>{{ currentSection?.deptName || '科室资料' }}</h2>
       </div>
-      <div v-if="canManageSection" class="title-actions">
-        <el-button type="primary" @click="openFolderDialog()">新增文件夹</el-button>
-        <el-button @click="openFileDialog()">新增文件</el-button>
-      </div>
     </div>
 
     <section class="doc-tree-panel">
       <el-tree
         v-if="treeData.length"
         :data="treeData"
+        ref="treeRef"
         node-key="id"
         :props="{ children: 'children', label: 'nodeName' }"
         :indent="26"
-        :expand-on-click-node="false"
+        :expand-on-click-node="true"
         default-expand-all
       >
         <template #default="{ node, data }">
-          <div class="doc-tree-row" :class="{ 'is-file': data.nodeType === 'FILE' }">
+          <div class="doc-tree-row" :class="{ 'is-folder': data.nodeType === 'FOLDER', 'is-file': data.nodeType === 'FILE' }">
             <div class="doc-tree-title" @click="data.nodeType === 'FILE' && openItemDetail(data)">
-              <el-icon class="doc-tree-icon">
-                <Folder v-if="data.nodeType === 'FOLDER'" />
+              <el-icon v-if="data.nodeType === 'FOLDER'" class="doc-tree-icon">
+                <Folder />
               </el-icon>
               <span v-if="data.nodeType === 'FILE'" class="doc-file-icon" :class="fileTypeClass(data)">
                 {{ fileTypeLabel(data) }}
               </span>
               <span>{{ node.label }}</span>
-              <el-tag v-if="data.nodeType === 'FILE' && data.attachmentEnabled" size="small" type="success">允许上传</el-tag>
-              <span v-if="data.nodeType === 'FILE'" class="submission-count">上传记录：{{ data.submissionCount || 0 }}</span>
             </div>
             <div v-if="canManageSection" class="doc-tree-actions">
               <el-button v-if="data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
@@ -100,7 +95,7 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
 import { Folder } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/http'
 import { useAuthStore } from '../stores/auth'
@@ -143,6 +138,7 @@ const auth = useAuthStore()
 const deptId = computed(() => Number(route.params.deptId))
 const sections = ref<SectionItem[]>([])
 const treeData = ref<DocNode[]>([])
+const treeRef = ref()
 const nodeDialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
@@ -243,18 +239,31 @@ async function submitNode() {
     contentHtml: nodeForm.contentHtml,
     fileType: nodeForm.nodeType === 'FILE' ? nodeForm.fileType : undefined
   }
+  let changedNode: DocNode | undefined
   if (dialogMode.value === 'edit' && editingNode.value) {
-    await apiPut(`/doc-nodes/${editingNode.value.id}`, body)
-    ElMessage.success('修改成功')
+    changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
   } else if (nodeForm.nodeType === 'FOLDER') {
-    await apiPost('/doc-nodes/folders', body)
-    ElMessage.success('新增成功')
+    changedNode = await apiPost<DocNode>('/doc-nodes/folders', body)
   } else {
-    await apiPost('/doc-nodes/files', body)
-    ElMessage.success('新增成功')
+    changedNode = await apiPost<DocNode>('/doc-nodes/files', body)
   }
   nodeDialogOpen.value = false
   await loadTree()
+  await expandChangedNode(changedNode)
+  ElMessage.success(dialogMode.value === 'edit' ? '修改成功' : '新增成功')
+}
+
+async function expandChangedNode(node?: DocNode) {
+  await nextTick()
+  if (!node) {
+    return
+  }
+  if (node.parentId) {
+    treeRef.value?.getNode?.(node.parentId)?.expand?.()
+  }
+  if (node.nodeType === 'FOLDER') {
+    treeRef.value?.getNode?.(node.id)?.expand?.()
+  }
 }
 
 async function deleteNode(node: DocNode) {
@@ -349,9 +358,11 @@ watch(() => route.params.deptId, load)
 }
 
 .doc-tree-panel :deep(.el-tree-node__expand-icon) {
-  width: 20px;
+  position: relative;
+  flex: 0 0 22px;
+  width: 22px;
   height: 42px;
-  margin-right: 4px;
+  margin-right: 6px;
   color: var(--rail-blue-dark);
   transform: none !important;
 }
@@ -361,32 +372,22 @@ watch(() => route.params.deptId, load)
 }
 
 .doc-tree-panel :deep(.el-tree-node__expand-icon::before) {
-  content: "+";
-  width: 20px;
-  height: 20px;
-  margin: auto 0;
-  border: 1px solid #8ba7ca;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 15px;
-  font-style: normal;
-  font-weight: 700;
-  line-height: 1;
-  background: #f7fbff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  transform: translateY(-50%);
+  background: center / 16px 16px no-repeat url("data:image/svg+xml,%3Csvg viewBox='0 0 1024 1024' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M456 192h112v264h264v112H568v264H456V568H192V456h264V192Z' fill='%23235a96'/%3E%3C/svg%3E");
 }
 
 .doc-tree-panel :deep(.el-tree-node__expand-icon.expanded::before) {
-  content: "-";
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1024 1024' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M192 456h640v112H192V456Z' fill='%23235a96'/%3E%3C/svg%3E");
 }
 
 .doc-tree-panel :deep(.el-tree-node__expand-icon.is-leaf::before) {
-  content: "";
-  border-color: transparent;
-  background: transparent;
+  display: none;
 }
 
 .doc-tree-row {
@@ -414,9 +415,25 @@ watch(() => route.params.deptId, load)
   font-weight: 600;
 }
 
+.doc-tree-row.is-folder .doc-tree-title {
+  cursor: pointer;
+  color: #17233c;
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .doc-tree-icon {
   flex: 0 0 auto;
+  width: 24px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: #d6952a;
+}
+
+.doc-tree-row.is-folder .doc-tree-icon {
+  font-size: 18px;
 }
 
 .doc-file-icon {

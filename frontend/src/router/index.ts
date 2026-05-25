@@ -27,7 +27,7 @@ const router = createRouter({
     {
       path: '/',
       component: LayoutView,
-      redirect: '/org',
+      redirect: '/dashboard',
       children: [
         { path: 'dashboard', component: DashboardView },
         { path: 'files', redirect: '/org' },
@@ -61,7 +61,7 @@ router.beforeEach((to) => {
     return '/login'
   }
   if (auth.token && to.path === '/login') {
-    return '/org'
+    return '/dashboard'
   }
   return true
 })
