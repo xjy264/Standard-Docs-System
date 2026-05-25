@@ -8,18 +8,21 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
-@TableName("sys_doc_item")
-public class SysDocItem {
+@TableName("sys_doc_node")
+public class SysDocNode {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long categoryId;
     private Long sectionDeptId;
-    private String itemName;
-    private String contentHtml;
-    private Integer attachmentEnabled;
+    private Long parentId;
+    private String nodeType;
+    private String nodeName;
+    private Long itemId;
     private Integer sortOrder;
+    private Integer level;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -27,9 +30,9 @@ public class SysDocItem {
     private Integer deleted;
 
     @TableField(exist = false)
+    private Integer attachmentEnabled;
+    @TableField(exist = false)
     private Integer submissionCount;
     @TableField(exist = false)
-    private String categoryName;
-    @TableField(exist = false)
-    private String sectionDeptName;
+    private List<SysDocNode> children = new ArrayList<>();
 }
