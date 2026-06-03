@@ -8,7 +8,9 @@
 
     <section class="doc-tree-panel">
       <div class="doc-search-bar">
-        <el-input-number v-model="selectedYear" :min="1000" :max="9999" :controls="false" class="year-input" />
+        <el-select v-model="selectedYear" placeholder="年份" class="year-select">
+          <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
+        </el-select>
         <el-input v-model="searchKeyword" clearable maxlength="128" placeholder="按文件名搜索" class="keyword-input" />
         <el-button type="primary" @click="submitSearch">搜索</el-button>
         <el-button @click="resetSearch">重置</el-button>
@@ -94,7 +96,9 @@
             </el-select>
           </el-form-item>
           <el-form-item label="文件年份">
-            <el-input-number v-model="nodeForm.docYear" :min="1000" :max="9999" :controls="false" style="width: 220px" />
+            <el-select v-model="nodeForm.docYear" placeholder="请选择文件年份" style="width: 220px">
+              <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
+            </el-select>
           </el-form-item>
           <el-form-item label="文件内容">
             <div class="editor-box">
@@ -184,6 +188,7 @@ const searchKeyword = ref('')
 const activeKeyword = ref('')
 const toolbarConfig: Partial<IToolbarConfig> = {}
 const editorConfig: Partial<IEditorConfig> = { placeholder: '请输入文件内容' }
+const yearOptions = Array.from({ length: 21 }, (_, index) => 2016 + index)
 const fileTypeOptions: Array<{ label: string; value: FileType }> = [
   { label: 'Word', value: 'WORD' },
   { label: 'Excel', value: 'EXCEL' },
@@ -210,7 +215,7 @@ const yearTreeData = computed(() => filterTreeByYear(treeData.value, selectedYea
 const searchResultFiles = computed(() => {
   const keyword = activeKeyword.value
   return allFiles.value.filter((file) => {
-    const matchesYear = file.docYear === selectedYear.value
+    const matchesYear = nodeYear(file) === selectedYear.value
     const matchesKeyword = file.nodeName.includes(keyword)
     return matchesYear && matchesKeyword
   })
@@ -241,7 +246,7 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.attachmentEnabled = type === 'FILE'
   nodeForm.contentHtml = ''
   nodeForm.fileType = ''
-  nodeForm.docYear = currentYear
+  nodeForm.docYear = parent?.docYear || selectedYear.value || currentYear
 }
 
 function openFolderDialog(parent?: DocNode) {
@@ -264,7 +269,7 @@ async function openEditDialog(node: DocNode) {
   nodeForm.attachmentEnabled = Boolean(node.attachmentEnabled)
   nodeForm.contentHtml = ''
   nodeForm.fileType = node.nodeType === 'FILE' ? node.fileType || guessFileType(node.nodeName) : ''
-  nodeForm.docYear = node.nodeType === 'FILE' ? node.docYear || currentYear : currentYear
+  nodeForm.docYear = node.docYear || selectedYear.value || currentYear
   if (node.nodeType === 'FILE' && node.itemId) {
     const item = await apiGet<DocItem>(`/doc-items/${node.itemId}`)
     nodeForm.contentHtml = item.contentHtml || ''
@@ -296,7 +301,7 @@ async function submitNode() {
     attachmentEnabled: nodeForm.attachmentEnabled,
     contentHtml: nodeForm.contentHtml,
     fileType: nodeForm.nodeType === 'FILE' ? nodeForm.fileType : undefined,
-    docYear: nodeForm.nodeType === 'FILE' ? nodeForm.docYear : undefined
+    docYear: nodeForm.docYear
   }
   if (dialogMode.value === 'edit' && editingNode.value) {
     const changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
@@ -314,7 +319,7 @@ async function submitNode() {
 
 async function afterNodeChanged(node?: DocNode) {
   await loadTree()
-  if (node?.nodeType === 'FILE' && node.docYear) {
+  if (node?.docYear) {
     selectedYear.value = node.docYear
   }
   await expandChangedNode(node)
@@ -357,17 +362,21 @@ function filterTreeByYear(nodes: DocNode[], year: number): DocNode[] {
   const result: DocNode[] = []
   for (const node of nodes) {
     if (node.nodeType === 'FILE') {
-      if (node.docYear === year) {
+      if (nodeYear(node) === year) {
         result.push({ ...node, children: [] })
       }
       continue
     }
     const children = filterTreeByYear(node.children || [], year)
-    if (children.length) {
+    if (nodeYear(node) === year || children.length) {
       result.push({ ...node, children })
     }
   }
   return result
+}
+
+function nodeYear(node: DocNode) {
+  return node.docYear || 2026
 }
 
 function submitSearch() {
@@ -479,11 +488,13 @@ watch(selectedYear, () => {
   margin-bottom: 12px;
 }
 
-.year-input {
+.year-select {
   width: 120px;
 }
 
 .keyword-input {
+  margin-left: 18px;
+  width: 320px;
   max-width: 320px;
 }
 

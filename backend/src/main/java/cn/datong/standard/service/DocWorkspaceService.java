@@ -102,6 +102,7 @@ public class DocWorkspaceService {
         node.setParentId(request.parentId());
         node.setNodeType("FOLDER");
         node.setNodeName(requiredText(request.nodeName(), "请输入文件夹名称"));
+        node.setDocYear(resolveFolderDocYear(request.parentId(), request.docYear()));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         node.setLevel(placement.level());
         node.setCreatedBy(userId);
@@ -119,7 +120,7 @@ public class DocWorkspaceService {
         item.setSectionDeptId(placement.sectionDeptId());
         item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
         item.setFileType(normalizeFileType(request.fileType()));
-        item.setDocYear(requiredDocYear(request.docYear()));
+        item.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
         item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
         item.setAttachmentEnabled(Boolean.TRUE.equals(request.attachmentEnabled()) ? 1 : 0);
         item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
@@ -135,6 +136,7 @@ public class DocWorkspaceService {
         node.setNodeType("FILE");
         node.setNodeName(item.getItemName());
         node.setItemId(item.getId());
+        node.setDocYear(item.getDocYear());
         node.setSortOrder(item.getSortOrder());
         node.setLevel(placement.level());
         node.setCreatedBy(userId);
@@ -150,6 +152,11 @@ public class DocWorkspaceService {
         requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
         node.setNodeName(requiredText(request.nodeName(), "请输入名称"));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
+        if ("FILE".equalsIgnoreCase(node.getNodeType())) {
+            node.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
+        } else {
+            node.setDocYear(request.docYear() == null ? node.getDocYear() : requiredDocYear(request.docYear(), "请选择资料年份"));
+        }
         node.setUpdatedAt(LocalDateTime.now());
         nodeMapper.updateById(node);
         if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
@@ -157,7 +164,7 @@ public class DocWorkspaceService {
             item.setItemName(node.getNodeName());
             item.setSortOrder(node.getSortOrder());
             item.setFileType(normalizeFileType(request.fileType()));
-            item.setDocYear(requiredDocYear(request.docYear()));
+            item.setDocYear(node.getDocYear());
             if (request.contentHtml() != null) {
                 item.setContentHtml(request.contentHtml());
             }
@@ -665,9 +672,17 @@ public class DocWorkspaceService {
         };
     }
 
-    private Integer requiredDocYear(Integer docYear) {
+    private Integer resolveFolderDocYear(Long parentId, Integer docYear) {
+        if (parentId == null) {
+            return requiredDocYear(docYear, "请选择资料年份");
+        }
+        SysDocNode parent = requireNode(parentId);
+        return parent.getDocYear() == null ? requiredDocYear(docYear, "请选择资料年份") : parent.getDocYear();
+    }
+
+    private Integer requiredDocYear(Integer docYear, String emptyMessage) {
         if (docYear == null) {
-            throw new BusinessException("请选择文件年份");
+            throw new BusinessException(emptyMessage);
         }
         if (docYear < 1000 || docYear > 9999) {
             throw new BusinessException("文件年份必须为四位年份");

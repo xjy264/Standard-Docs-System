@@ -5,6 +5,9 @@
         <h2>资料目录设置</h2>
       </div>
       <div class="page-actions">
+        <el-select v-model="selectedYear" placeholder="年份" style="width: 120px">
+          <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
+        </el-select>
         <el-select
           v-if="auth.user?.isSuperAdmin"
           v-model="selectedSectionId"
@@ -21,12 +24,18 @@
     <el-table :data="rootFolders" stripe>
       <el-table-column type="index" label="序号" width="70" />
       <el-table-column prop="nodeName" label="文件夹名称" min-width="220" />
+      <el-table-column prop="docYear" label="年份" width="120" />
       <el-table-column prop="sortOrder" label="排序" width="120" />
       <el-table-column prop="updatedAt" label="更新时间" width="180" />
     </el-table>
 
     <el-dialog v-model="dialogOpen" title="新增最高级文件夹" width="420px">
       <el-form label-position="top">
+        <el-form-item label="资料年份">
+          <el-select v-model="form.docYear" placeholder="请选择资料年份" style="width: 220px">
+            <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="文件夹名称"><el-input v-model="form.nodeName" maxlength="128" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>
       </el-form>
@@ -57,6 +66,7 @@ interface DocNode {
   nodeName: string
   sortOrder: number
   level: number
+  docYear?: number
   updatedAt?: string
 }
 
@@ -65,8 +75,13 @@ const sections = ref<SectionItem[]>([])
 const selectedSectionId = ref<number>()
 const treeData = ref<DocNode[]>([])
 const dialogOpen = ref(false)
-const form = reactive({ nodeName: '', sortOrder: 0 })
-const rootFolders = computed(() => treeData.value.filter((node) => node.nodeType === 'FOLDER' && !node.parentId))
+const currentYear = new Date().getFullYear()
+const selectedYear = ref(currentYear)
+const yearOptions = Array.from({ length: 21 }, (_, index) => 2016 + index)
+const form = reactive({ nodeName: '', sortOrder: 0, docYear: currentYear })
+const rootFolders = computed(() =>
+  treeData.value.filter((node) => node.nodeType === 'FOLDER' && !node.parentId && nodeYear(node) === selectedYear.value)
+)
 
 async function loadSections() {
   sections.value = await apiGet<SectionItem[]>('/sections/navigation')
@@ -84,6 +99,7 @@ async function loadTree() {
 function openDialog() {
   form.nodeName = ''
   form.sortOrder = 0
+  form.docYear = selectedYear.value
   dialogOpen.value = true
 }
 
@@ -96,11 +112,17 @@ async function submitFolder() {
     sectionDeptId: selectedSectionId.value,
     parentId: undefined,
     nodeName: form.nodeName.trim(),
+    docYear: form.docYear,
     sortOrder: form.sortOrder
   })
   ElMessage.success('新增成功')
   dialogOpen.value = false
+  selectedYear.value = form.docYear
   await loadTree()
+}
+
+function nodeYear(node: DocNode) {
+  return node.docYear || 2026
 }
 
 onMounted(async () => {

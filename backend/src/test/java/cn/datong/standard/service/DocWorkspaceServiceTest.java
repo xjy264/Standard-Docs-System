@@ -152,6 +152,7 @@ class DocWorkspaceServiceTest {
         ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
         verify(fx.nodeMapper).insert(nodeCaptor.capture());
         assertThat(nodeCaptor.getValue().getParentId()).isEqualTo(5L);
+        assertThat(nodeCaptor.getValue().getDocYear()).isEqualTo(2026);
         assertThat(nodeCaptor.getValue().getLevel()).isEqualTo(2);
         assertThat(nodeCaptor.getValue().getSectionDeptId()).isEqualTo(2L);
         verify(fx.nodeMapper, never()).updateById(any(SysDocNode.class));
@@ -163,13 +164,14 @@ class DocWorkspaceServiceTest {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(10L));
-        DocNodeRequest request = new DocNodeRequest(2L, null, "年度资料", 20, null, false, "", null, null);
+        DocNodeRequest request = new DocNodeRequest(2L, null, "年度资料", 20, null, false, "", null, 2028);
 
         fx.service.createFolderNode(10L, 2L, false, request);
 
         ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
         verify(fx.nodeMapper).insert(nodeCaptor.capture());
         assertThat(nodeCaptor.getValue().getParentId()).isNull();
+        assertThat(nodeCaptor.getValue().getDocYear()).isEqualTo(2028);
         assertThat(nodeCaptor.getValue().getLevel()).isEqualTo(1);
         assertThat(nodeCaptor.getValue().getSectionDeptId()).isEqualTo(2L);
     }
@@ -202,7 +204,7 @@ class DocWorkspaceServiceTest {
     void superAdminCanCreateAnyRootFolder() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(3L)).thenReturn(dept(3L, 1L, "技术科", "SECTION"));
-        DocNodeRequest request = new DocNodeRequest(3L, null, "年度资料", 20, null, false, "", null, null);
+        DocNodeRequest request = new DocNodeRequest(3L, null, "年度资料", 20, null, false, "", null, 2030);
 
         fx.service.createFolderNode(1L, 1L, true, request);
 
@@ -517,6 +519,7 @@ class DocWorkspaceServiceTest {
         node.setNodeType(nodeType);
         node.setNodeName(nodeName);
         node.setItemId(itemId);
+        node.setDocYear(2026);
         node.setLevel(level);
         node.setSortOrder(sortOrder);
         node.setDeleted(0);
