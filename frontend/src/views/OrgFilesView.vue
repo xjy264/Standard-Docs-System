@@ -10,9 +10,11 @@
       <div class="doc-search-bar">
         <el-input-number v-model="selectedYear" :min="1000" :max="9999" :controls="false" class="year-input" />
         <el-input v-model="searchKeyword" clearable maxlength="128" placeholder="按文件名搜索" class="keyword-input" />
+        <el-button type="primary" @click="submitSearch">搜索</el-button>
+        <el-button @click="resetSearch">重置</el-button>
       </div>
 
-      <el-table v-if="filteredFiles.length" :data="filteredFiles" stripe class="doc-file-table">
+      <el-table v-if="searchMode && searchResultFiles.length" :data="searchResultFiles" stripe class="doc-file-table">
         <el-table-column label="文件名称" min-width="280">
           <template #default="{ row }">
             <button class="file-link" type="button" @click="openItemDetail(row)">
@@ -35,7 +37,37 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-else description="暂无匹配文件" />
+      <el-tree
+        v-else-if="!searchMode && yearTreeData.length"
+        :data="yearTreeData"
+        ref="treeRef"
+        node-key="id"
+        :props="{ children: 'children', label: 'nodeName' }"
+        :indent="26"
+        :expand-on-click-node="true"
+        default-expand-all
+      >
+        <template #default="{ node, data }">
+          <div class="doc-tree-row" :class="{ 'is-folder': data.nodeType === 'FOLDER', 'is-file': data.nodeType === 'FILE' }">
+            <div class="doc-tree-title" @click="data.nodeType === 'FILE' && openItemDetail(data)">
+              <el-icon v-if="data.nodeType === 'FOLDER'" class="doc-tree-icon">
+                <Folder />
+              </el-icon>
+              <span v-if="data.nodeType === 'FILE'" class="doc-file-icon" :class="fileTypeClass(data)">
+                {{ fileTypeLabel(data) }}
+              </span>
+              <span>{{ node.label }}</span>
+            </div>
+            <div v-if="canManageSection" class="doc-tree-actions">
+              <el-button v-if="data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
+              <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">新增文件</el-button>
+              <el-button link type="primary" @click.stop="openEditDialog(data)">编辑</el-button>
+              <el-button link type="danger" @click.stop="deleteNode(data)">删除</el-button>
+            </div>
+          </div>
+        </template>
+      </el-tree>
+      <el-empty v-else :description="searchMode ? '暂无匹配文件' : '暂无该年份资料目录'" />
     </section>
 
     <el-dialog
@@ -94,8 +126,9 @@
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
+import { Folder } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/http'
 import { useAuthStore } from '../stores/auth'
@@ -140,6 +173,7 @@ const auth = useAuthStore()
 const deptId = computed(() => Number(route.params.deptId))
 const sections = ref<SectionItem[]>([])
 const treeData = ref<DocNode[]>([])
+const treeRef = ref()
 const nodeDialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
@@ -147,6 +181,7 @@ const editorRef = shallowRef<IDomEditor>()
 const currentYear = new Date().getFullYear()
 const selectedYear = ref(currentYear)
 const searchKeyword = ref('')
+const activeKeyword = ref('')
 const toolbarConfig: Partial<IToolbarConfig> = {}
 const editorConfig: Partial<IEditorConfig> = { placeholder: '请输入文件内容' }
 const fileTypeOptions: Array<{ label: string; value: FileType }> = [
@@ -170,11 +205,13 @@ const nodeForm = reactive({
 const currentSection = computed(() => sections.value.find((item) => item.id === deptId.value))
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === deptId.value)
 const allFiles = computed(() => flattenFiles(treeData.value))
-const filteredFiles = computed(() => {
-  const keyword = searchKeyword.value.trim()
+const searchMode = computed(() => Boolean(activeKeyword.value))
+const yearTreeData = computed(() => filterTreeByYear(treeData.value, selectedYear.value))
+const searchResultFiles = computed(() => {
+  const keyword = activeKeyword.value
   return allFiles.value.filter((file) => {
     const matchesYear = file.docYear === selectedYear.value
-    const matchesKeyword = !keyword || file.nodeName.includes(keyword)
+    const matchesKeyword = file.nodeName.includes(keyword)
     return matchesYear && matchesKeyword
   })
 })
@@ -262,15 +299,38 @@ async function submitNode() {
     docYear: nodeForm.nodeType === 'FILE' ? nodeForm.docYear : undefined
   }
   if (dialogMode.value === 'edit' && editingNode.value) {
-    await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
+    const changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
+    await afterNodeChanged(changedNode)
   } else if (nodeForm.nodeType === 'FOLDER') {
-    await apiPost<DocNode>('/doc-nodes/folders', body)
+    const changedNode = await apiPost<DocNode>('/doc-nodes/folders', body)
+    await afterNodeChanged(changedNode)
   } else {
-    await apiPost<DocNode>('/doc-nodes/files', body)
+    const changedNode = await apiPost<DocNode>('/doc-nodes/files', body)
+    await afterNodeChanged(changedNode)
   }
   nodeDialogOpen.value = false
-  await loadTree()
   ElMessage.success(dialogMode.value === 'edit' ? '修改成功' : '新增成功')
+}
+
+async function afterNodeChanged(node?: DocNode) {
+  await loadTree()
+  if (node?.nodeType === 'FILE' && node.docYear) {
+    selectedYear.value = node.docYear
+  }
+  await expandChangedNode(node)
+}
+
+async function expandChangedNode(node?: DocNode) {
+  await nextTick()
+  if (!node || searchMode.value) {
+    return
+  }
+  if (node.parentId) {
+    treeRef.value?.getNode?.(node.parentId)?.expand?.()
+  }
+  if (node.nodeType === 'FOLDER') {
+    treeRef.value?.getNode?.(node.id)?.expand?.()
+  }
 }
 
 async function deleteNode(node: DocNode) {
@@ -291,6 +351,33 @@ function flattenFiles(nodes: DocNode[]): DocNode[] {
     }
   }
   return files
+}
+
+function filterTreeByYear(nodes: DocNode[], year: number): DocNode[] {
+  const result: DocNode[] = []
+  for (const node of nodes) {
+    if (node.nodeType === 'FILE') {
+      if (node.docYear === year) {
+        result.push({ ...node, children: [] })
+      }
+      continue
+    }
+    const children = filterTreeByYear(node.children || [], year)
+    if (children.length) {
+      result.push({ ...node, children })
+    }
+  }
+  return result
+}
+
+function submitSearch() {
+  activeKeyword.value = searchKeyword.value.trim()
+}
+
+function resetSearch() {
+  selectedYear.value = currentYear
+  searchKeyword.value = ''
+  activeKeyword.value = ''
 }
 
 function openItemDetail(node: DocNode) {
@@ -358,6 +445,9 @@ function destroyEditor() {
 onMounted(load)
 onBeforeUnmount(destroyEditor)
 watch(() => route.params.deptId, load)
+watch(selectedYear, () => {
+  activeKeyword.value = ''
+})
 </script>
 
 <style scoped>
