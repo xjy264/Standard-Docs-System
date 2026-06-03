@@ -36,5 +36,7 @@ public class SysDocNode {
     @TableField(exist = false)
     private String fileType;
     @TableField(exist = false)
+    private Integer docYear;
+    @TableField(exist = false)
     private List<SysDocNode> children = new ArrayList<>();
 }

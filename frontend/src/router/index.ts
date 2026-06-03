@@ -8,6 +8,7 @@ import OrgHomeRedirectView from '../views/OrgHomeRedirectView.vue'
 import OrgFilesView from '../views/OrgFilesView.vue'
 import DocItemDetailView from '../views/DocItemDetailView.vue'
 import DocCategorySettingsView from '../views/DocCategorySettingsView.vue'
+import DocRootFolderSettingsView from '../views/DocRootFolderSettingsView.vue'
 import PersonalSpaceView from '../views/PersonalSpaceView.vue'
 import UsersView from '../views/UsersView.vue'
 import ApprovalView from '../views/ApprovalView.vue'
@@ -37,6 +38,7 @@ const router = createRouter({
         { path: 'console', redirect: '/console/personal' },
         { path: 'console/personal', component: PersonalSpaceView },
         { path: 'console/doc-categories', component: DocCategorySettingsView },
+        { path: 'console/doc-root-folders', component: DocRootFolderSettingsView },
         { path: 'console/depts', component: DeptView },
         { path: 'console/depts/:id', component: DeptDetailView },
         { path: 'console/users', component: UsersView },

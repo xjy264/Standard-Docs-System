@@ -57,7 +57,7 @@ class DocWorkspaceServiceTest {
         SysDocNode childFolder = node(3L, 2L, 1L, "FOLDER", "有效文件", null, 2, 20);
         when(fx.nodeMapper.selectList(any())).thenReturn(List.of(folder, file, childFolder));
         when(fx.submissionMapper.selectCount(any())).thenReturn(3L);
-        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, null, 2L, true, "EXCEL")));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(item(8L, null, 2L, true, "EXCEL", 2026)));
 
         List<SysDocNode> tree = fx.service.documentTree(2L);
 
@@ -67,6 +67,7 @@ class DocWorkspaceServiceTest {
         assertThat(tree.getFirst().getChildren().getFirst().getSubmissionCount()).isEqualTo(3);
         assertThat(tree.getFirst().getChildren().getFirst().getAttachmentEnabled()).isEqualTo(1);
         assertThat(tree.getFirst().getChildren().getFirst().getFileType()).isEqualTo("EXCEL");
+        assertThat(tree.getFirst().getChildren().getFirst().getDocYear()).isEqualTo(2026);
     }
 
     @Test
@@ -78,14 +79,37 @@ class DocWorkspaceServiceTest {
             item.setId(88L);
             return 1;
         });
-        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD");
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD", 2026);
 
         fx.service.createFileNode(10L, 2L, false, request);
 
         ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
         verify(fx.itemMapper).insert(itemCaptor.capture());
         assertThat(itemCaptor.getValue().getFileType()).isEqualTo("WORD");
+        assertThat(itemCaptor.getValue().getDocYear()).isEqualTo(2026);
         verify(fx.nodeMapper).insert(any(SysDocNode.class));
+    }
+
+    @Test
+    void createFileRejectsMissingDocYear() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD", null);
+
+        assertThatThrownBy(() -> fx.service.createFileNode(10L, 2L, false, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请选择文件年份");
+    }
+
+    @Test
+    void createFileRejectsInvalidDocYear() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD", 99);
+
+        assertThatThrownBy(() -> fx.service.createFileNode(10L, 2L, false, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("文件年份必须为四位年份");
     }
 
     @Test
@@ -93,14 +117,15 @@ class DocWorkspaceServiceTest {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         when(fx.nodeMapper.selectById(9L)).thenReturn(node(9L, 2L, null, "FILE", "旧文件", 88L, 1, 10));
-        when(fx.itemMapper.selectById(88L)).thenReturn(item(88L, null, 2L, true, "WORD"));
-        DocNodeRequest request = new DocNodeRequest(2L, null, "新文件", 20, null, true, "<p>新内容</p>", "PDF");
+        when(fx.itemMapper.selectById(88L)).thenReturn(item(88L, null, 2L, true, "WORD", 2025));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新文件", 20, null, true, "<p>新内容</p>", "PDF", 2026);
 
         fx.service.updateNode(2L, false, 9L, request);
 
         ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
         verify(fx.itemMapper).updateById(itemCaptor.capture());
         assertThat(itemCaptor.getValue().getFileType()).isEqualTo("PDF");
+        assertThat(itemCaptor.getValue().getDocYear()).isEqualTo(2026);
     }
 
     @Test
@@ -108,7 +133,7 @@ class DocWorkspaceServiceTest {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, 4L, "FOLDER", "第五层", null, 5, 10));
-        DocNodeRequest request = new DocNodeRequest(2L, 5L, "第六层", 10, null, false, "", null);
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "第六层", 10, null, false, "", null, null);
 
         assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, false, request))
                 .isInstanceOf(BusinessException.class)
@@ -120,7 +145,7 @@ class DocWorkspaceServiceTest {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "父文件夹", null, 1, 10));
-        DocNodeRequest request = new DocNodeRequest(2L, 5L, "子文件夹", 20, null, false, "", null);
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "子文件夹", 20, null, false, "", null, null);
 
         fx.service.createFolderNode(10L, 2L, false, request);
 
@@ -131,6 +156,57 @@ class DocWorkspaceServiceTest {
         assertThat(nodeCaptor.getValue().getSectionDeptId()).isEqualTo(2L);
         verify(fx.nodeMapper, never()).updateById(any(SysDocNode.class));
         verify(fx.nodeMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void sectionAdminCanCreateOwnRootFolder() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(10L));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "年度资料", 20, null, false, "", null, null);
+
+        fx.service.createFolderNode(10L, 2L, false, request);
+
+        ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
+        verify(fx.nodeMapper).insert(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getParentId()).isNull();
+        assertThat(nodeCaptor.getValue().getLevel()).isEqualTo(1);
+        assertThat(nodeCaptor.getValue().getSectionDeptId()).isEqualTo(2L);
+    }
+
+    @Test
+    void normalSectionUserCannotCreateRootFolder() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of());
+        DocNodeRequest request = new DocNodeRequest(2L, null, "年度资料", 20, null, false, "", null, null);
+
+        assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, false, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只有科室管理员可以新建最高级文件夹");
+    }
+
+    @Test
+    void sectionAdminCannotCreateOtherSectionRootFolder() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(3L)).thenReturn(dept(3L, 1L, "技术科", "SECTION"));
+        when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(10L));
+        DocNodeRequest request = new DocNodeRequest(3L, null, "年度资料", 20, null, false, "", null, null);
+
+        assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, false, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只能维护本科室资料");
+    }
+
+    @Test
+    void superAdminCanCreateAnyRootFolder() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(3L)).thenReturn(dept(3L, 1L, "技术科", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(3L, null, "年度资料", 20, null, false, "", null, null);
+
+        fx.service.createFolderNode(1L, 1L, true, request);
+
+        verify(fx.nodeMapper).insert(any(SysDocNode.class));
     }
 
     @Test
@@ -368,6 +444,7 @@ class DocWorkspaceServiceTest {
         SysDocSubmissionMapper submissionMapper = mock(SysDocSubmissionMapper.class);
         SysDocAttachmentMapper attachmentMapper = mock(SysDocAttachmentMapper.class);
         FileStorageService storageService = mock(FileStorageService.class);
+        OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
         DocWorkspaceService service = new DocWorkspaceService(
                 deptMapper,
                 userMapper,
@@ -376,9 +453,10 @@ class DocWorkspaceServiceTest {
                 nodeMapper,
                 submissionMapper,
                 attachmentMapper,
-                storageService
+                storageService,
+                orgAssignmentService
         );
-        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, nodeMapper, submissionMapper, attachmentMapper, storageService, service);
+        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, nodeMapper, submissionMapper, attachmentMapper, storageService, orgAssignmentService, service);
     }
 
     private SysDept dept(Long id, Long parentId, String name, String type) {
@@ -424,6 +502,12 @@ class DocWorkspaceServiceTest {
         return item;
     }
 
+    private SysDocItem item(Long id, Long categoryId, Long sectionDeptId, boolean attachment, String fileType, Integer docYear) {
+        SysDocItem item = item(id, categoryId, sectionDeptId, attachment, fileType);
+        item.setDocYear(docYear);
+        return item;
+    }
+
     private SysDocNode node(Long id, Long sectionDeptId, Long parentId, String nodeType, String nodeName,
                             Long itemId, Integer level, Integer sortOrder) {
         SysDocNode node = new SysDocNode();
@@ -460,6 +544,7 @@ class DocWorkspaceServiceTest {
             SysDocSubmissionMapper submissionMapper,
             SysDocAttachmentMapper attachmentMapper,
             FileStorageService storageService,
+            OrgAssignmentService orgAssignmentService,
             DocWorkspaceService service
     ) {
     }

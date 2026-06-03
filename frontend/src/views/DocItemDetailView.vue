@@ -4,7 +4,7 @@
       <div>
         <el-button link type="primary" @click="router.push(`/org/${deptId}`)">返回文件菜单</el-button>
         <h2>{{ item?.itemName || '文件详情' }}</h2>
-        <p v-if="item" class="detail-meta">{{ [item.sectionDeptName, item.categoryName].filter(Boolean).join(' / ') }}</p>
+        <p v-if="item" class="detail-meta">{{ [item.sectionDeptName, item.categoryName, item.docYear].filter(Boolean).join(' / ') }}</p>
       </div>
       <div class="header-actions">
         <el-button v-if="canUploadAttachment" type="primary" @click="uploadOpen = true">上传附件</el-button>
@@ -88,6 +88,7 @@ interface DocItem {
   categoryName?: string
   sectionDeptId?: number
   sectionDeptName?: string
+  docYear?: number
 }
 
 interface DocSubmission {

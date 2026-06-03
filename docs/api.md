@@ -15,9 +15,9 @@
 - `GET /api/auth/captcha`：获取滑块验证码。
 - `POST /api/auth/captcha/check`：校验滑块轨迹，返回登录和注册使用的一次性验证码凭证。
 - `POST /api/auth/register`：注册，请求体包含 `phone`、`realName`、`deptId`、`password`、`confirmPassword`，不再填写用户名；密码需满足 8-20 位且包含大小写字母、数字、常见英文特殊符号。
-- `POST /api/auth/login`：手机号登录，请求体包含 `phone`、`password`。
+- `POST /api/auth/login`：手机号登录，请求体包含 `phone`、`password`；返回用户信息包含 `admin`，用于标识是否为管理员。
 - `POST /api/auth/logout`：登出。
-- `GET /api/auth/me`：当前用户信息。
+- `GET /api/auth/me`：当前用户信息，返回用户信息包含 `admin`。
 
 ## 注册审批
 
@@ -55,10 +55,10 @@
 
 ## 科室资料与车间填报
 
-- `GET /api/doc-tree?sectionDeptId=1`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；文件节点返回 `fileType`。
-- `POST /api/doc-nodes/folders`：本科室用户或超级管理员新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`sortOrder`。
-- `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`fileType`、`contentHtml`、`attachmentEnabled`、`sortOrder`。
-- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件节点可同步修改文件类型、富文本内容和附件上传开关。
+- `GET /api/doc-tree?sectionDeptId=1`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；文件节点返回 `fileType` 和 `docYear`。
+- `POST /api/doc-nodes/folders`：新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`sortOrder`；`parentId` 为空时仅本科室管理员或超级管理员可新增最高级文件夹。
+- `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`fileType`、`docYear`、`contentHtml`、`attachmentEnabled`、`sortOrder`。
+- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件节点可同步修改文件类型、年份、富文本内容和附件上传开关。
 - `DELETE /api/doc-nodes/{id}`：本科室用户或超级管理员删除目录节点；文件夹存在子节点时禁止删除。
 - `GET /api/doc-categories?sectionDeptId=1`：查询科室下旧二级侧边栏，保留兼容历史页面和旧数据。
 - `POST /api/doc-categories`：本科室用户或超级管理员新增二级侧边栏。

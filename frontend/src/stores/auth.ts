@@ -7,6 +7,7 @@ export interface LoginUser {
   realName: string
   deptId?: number
   isSuperAdmin?: boolean
+  admin?: boolean
 }
 
 export const useAuthStore = defineStore('auth', {

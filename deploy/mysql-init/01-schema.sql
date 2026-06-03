@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   category_id BIGINT NOT NULL,
   item_name VARCHAR(128) NOT NULL,
   file_type VARCHAR(32) NULL,
+  doc_year INT NOT NULL DEFAULT 2026,
   content_html MEDIUMTEXT,
   attachment_enabled TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0,
