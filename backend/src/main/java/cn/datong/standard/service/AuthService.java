@@ -2,6 +2,7 @@ package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.AuthTokenResponse;
+import cn.datong.standard.dto.AuthUser;
 import cn.datong.standard.dto.LoginRequest;
 import cn.datong.standard.dto.RegisterRequest;
 import cn.datong.standard.entity.SysRegisterApproval;
@@ -78,7 +79,7 @@ public class AuthService {
         String token = jwtTokenProvider.createToken(user.getId(), user.getDeptId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
         Set<String> permissions = permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
         logService.login(request.phone(), user.getId(), "SUCCESS", null, servletRequest);
-        return new AuthTokenResponse(token, user, permissions);
+        return new AuthTokenResponse(token, authUser(user), permissions);
     }
 
     public AuthTokenResponse devLoginAsUserOne(HttpServletRequest servletRequest) {
@@ -95,7 +96,15 @@ public class AuthService {
         }
         String token = jwtTokenProvider.createToken(user.getId(), user.getDeptId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
         Set<String> permissions = permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
-        return new AuthTokenResponse(token, user, permissions);
+        return new AuthTokenResponse(token, authUser(user), permissions);
+    }
+
+    public AuthUser currentUser(Long userId) {
+        SysUser user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        return authUser(user);
     }
 
     private boolean isLocalRequest(HttpServletRequest servletRequest) {
@@ -105,5 +114,12 @@ public class AuthService {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private AuthUser authUser(SysUser user) {
+        boolean superAdmin = Boolean.TRUE.equals(user.getIsSuperAdmin());
+        Set<Long> adminUserIds = superAdmin ? Set.of() : orgAssignmentService.adminUserIds();
+        boolean admin = superAdmin || adminUserIds != null && adminUserIds.contains(user.getId());
+        return AuthUser.of(user, admin);
     }
 }

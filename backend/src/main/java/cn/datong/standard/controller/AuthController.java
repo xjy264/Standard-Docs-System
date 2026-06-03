@@ -2,12 +2,11 @@ package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
 import cn.datong.standard.dto.AuthTokenResponse;
+import cn.datong.standard.dto.AuthUser;
 import cn.datong.standard.dto.CaptchaCheckRequest;
 import cn.datong.standard.dto.CurrentUser;
 import cn.datong.standard.dto.LoginRequest;
 import cn.datong.standard.dto.RegisterRequest;
-import cn.datong.standard.entity.SysUser;
-import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.security.SecurityUtils;
 import cn.datong.standard.service.AuthService;
 import cn.datong.standard.service.CaptchaService;
@@ -35,7 +34,6 @@ import java.util.Map;
 public class AuthController {
     private final CaptchaService captchaService;
     private final AuthService authService;
-    private final SysUserMapper userMapper;
     private final ObjectMapper objectMapper;
 
     @RequestMapping(value = "/captcha", method = {RequestMethod.GET, RequestMethod.POST})
@@ -101,8 +99,8 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ApiResponse<SysUser> me() {
+    public ApiResponse<AuthUser> me() {
         CurrentUser currentUser = SecurityUtils.currentUser();
-        return ApiResponse.success(userMapper.selectById(currentUser.userId()));
+        return ApiResponse.success(authService.currentUser(currentUser.userId()));
     }
 }

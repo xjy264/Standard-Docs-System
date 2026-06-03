@@ -41,6 +41,7 @@ class AuthServiceTest {
         when(userMapper.selectById(1L)).thenReturn(user);
         when(jwtTokenProvider.createToken(1L, 1L, true)).thenReturn("dev-token");
         when(permissionService.getEffectivePermissions(1L, true)).thenReturn(Set.of("*"));
+        OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
         AuthService service = new AuthService(
                 userMapper,
                 mock(SysRegisterApprovalMapper.class),
@@ -49,13 +50,14 @@ class AuthServiceTest {
                 jwtTokenProvider,
                 permissionService,
                 mock(OperationLogService.class),
-                mock(OrgAssignmentService.class)
+                orgAssignmentService
         );
 
         AuthTokenResponse response = service.devLoginAsUserOne(request);
 
         assertThat(response.token()).isEqualTo("dev-token");
-        assertThat(response.user()).isSameAs(user);
+        assertThat(response.user().id()).isEqualTo(1L);
+        assertThat(response.user().admin()).isTrue();
         assertThat(response.permissions()).containsExactly("*");
     }
 
@@ -73,6 +75,8 @@ class AuthServiceTest {
         when(userMapper.selectById(42L)).thenReturn(user);
         when(jwtTokenProvider.createToken(42L, 7L, false)).thenReturn("dev-token-42");
         when(permissionService.getEffectivePermissions(42L, false)).thenReturn(Set.of("file:upload"));
+        OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
+        when(orgAssignmentService.adminUserIds()).thenReturn(Set.of(42L));
         AuthService service = new AuthService(
                 userMapper,
                 mock(SysRegisterApprovalMapper.class),
@@ -81,13 +85,14 @@ class AuthServiceTest {
                 jwtTokenProvider,
                 permissionService,
                 mock(OperationLogService.class),
-                mock(OrgAssignmentService.class)
+                orgAssignmentService
         );
 
         AuthTokenResponse response = service.devLoginAs(42L, request);
 
         assertThat(response.token()).isEqualTo("dev-token-42");
-        assertThat(response.user()).isSameAs(user);
+        assertThat(response.user().id()).isEqualTo(42L);
+        assertThat(response.user().admin()).isTrue();
         assertThat(response.permissions()).containsExactly("file:upload");
     }
 
@@ -359,6 +364,7 @@ class AuthServiceTest {
         when(passwordEncoder.matches("Admin12345@@", "encoded-password")).thenReturn(true);
         when(jwtTokenProvider.createToken(1L, 24L, true)).thenReturn("token");
         when(permissionService.getEffectivePermissions(1L, true)).thenReturn(Set.of("*"));
+        OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
         AuthService service = new AuthService(
                 userMapper,
                 mock(SysRegisterApprovalMapper.class),
@@ -367,7 +373,7 @@ class AuthServiceTest {
                 jwtTokenProvider,
                 permissionService,
                 logService,
-                mock(OrgAssignmentService.class)
+                orgAssignmentService
         );
 
         AuthTokenResponse response = service.login(new LoginRequest(
@@ -378,7 +384,8 @@ class AuthServiceTest {
         ), null);
 
         assertThat(response.token()).isEqualTo("token");
-        assertThat(response.user()).isSameAs(user);
+        assertThat(response.user().id()).isEqualTo(1L);
+        assertThat(response.user().admin()).isTrue();
         assertThat(response.permissions()).containsExactly("*");
         verify(logService).login("00000000000", 1L, "SUCCESS", null, null);
     }

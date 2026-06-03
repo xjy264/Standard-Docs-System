@@ -49,6 +49,7 @@ public class DocWorkspaceService {
     private final SysDocSubmissionMapper submissionMapper;
     private final SysDocAttachmentMapper attachmentMapper;
     private final FileStorageService storageService;
+    private final OrgAssignmentService orgAssignmentService;
 
     public List<DeptNavigationItem> sections() {
         return sectionDepts().stream()
@@ -95,7 +96,7 @@ public class DocWorkspaceService {
     }
 
     public SysDocNode createFolderNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
-        NodePlacement placement = resolvePlacement(userDeptId, superAdmin, request.sectionDeptId(), request.parentId());
+        NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), true);
         SysDocNode node = new SysDocNode();
         node.setSectionDeptId(placement.sectionDeptId());
         node.setParentId(request.parentId());
@@ -113,11 +114,12 @@ public class DocWorkspaceService {
 
     @Transactional
     public SysDocNode createFileNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
-        NodePlacement placement = resolvePlacement(userDeptId, superAdmin, request.sectionDeptId(), request.parentId());
+        NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), false);
         SysDocItem item = new SysDocItem();
         item.setSectionDeptId(placement.sectionDeptId());
         item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
         item.setFileType(normalizeFileType(request.fileType()));
+        item.setDocYear(requiredDocYear(request.docYear()));
         item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
         item.setAttachmentEnabled(Boolean.TRUE.equals(request.attachmentEnabled()) ? 1 : 0);
         item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
@@ -155,6 +157,7 @@ public class DocWorkspaceService {
             item.setItemName(node.getNodeName());
             item.setSortOrder(node.getSortOrder());
             item.setFileType(normalizeFileType(request.fileType()));
+            item.setDocYear(requiredDocYear(request.docYear()));
             if (request.contentHtml() != null) {
                 item.setContentHtml(request.contentHtml());
             }
@@ -401,6 +404,7 @@ public class DocWorkspaceService {
             }
             node.setAttachmentEnabled(item.getAttachmentEnabled());
             node.setFileType(item.getFileType());
+            node.setDocYear(item.getDocYear());
             node.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                     .eq(SysDocSubmission::getItemId, item.getId()))));
         }
@@ -482,9 +486,14 @@ public class DocWorkspaceService {
         }
     }
 
-    private NodePlacement resolvePlacement(Long userDeptId, boolean superAdmin, Long sectionDeptId, Long parentId) {
+    private NodePlacement resolvePlacement(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, Long parentId,
+                                           boolean rootFolderRequiresAdmin) {
         if (parentId == null) {
-            requireManageSection(userDeptId, superAdmin, sectionDeptId);
+            if (rootFolderRequiresAdmin) {
+                requireRootFolderManage(userId, userDeptId, superAdmin, sectionDeptId);
+            } else {
+                requireManageSection(userDeptId, superAdmin, sectionDeptId);
+            }
             return new NodePlacement(sectionDeptId, 1);
         }
         SysDocNode parent = requireNode(parentId);
@@ -500,6 +509,17 @@ public class DocWorkspaceService {
             throw new BusinessException("目录层级最多支持五层");
         }
         return new NodePlacement(parent.getSectionDeptId(), level);
+    }
+
+    private void requireRootFolderManage(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId) {
+        requireManageSection(userDeptId, superAdmin, sectionDeptId);
+        if (superAdmin) {
+            return;
+        }
+        Set<Long> adminUserIds = orgAssignmentService.adminUserIds();
+        if (adminUserIds == null || !adminUserIds.contains(userId)) {
+            throw new BusinessException(403, "只有科室管理员可以新建最高级文件夹");
+        }
     }
 
     private boolean hasUndeletedDescendant(SysDocNode folder) {
@@ -643,6 +663,16 @@ public class DocWorkspaceService {
             case "WORD", "EXCEL", "PDF", "IMAGE", "OTHER" -> normalized;
             default -> "OTHER";
         };
+    }
+
+    private Integer requiredDocYear(Integer docYear) {
+        if (docYear == null) {
+            throw new BusinessException("请选择文件年份");
+        }
+        if (docYear < 1000 || docYear > 9999) {
+            throw new BusinessException("文件年份必须为四位年份");
+        }
+        return docYear;
     }
 
     private String extension(String filename) {

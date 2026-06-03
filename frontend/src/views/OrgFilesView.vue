@@ -7,37 +7,35 @@
     </div>
 
     <section class="doc-tree-panel">
-      <el-tree
-        v-if="treeData.length"
-        :data="treeData"
-        ref="treeRef"
-        node-key="id"
-        :props="{ children: 'children', label: 'nodeName' }"
-        :indent="26"
-        :expand-on-click-node="true"
-        default-expand-all
-      >
-        <template #default="{ node, data }">
-          <div class="doc-tree-row" :class="{ 'is-folder': data.nodeType === 'FOLDER', 'is-file': data.nodeType === 'FILE' }">
-            <div class="doc-tree-title" @click="data.nodeType === 'FILE' && openItemDetail(data)">
-              <el-icon v-if="data.nodeType === 'FOLDER'" class="doc-tree-icon">
-                <Folder />
-              </el-icon>
-              <span v-if="data.nodeType === 'FILE'" class="doc-file-icon" :class="fileTypeClass(data)">
-                {{ fileTypeLabel(data) }}
+      <div class="doc-search-bar">
+        <el-input-number v-model="selectedYear" :min="1000" :max="9999" :controls="false" class="year-input" />
+        <el-input v-model="searchKeyword" clearable maxlength="128" placeholder="按文件名搜索" class="keyword-input" />
+      </div>
+
+      <el-table v-if="filteredFiles.length" :data="filteredFiles" stripe class="doc-file-table">
+        <el-table-column label="文件名称" min-width="280">
+          <template #default="{ row }">
+            <button class="file-link" type="button" @click="openItemDetail(row)">
+              <span class="doc-file-icon" :class="fileTypeClass(row)">
+                {{ fileTypeLabel(row) }}
               </span>
-              <span>{{ node.label }}</span>
-            </div>
-            <div v-if="canManageSection" class="doc-tree-actions">
-              <el-button v-if="data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
-              <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">新增文件</el-button>
-              <el-button link type="primary" @click.stop="openEditDialog(data)">编辑</el-button>
-              <el-button link type="danger" @click.stop="deleteNode(data)">删除</el-button>
-            </div>
-          </div>
-        </template>
-      </el-tree>
-      <el-empty v-else description="暂无资料目录" />
+              <span>{{ row.nodeName }}</span>
+            </button>
+          </template>
+        </el-table-column>
+        <el-table-column prop="docYear" label="年份" width="110" />
+        <el-table-column label="文件类型" width="110">
+          <template #default="{ row }">{{ fileTypeText(row) }}</template>
+        </el-table-column>
+        <el-table-column prop="submissionCount" label="上传记录" width="110" />
+        <el-table-column v-if="canManageSection" label="操作" width="150">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
+            <el-button link type="danger" @click="deleteNode(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else description="暂无匹配文件" />
     </section>
 
     <el-dialog
@@ -62,6 +60,9 @@
                 :value="option.value"
               />
             </el-select>
+          </el-form-item>
+          <el-form-item label="文件年份">
+            <el-input-number v-model="nodeForm.docYear" :min="1000" :max="9999" :controls="false" style="width: 220px" />
           </el-form-item>
           <el-form-item label="文件内容">
             <div class="editor-box">
@@ -93,9 +94,8 @@
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
-import { Folder } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/http'
 import { useAuthStore } from '../stores/auth'
@@ -117,6 +117,7 @@ interface DocNode {
   attachmentEnabled?: number
   submissionCount?: number
   fileType?: FileType
+  docYear?: number
   children?: DocNode[]
 }
 
@@ -127,6 +128,7 @@ interface DocItem {
   attachmentEnabled: number
   sortOrder: number
   fileType?: FileType
+  docYear?: number
 }
 
 type DialogMode = 'create' | 'edit'
@@ -138,11 +140,13 @@ const auth = useAuthStore()
 const deptId = computed(() => Number(route.params.deptId))
 const sections = ref<SectionItem[]>([])
 const treeData = ref<DocNode[]>([])
-const treeRef = ref()
 const nodeDialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
 const editorRef = shallowRef<IDomEditor>()
+const currentYear = new Date().getFullYear()
+const selectedYear = ref(currentYear)
+const searchKeyword = ref('')
 const toolbarConfig: Partial<IToolbarConfig> = {}
 const editorConfig: Partial<IEditorConfig> = { placeholder: '请输入文件内容' }
 const fileTypeOptions: Array<{ label: string; value: FileType }> = [
@@ -159,11 +163,21 @@ const nodeForm = reactive({
   sortOrder: 0,
   attachmentEnabled: false,
   contentHtml: '',
-  fileType: '' as FileType | ''
+  fileType: '' as FileType | '',
+  docYear: currentYear
 })
 
 const currentSection = computed(() => sections.value.find((item) => item.id === deptId.value))
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === deptId.value)
+const allFiles = computed(() => flattenFiles(treeData.value))
+const filteredFiles = computed(() => {
+  const keyword = searchKeyword.value.trim()
+  return allFiles.value.filter((file) => {
+    const matchesYear = file.docYear === selectedYear.value
+    const matchesKeyword = !keyword || file.nodeName.includes(keyword)
+    return matchesYear && matchesKeyword
+  })
+})
 const dialogTitle = computed(() => {
   if (dialogMode.value === 'edit') {
     return nodeForm.nodeType === 'FOLDER' ? '编辑文件夹' : '编辑文件'
@@ -190,6 +204,7 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.attachmentEnabled = type === 'FILE'
   nodeForm.contentHtml = ''
   nodeForm.fileType = ''
+  nodeForm.docYear = currentYear
 }
 
 function openFolderDialog(parent?: DocNode) {
@@ -212,11 +227,13 @@ async function openEditDialog(node: DocNode) {
   nodeForm.attachmentEnabled = Boolean(node.attachmentEnabled)
   nodeForm.contentHtml = ''
   nodeForm.fileType = node.nodeType === 'FILE' ? node.fileType || guessFileType(node.nodeName) : ''
+  nodeForm.docYear = node.nodeType === 'FILE' ? node.docYear || currentYear : currentYear
   if (node.nodeType === 'FILE' && node.itemId) {
     const item = await apiGet<DocItem>(`/doc-items/${node.itemId}`)
     nodeForm.contentHtml = item.contentHtml || ''
     nodeForm.attachmentEnabled = Boolean(item.attachmentEnabled)
     nodeForm.fileType = item.fileType || node.fileType || guessFileType(node.nodeName)
+    nodeForm.docYear = item.docYear || node.docYear || currentYear
   }
   nodeDialogOpen.value = true
 }
@@ -230,6 +247,10 @@ async function submitNode() {
     ElMessage.warning('请选择文件类型')
     return
   }
+  if (nodeForm.nodeType === 'FILE' && !nodeForm.docYear) {
+    ElMessage.warning('请选择文件年份')
+    return
+  }
   const body = {
     sectionDeptId: deptId.value,
     parentId: nodeForm.parentId,
@@ -237,33 +258,19 @@ async function submitNode() {
     sortOrder: nodeForm.sortOrder,
     attachmentEnabled: nodeForm.attachmentEnabled,
     contentHtml: nodeForm.contentHtml,
-    fileType: nodeForm.nodeType === 'FILE' ? nodeForm.fileType : undefined
+    fileType: nodeForm.nodeType === 'FILE' ? nodeForm.fileType : undefined,
+    docYear: nodeForm.nodeType === 'FILE' ? nodeForm.docYear : undefined
   }
-  let changedNode: DocNode | undefined
   if (dialogMode.value === 'edit' && editingNode.value) {
-    changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
+    await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
   } else if (nodeForm.nodeType === 'FOLDER') {
-    changedNode = await apiPost<DocNode>('/doc-nodes/folders', body)
+    await apiPost<DocNode>('/doc-nodes/folders', body)
   } else {
-    changedNode = await apiPost<DocNode>('/doc-nodes/files', body)
+    await apiPost<DocNode>('/doc-nodes/files', body)
   }
   nodeDialogOpen.value = false
   await loadTree()
-  await expandChangedNode(changedNode)
   ElMessage.success(dialogMode.value === 'edit' ? '修改成功' : '新增成功')
-}
-
-async function expandChangedNode(node?: DocNode) {
-  await nextTick()
-  if (!node) {
-    return
-  }
-  if (node.parentId) {
-    treeRef.value?.getNode?.(node.parentId)?.expand?.()
-  }
-  if (node.nodeType === 'FOLDER') {
-    treeRef.value?.getNode?.(node.id)?.expand?.()
-  }
 }
 
 async function deleteNode(node: DocNode) {
@@ -271,6 +278,19 @@ async function deleteNode(node: DocNode) {
   await apiDelete(`/doc-nodes/${node.id}`)
   ElMessage.success('删除成功')
   await loadTree()
+}
+
+function flattenFiles(nodes: DocNode[]): DocNode[] {
+  const files: DocNode[] = []
+  for (const node of nodes) {
+    if (node.nodeType === 'FILE') {
+      files.push(node)
+    }
+    if (node.children?.length) {
+      files.push(...flattenFiles(node.children))
+    }
+  }
+  return files
 }
 
 function openItemDetail(node: DocNode) {
@@ -315,6 +335,17 @@ function fileTypeLabel(node: DocNode) {
   return labels[resolveFileType(node)]
 }
 
+function fileTypeText(node: DocNode) {
+  const labels: Record<FileType, string> = {
+    WORD: 'Word',
+    EXCEL: 'Excel',
+    PDF: 'PDF',
+    IMAGE: '图片',
+    OTHER: '其他'
+  }
+  return labels[resolveFileType(node)]
+}
+
 function handleEditorCreated(editor: IDomEditor) {
   editorRef.value = editor
 }
@@ -349,6 +380,40 @@ watch(() => route.params.deptId, load)
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 6px;
+}
+
+.doc-search-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.year-input {
+  width: 120px;
+}
+
+.keyword-input {
+  max-width: 320px;
+}
+
+.doc-file-table {
+  width: 100%;
+}
+
+.file-link {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rail-blue-dark);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
 }
 
 .doc-tree-panel :deep(.el-tree-node__content) {

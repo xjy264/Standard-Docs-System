@@ -8,6 +8,7 @@ public record DocNodeRequest(
         Long targetParentId,
         Boolean attachmentEnabled,
         String contentHtml,
-        String fileType
+        String fileType,
+        Integer docYear
 ) {
 }

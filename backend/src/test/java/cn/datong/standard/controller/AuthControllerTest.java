@@ -2,8 +2,7 @@ package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
 import cn.datong.standard.dto.AuthTokenResponse;
-import cn.datong.standard.entity.SysUser;
-import cn.datong.standard.mapper.SysUserMapper;
+import cn.datong.standard.dto.AuthUser;
 import cn.datong.standard.service.AuthService;
 import cn.datong.standard.service.CaptchaService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,7 +26,6 @@ class AuthControllerTest {
         AuthController controller = new AuthController(
                 captchaService,
                 mock(AuthService.class),
-                mock(SysUserMapper.class),
                 new ObjectMapper()
         );
 
@@ -49,7 +47,6 @@ class AuthControllerTest {
         AuthController controller = new AuthController(
                 captchaService,
                 mock(AuthService.class),
-                mock(SysUserMapper.class),
                 new ObjectMapper()
         );
 
@@ -65,14 +62,11 @@ class AuthControllerTest {
     void devLoginRedirectsToDashboard() throws Exception {
         AuthService authService = mock(AuthService.class);
         HttpServletRequest request = mock(HttpServletRequest.class);
-        SysUser user = new SysUser();
-        user.setId(1L);
-        user.setRealName("系统管理员");
+        AuthUser user = new AuthUser(1L, "admin", "系统管理员", "00000000000", 1L, true, true);
         when(authService.devLoginAs(eq(1L), eq(request))).thenReturn(new AuthTokenResponse("token", user, Set.of("*")));
         AuthController controller = new AuthController(
                 mock(CaptchaService.class),
                 authService,
-                mock(SysUserMapper.class),
                 new ObjectMapper()
         );
 
