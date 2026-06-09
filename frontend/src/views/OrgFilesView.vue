@@ -78,8 +78,20 @@
           </el-form-item>
           <el-form-item label="收集项">
             <div class="requirement-editor">
+              <div class="requirement-row requirement-row-heading">
+                <span>收集内容</span>
+                <span>说明</span>
+                <span>排序</span>
+                <span>操作</span>
+              </div>
               <div v-for="(requirement, index) in nodeForm.requirements" :key="index" class="requirement-row">
                 <el-input v-model="requirement.requirementName" maxlength="128" placeholder="请输入要收集的文件" />
+                <el-input
+                  v-model="requirement.description"
+                  maxlength="500"
+                  show-word-limit
+                  placeholder="请输入说明"
+                />
                 <el-input-number v-model="requirement.sortOrder" :min="0" />
                 <el-button link type="danger" @click="removeRequirement(index)">删除</el-button>
               </div>
@@ -153,6 +165,7 @@ interface SectionItem {
 interface DocUploadRequirement {
   id?: number
   requirementName: string
+  description?: string
   sortOrder: number
 }
 
@@ -231,7 +244,7 @@ const nodeForm = reactive({
   fileType: '' as FileType | '',
   businessType: 'UPLOAD' as BusinessType,
   submitterMode: 'SINGLE' as SubmitterMode,
-  requirements: [{ requirementName: '附件', sortOrder: 0 }] as DocUploadRequirement[]
+  requirements: [{ requirementName: '附件', description: '', sortOrder: 0 }] as DocUploadRequirement[]
 })
 
 const currentSection = computed(() => sections.value.find((item) => item.id === deptId.value))
@@ -281,7 +294,7 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.fileType = type === 'FILE' && activeTab.value === 'ISSUED' ? 'WORD' : ''
   nodeForm.businessType = activeTab.value
   nodeForm.submitterMode = 'SINGLE'
-  nodeForm.requirements = [{ requirementName: '附件', sortOrder: 0 }]
+  nodeForm.requirements = [{ requirementName: '附件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
 }
 
@@ -306,7 +319,7 @@ async function openEditDialog(node: DocNode) {
   nodeForm.fileType = node.nodeType === 'FILE' ? node.fileType || guessFileType(node.nodeName) : ''
   nodeForm.businessType = node.nodeType === 'FILE' ? node.businessType || activeTab.value : activeTab.value
   nodeForm.submitterMode = node.submitterMode || 'SINGLE'
-  nodeForm.requirements = [{ requirementName: '附件', sortOrder: 0 }]
+  nodeForm.requirements = [{ requirementName: '附件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
   if (node.nodeType === 'FILE' && node.itemId) {
     const item = await apiGet<DocItem>(`/doc-items/${node.itemId}`)
@@ -318,15 +331,16 @@ async function openEditDialog(node: DocNode) {
       ? item.requirements.map((requirement, index) => ({
           id: requirement.id,
           requirementName: requirement.requirementName,
+          description: requirement.description || '',
           sortOrder: requirement.sortOrder ?? index
         }))
-      : [{ requirementName: '附件', sortOrder: 0 }]
+      : [{ requirementName: '附件', description: '', sortOrder: 0 }]
   }
   nodeDialogOpen.value = true
 }
 
 function addRequirement() {
-  nodeForm.requirements.push({ requirementName: '', sortOrder: nodeForm.requirements.length })
+  nodeForm.requirements.push({ requirementName: '', description: '', sortOrder: nodeForm.requirements.length })
 }
 
 function removeRequirement(index: number) {
@@ -365,6 +379,7 @@ async function submitNode() {
           .map((item, index) => ({
             id: item.id,
             requirementName: item.requirementName.trim(),
+            description: item.description?.trim() || '',
             sortOrder: item.sortOrder ?? index
           }))
       : []
@@ -711,9 +726,14 @@ watch(() => [route.params.deptId, route.query.restore], () => load(route.query.r
 
 .requirement-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 140px auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.3fr) 140px auto;
   gap: 10px;
   align-items: center;
+}
+
+.requirement-row-heading {
+  color: #637083;
+  font-size: 13px;
 }
 
 .editor-box {

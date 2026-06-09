@@ -58,17 +58,17 @@
 
 - `GET /api/doc-tree?sectionDeptId=1&businessType=UPLOAD`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；`businessType` 可选 `UPLOAD` 或 `ISSUED`；上传任务树的文件夹节点返回 `uploadTaskCount`、`completedUploadTaskCount`、`progressPercent`。
 - `POST /api/doc-nodes/folders`：本科室用户或超级管理员新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`sortOrder`。
-- `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`businessType`、`fileType`、`contentHtml`、`submitterMode`、`requirements`、`sortOrder`。
-- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件节点可同步修改文件类型、富文本内容、业务类型、提交模式和收集项。
+- `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`businessType`、`fileType`、`contentHtml`、`submitterMode`、`requirements`、`sortOrder`；上传任务的 `requirements` 元素包含 `requirementName`、`description`、`sortOrder`。
+- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件节点可同步修改文件类型、富文本内容、业务类型、提交模式和收集项名称及说明。
 - `DELETE /api/doc-nodes/{id}`：本科室用户或超级管理员删除目录节点；文件夹存在子节点时禁止删除。
 - `GET /api/doc-categories?sectionDeptId=1`：查询科室下旧二级侧边栏，保留兼容历史页面和旧数据。
 - `POST /api/doc-categories`：本科室用户或超级管理员新增二级侧边栏。
 - `PUT /api/doc-categories/{id}`：本科室用户或超级管理员修改二级侧边栏名称和排序。
 - `DELETE /api/doc-categories/{id}`：本科室用户或超级管理员删除二级侧边栏。
 - `GET /api/doc-items?categoryId=1`：查询二级侧边栏下资料入口表格。
-- `GET /api/doc-items/{id}`：查询资料入口详情，包含富文本文件内容、所属科室、二级菜单、业务类型、提交模式、收集项和下达附件。
-- `POST /api/doc-items`：本科室用户或超级管理员新增资料入口，请求体包含 `categoryId`、`itemName`、`businessType`、`submitterMode`、`requirements`、`contentHtml`、`sortOrder`。
-- `PUT /api/doc-items/{id}`：本科室用户或超级管理员修改资料入口名称、业务类型、提交模式、收集项、富文本内容和排序。
+- `GET /api/doc-items/{id}`：查询资料入口详情，包含富文本文件内容、所属科室、二级菜单、业务类型、提交模式、收集项名称及说明和下达附件。
+- `POST /api/doc-items`：本科室用户或超级管理员新增资料入口，请求体包含 `categoryId`、`itemName`、`businessType`、`submitterMode`、`requirements`、`contentHtml`、`sortOrder`；上传任务的 `requirements` 元素包含 `requirementName`、`description`、`sortOrder`。
+- `PUT /api/doc-items/{id}`：本科室用户或超级管理员修改资料入口名称、业务类型、提交模式、收集项名称及说明、富文本内容和排序。
 - `DELETE /api/doc-items/{id}`：本科室用户或超级管理员删除资料入口。
 - `POST /api/doc-items/{id}/submissions`：车间用户和科室用户按上传任务提交附件，使用 `multipart/form-data`，包含多个 `files` 和与文件一一对应的 `requirementIds`；所有收集项都必须上传附件。
 - `GET /api/doc-items/{id}/submissions`：查询当前上传任务全部上传记录；仅任务所属科室用户和超级管理员可查看，返回 `submitterDeptName`、`uploadUserName`、`submittedAt` 和附件信息。

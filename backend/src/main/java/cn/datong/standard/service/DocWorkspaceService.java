@@ -607,7 +607,7 @@ public class DocWorkspaceService {
             return List.of();
         }
         return requirements.stream()
-                .map(item -> new DocUploadRequirementRequest(item.getId(), item.getRequirementName(), item.getSortOrder()))
+                .map(item -> new DocUploadRequirementRequest(item.getId(), item.getRequirementName(), item.getDescription(), item.getSortOrder()))
                 .toList();
     }
 
@@ -617,13 +617,14 @@ public class DocWorkspaceService {
                 .filter(request -> request != null && request.requirementName() != null && !request.requirementName().trim().isBlank())
                 .toList();
         if (source.isEmpty()) {
-            source = List.of(new DocUploadRequirementRequest(null, "附件", 0));
+            source = List.of(new DocUploadRequirementRequest(null, "附件", null, 0));
         }
         int index = 0;
         for (DocUploadRequirementRequest request : source) {
             SysDocUploadRequirement requirement = new SysDocUploadRequirement();
             requirement.setItemId(itemId);
             requirement.setRequirementName(requiredText(request.requirementName(), "请输入收集项名称"));
+            requirement.setDescription(optionalText(request.description()));
             requirement.setSortOrder(request.sortOrder() == null ? index : request.sortOrder());
             requirement.setCreatedAt(LocalDateTime.now());
             requirement.setUpdatedAt(LocalDateTime.now());
@@ -920,6 +921,13 @@ public class DocWorkspaceService {
     private String requiredText(String value, String message) {
         if (value == null || value.trim().isBlank()) {
             throw new BusinessException(message);
+        }
+        return value.trim();
+    }
+
+    private String optionalText(String value) {
+        if (value == null || value.trim().isBlank()) {
+            return null;
         }
         return value.trim();
     }

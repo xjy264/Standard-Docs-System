@@ -15,6 +15,7 @@ public class SysDocUploadRequirement {
     private Long id;
     private Long itemId;
     private String requirementName;
+    private String description;
     private Integer sortOrder;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

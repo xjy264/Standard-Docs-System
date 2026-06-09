@@ -2,6 +2,7 @@ package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.DocNodeRequest;
+import cn.datong.standard.dto.DocUploadRequirementRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocCategory;
 import cn.datong.standard.entity.SysDocItem;
@@ -89,6 +90,37 @@ class DocWorkspaceServiceTest {
         verify(fx.itemMapper).insert(itemCaptor.capture());
         assertThat(itemCaptor.getValue().getFileType()).isEqualTo("WORD");
         verify(fx.nodeMapper).insert(any(SysDocNode.class));
+    }
+
+    @Test
+    void createUploadFilePersistsRequirementDescription() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
+            SysDocItem item = invocation.getArgument(0);
+            item.setId(88L);
+            return 1;
+        });
+        DocNodeRequest request = new DocNodeRequest(
+                2L,
+                null,
+                "车间成员信息收集表",
+                30,
+                null,
+                true,
+                "",
+                "OTHER",
+                "UPLOAD",
+                "MULTIPLE",
+                List.of(new DocUploadRequirementRequest(null, "成员信息表", "请上传盖章后的 Excel 文件", 0))
+        );
+
+        fx.service.createFileNode(10L, 2L, false, request);
+
+        ArgumentCaptor<SysDocUploadRequirement> requirementCaptor = ArgumentCaptor.forClass(SysDocUploadRequirement.class);
+        verify(fx.requirementMapper).insert(requirementCaptor.capture());
+        assertThat(requirementCaptor.getValue().getRequirementName()).isEqualTo("成员信息表");
+        assertThat(requirementCaptor.getValue().getDescription()).isEqualTo("请上传盖章后的 Excel 文件");
     }
 
     @Test

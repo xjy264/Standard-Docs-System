@@ -49,12 +49,26 @@ CREATE TABLE IF NOT EXISTS sys_doc_upload_requirement (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   item_id BIGINT NOT NULL,
   requirement_name VARCHAR(128) NOT NULL,
+  description VARCHAR(500) NULL,
   sort_order INT NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_doc_upload_requirement_item (item_id, deleted, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET @upload_requirement_description_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'sys_doc_upload_requirement'
+    AND COLUMN_NAME = 'description'
+);
+SET @sql := IF(@upload_requirement_description_exists = 0,
+  'ALTER TABLE sys_doc_upload_requirement ADD COLUMN description VARCHAR(500) NULL AFTER requirement_name',
+  'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 INSERT INTO sys_doc_upload_requirement (
   item_id,

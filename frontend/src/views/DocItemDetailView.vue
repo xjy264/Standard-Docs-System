@@ -9,7 +9,6 @@
         </p>
       </div>
       <div class="header-actions">
-        <el-button v-if="canUploadAttachment" type="primary" @click="uploadOpen = true">上传附件</el-button>
         <el-button v-if="canManageSection && isUploadItem" @click="openRecords">上传记录</el-button>
         <el-button v-if="canManageSection && isIssuedItem" type="primary" plain @click="issuedUploadOpen = true">上传下达附件</el-button>
       </div>
@@ -24,12 +23,33 @@
       </div>
       <el-table :data="item?.requirements || []" border>
         <el-table-column prop="requirementName" label="收集内容" min-width="220" />
-        <el-table-column label="说明" min-width="180">
-          <template #default>
-            <span>每项需上传一个附件</span>
+        <el-table-column prop="description" label="说明" min-width="220">
+          <template #default="{ row }">
+            <span>{{ row.description || '无' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="上传附件" min-width="260">
+          <template #default="{ row }">
+            <div class="requirement-upload-cell">
+              <span class="selected-file-name">
+                {{ selectedRequirementFiles[row.id]?.name || (canUploadAttachment ? '未选择' : mySubmission ? '已提交' : '不可上传') }}
+              </span>
+              <el-upload
+                v-if="canUploadAttachment"
+                :auto-upload="false"
+                :show-file-list="false"
+                :disabled="submitting"
+                :on-change="onRequirementFileChange(row)"
+              >
+                <el-button link type="primary" :disabled="submitting">选择附件</el-button>
+              </el-upload>
+            </div>
           </template>
         </el-table-column>
       </el-table>
+      <div v-if="canUploadAttachment" class="upload-actions inline-upload-actions">
+        <el-button type="primary" :loading="submitting" @click="submitAttachment">上传附件</el-button>
+      </div>
     </section>
 
     <section v-else class="detail-content">
@@ -66,31 +86,6 @@
         </el-table-column>
       </el-table>
     </section>
-
-    <el-dialog v-model="uploadOpen" title="上传附件" width="780px" @closed="resetUpload">
-      <el-table :data="item?.requirements || []" border>
-        <el-table-column prop="requirementName" label="收集内容" min-width="220" />
-        <el-table-column label="待上传附件" min-width="220">
-          <template #default="{ row }">
-            <span>{{ selectedRequirementFiles[row.id]?.name || '未选择' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="140">
-          <template #default="{ row }">
-            <el-upload
-              :auto-upload="false"
-              :show-file-list="false"
-              :on-change="onRequirementFileChange(row)"
-            >
-              <el-button link type="primary">选择附件</el-button>
-            </el-upload>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="upload-actions">
-        <el-button type="primary" :loading="submitting" @click="submitAttachment">上传附件</el-button>
-      </div>
-    </el-dialog>
 
     <el-dialog v-model="issuedUploadOpen" title="上传下达附件" width="720px" @closed="resetIssuedUpload">
       <el-upload
@@ -145,6 +140,7 @@ import { useAuthStore } from '../stores/auth'
 interface DocUploadRequirement {
   id: number
   requirementName: string
+  description?: string
   sortOrder: number
 }
 
@@ -195,7 +191,6 @@ const deptId = computed(() => Number(route.params.deptId))
 const itemId = computed(() => Number(route.params.itemId))
 const item = ref<DocItem>()
 const recordsOpen = ref(false)
-const uploadOpen = ref(false)
 const issuedUploadOpen = ref(false)
 const records = ref<DocSubmission[]>([])
 const mySubmission = ref<DocSubmission | null>(null)
@@ -219,6 +214,7 @@ const canUploadAttachment = computed(() => {
 })
 
 async function load() {
+  resetUpload()
   item.value = await apiGet<DocItem>(`/doc-items/${itemId.value}`)
   if (isUploadItem.value) {
     mySubmission.value = await apiGet<DocSubmission | null>(`/doc-items/${itemId.value}/my-submission`)
@@ -261,7 +257,7 @@ async function submitAttachment() {
     })
     await http.post(`/doc-items/${itemId.value}/submissions`, form)
     ElMessage.success('上传成功')
-    uploadOpen.value = false
+    resetUpload()
     await load()
   } finally {
     submitting.value = false
@@ -392,6 +388,21 @@ watch(() => route.params.itemId, load)
   color: #637083;
 }
 
+.requirement-upload-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.selected-file-name {
+  min-width: 0;
+  color: #1f2d3d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rich-content {
   min-height: 280px;
   line-height: 1.8;
@@ -452,6 +463,10 @@ watch(() => route.params.itemId, load)
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+.inline-upload-actions {
+  margin-top: 14px;
 }
 
 .attachment-links {
