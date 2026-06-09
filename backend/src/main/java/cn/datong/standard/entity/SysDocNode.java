@@ -36,5 +36,15 @@ public class SysDocNode {
     @TableField(exist = false)
     private String fileType;
     @TableField(exist = false)
+    private String businessType;
+    @TableField(exist = false)
+    private String submitterMode;
+    @TableField(exist = false)
+    private Integer uploadTaskCount;
+    @TableField(exist = false)
+    private Integer completedUploadTaskCount;
+    @TableField(exist = false)
+    private Integer progressPercent;
+    @TableField(exist = false)
     private List<SysDocNode> children = new ArrayList<>();
 }

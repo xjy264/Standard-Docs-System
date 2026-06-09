@@ -9,12 +9,11 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("sys_doc_attachment")
-public class SysDocAttachment {
+@TableName("sys_doc_item_attachment")
+public class SysDocItemAttachment {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long submissionId;
-    private Long requirementId;
+    private Long itemId;
     private String originalFileName;
     private String extension;
     private String mimeType;
@@ -26,6 +25,4 @@ public class SysDocAttachment {
 
     @TableField(exist = false)
     private String uploadedByName;
-    @TableField(exist = false)
-    private String requirementName;
 }

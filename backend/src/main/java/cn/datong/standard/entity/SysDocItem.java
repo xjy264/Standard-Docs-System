@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @TableName("sys_doc_item")
@@ -17,6 +18,8 @@ public class SysDocItem {
     private Long categoryId;
     private Long sectionDeptId;
     private String itemName;
+    private String businessType;
+    private String submitterMode;
     private String fileType;
     private String contentHtml;
     private Integer attachmentEnabled;
@@ -33,4 +36,8 @@ public class SysDocItem {
     private String categoryName;
     @TableField(exist = false)
     private String sectionDeptName;
+    @TableField(exist = false)
+    private List<SysDocUploadRequirement> requirements;
+    @TableField(exist = false)
+    private List<SysDocItemAttachment> issuedAttachments;
 }

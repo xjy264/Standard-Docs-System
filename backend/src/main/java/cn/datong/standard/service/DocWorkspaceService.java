@@ -3,19 +3,24 @@ package cn.datong.standard.service;
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.DeptNavigationItem;
 import cn.datong.standard.dto.DocNodeRequest;
+import cn.datong.standard.dto.DocUploadRequirementRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocAttachment;
 import cn.datong.standard.entity.SysDocCategory;
 import cn.datong.standard.entity.SysDocItem;
+import cn.datong.standard.entity.SysDocItemAttachment;
 import cn.datong.standard.entity.SysDocNode;
 import cn.datong.standard.entity.SysDocSubmission;
+import cn.datong.standard.entity.SysDocUploadRequirement;
 import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
 import cn.datong.standard.mapper.SysDocItemMapper;
+import cn.datong.standard.mapper.SysDocItemAttachmentMapper;
 import cn.datong.standard.mapper.SysDocNodeMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
+import cn.datong.standard.mapper.SysDocUploadRequirementMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
@@ -48,6 +53,8 @@ public class DocWorkspaceService {
     private final SysDocNodeMapper nodeMapper;
     private final SysDocSubmissionMapper submissionMapper;
     private final SysDocAttachmentMapper attachmentMapper;
+    private final SysDocUploadRequirementMapper requirementMapper;
+    private final SysDocItemAttachmentMapper itemAttachmentMapper;
     private final FileStorageService storageService;
 
     public List<DeptNavigationItem> sections() {
@@ -73,13 +80,23 @@ public class DocWorkspaceService {
     }
 
     public List<SysDocNode> documentTree(Long sectionDeptId) {
+        return documentTree(null, null, false, sectionDeptId, null);
+    }
+
+    public List<SysDocNode> documentTree(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, String businessType) {
         requireSection(sectionDeptId);
+        String normalizedBusinessType = normalizeBusinessTypeOrNull(businessType);
         List<SysDocNode> nodes = nodeMapper.selectList(new LambdaQueryWrapper<SysDocNode>()
                 .eq(SysDocNode::getSectionDeptId, sectionDeptId)
                 .eq(SysDocNode::getDeleted, 0)
                 .orderByAsc(SysDocNode::getSortOrder)
                 .orderByAsc(SysDocNode::getId));
         fillNodeItemInfo(nodes);
+        nodes = nodes.stream()
+                .filter(node -> !"FILE".equalsIgnoreCase(node.getNodeType())
+                        || normalizedBusinessType == null
+                        || normalizedBusinessType.equalsIgnoreCase(node.getBusinessType()))
+                .toList();
         Map<Long, SysDocNode> nodeMap = nodes.stream()
                 .peek(node -> node.setChildren(new ArrayList<>()))
                 .collect(Collectors.toMap(SysDocNode::getId, Function.identity(), (a, b) -> a));
@@ -90,6 +107,10 @@ public class DocWorkspaceService {
             } else {
                 nodeMap.get(node.getParentId()).getChildren().add(node);
             }
+        }
+        if ("UPLOAD".equals(normalizedBusinessType)) {
+            Set<Long> completedItemIds = completedUploadItemIds(userId, userDeptId, superAdmin, sectionDeptId);
+            roots.forEach(root -> fillUploadProgress(root, completedItemIds));
         }
         return roots;
     }
@@ -114,12 +135,15 @@ public class DocWorkspaceService {
     @Transactional
     public SysDocNode createFileNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
         NodePlacement placement = resolvePlacement(userDeptId, superAdmin, request.sectionDeptId(), request.parentId());
+        String businessType = normalizeBusinessType(request.businessType());
         SysDocItem item = new SysDocItem();
         item.setSectionDeptId(placement.sectionDeptId());
         item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
+        item.setBusinessType(businessType);
+        item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
         item.setFileType(normalizeFileType(request.fileType()));
         item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
-        item.setAttachmentEnabled(Boolean.TRUE.equals(request.attachmentEnabled()) ? 1 : 0);
+        item.setAttachmentEnabled("UPLOAD".equals(businessType) ? 1 : 0);
         item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         item.setCreatedBy(userId);
         item.setCreatedAt(LocalDateTime.now());
@@ -140,9 +164,13 @@ public class DocWorkspaceService {
         node.setUpdatedAt(LocalDateTime.now());
         node.setDeleted(0);
         nodeMapper.insert(node);
+        if ("UPLOAD".equals(businessType)) {
+            replaceRequirements(item.getId(), request.requirements());
+        }
         return node;
     }
 
+    @Transactional
     public SysDocNode updateNode(Long userDeptId, boolean superAdmin, Long id, DocNodeRequest request) {
         SysDocNode node = requireNode(id);
         requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
@@ -152,17 +180,23 @@ public class DocWorkspaceService {
         nodeMapper.updateById(node);
         if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
             SysDocItem item = requireItem(node.getItemId());
+            String businessType = normalizeBusinessType(request.businessType() == null ? item.getBusinessType() : request.businessType());
             item.setItemName(node.getNodeName());
             item.setSortOrder(node.getSortOrder());
+            item.setBusinessType(businessType);
+            item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
             item.setFileType(normalizeFileType(request.fileType()));
             if (request.contentHtml() != null) {
                 item.setContentHtml(request.contentHtml());
             }
-            if (request.attachmentEnabled() != null) {
-                item.setAttachmentEnabled(Boolean.TRUE.equals(request.attachmentEnabled()) ? 1 : 0);
-            }
+            item.setAttachmentEnabled("UPLOAD".equals(businessType) ? 1 : 0);
             item.setUpdatedAt(LocalDateTime.now());
             itemMapper.updateById(item);
+            if ("UPLOAD".equals(businessType)) {
+                replaceRequirements(item.getId(), request.requirements());
+            } else {
+                deleteRequirements(item.getId());
+            }
         }
         return node;
     }
@@ -225,9 +259,12 @@ public class DocWorkspaceService {
         SysDocItem item = requireItem(id);
         fillItemCounts(List.of(item));
         fillItemInfo(List.of(item));
+        item.setRequirements(requirements(item.getId()));
+        item.setIssuedAttachments(itemAttachments(item.getId()));
         return item;
     }
 
+    @Transactional
     public SysDocItem createItem(Long userId, Long userDeptId, boolean superAdmin, SysDocItem request) {
         SysDocCategory category = requireCategory(request.getCategoryId());
         requireManageSection(userDeptId, superAdmin, category.getSectionDeptId());
@@ -240,15 +277,24 @@ public class DocWorkspaceService {
         item.setUpdatedAt(LocalDateTime.now());
         item.setDeleted(0);
         itemMapper.insert(item);
+        if ("UPLOAD".equals(item.getBusinessType())) {
+            replaceRequirements(item.getId(), requirementRequests(request.getRequirements()));
+        }
         return item;
     }
 
+    @Transactional
     public SysDocItem updateItem(Long userDeptId, boolean superAdmin, Long id, SysDocItem request) {
         SysDocItem item = requireItem(id);
         requireManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
         applyItemRequest(item, request);
         item.setUpdatedAt(LocalDateTime.now());
         itemMapper.updateById(item);
+        if ("UPLOAD".equals(item.getBusinessType())) {
+            replaceRequirements(item.getId(), requirementRequests(request.getRequirements()));
+        } else {
+            deleteRequirements(item.getId());
+        }
         return item;
     }
 
@@ -260,6 +306,11 @@ public class DocWorkspaceService {
 
     @Transactional
     public SysDocSubmission submit(Long userId, Long userDeptId, Long itemId, String valuesJson, List<MultipartFile> files) {
+        return submit(userId, userDeptId, itemId, valuesJson, null, files);
+    }
+
+    @Transactional
+    public SysDocSubmission submit(Long userId, Long userDeptId, Long itemId, String valuesJson, List<Long> requirementIds, List<MultipartFile> files) {
         SysDocItem item = requireItem(itemId);
         SysDocCategory category = item.getCategoryId() == null ? null : requireCategory(item.getCategoryId());
         Long sectionDeptId = itemSectionDeptId(item, category);
@@ -267,12 +318,15 @@ public class DocWorkspaceService {
         List<MultipartFile> uploadFiles = files == null ? List.of() : files.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
-        if (item.getAttachmentEnabled() == null || item.getAttachmentEnabled() == 0) {
-            throw new BusinessException("该文件未开启附件上传");
+        if (!isUploadItem(item)) {
+            throw new BusinessException("该文件不是上传任务");
         }
         if (uploadFiles.isEmpty()) {
             throw new BusinessException("请上传附件");
         }
+        List<SysDocUploadRequirement> requirements = requirements(item.getId());
+        List<Long> normalizedRequirementIds = normalizeSubmissionRequirementIds(requirements, requirementIds, uploadFiles);
+        requireSubmissionOpen(userId, item);
 
         SysDocSubmission submission = new SysDocSubmission();
         submission.setItemId(item.getId());
@@ -284,8 +338,8 @@ public class DocWorkspaceService {
         submission.setSubmittedAt(LocalDateTime.now());
         submissionMapper.insert(submission);
 
-        for (MultipartFile file : uploadFiles) {
-            saveAttachment(userId, submission.getId(), file);
+        for (int i = 0; i < uploadFiles.size(); i++) {
+            saveAttachment(userId, submission.getId(), normalizedRequirementIds.get(i), uploadFiles.get(i));
         }
         return detail(userId, userDeptId, false, submission.getId());
     }
@@ -311,19 +365,32 @@ public class DocWorkspaceService {
     public List<SysDocSubmission> itemSubmissions(Long userId, Long userDeptId, boolean superAdmin, Long itemId) {
         SysDocItem item = requireItem(itemId);
         boolean sectionManager = canManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
+        if (!superAdmin && !sectionManager) {
+            throw new BusinessException(403, "只有科室用户可以查看全部上传记录");
+        }
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, itemId)
                 .orderByDesc(SysDocSubmission::getSubmittedAt);
-        if (!superAdmin && !sectionManager) {
-            if (userDeptId == null) {
-                wrapper.eq(SysDocSubmission::getUploadUserId, userId);
-            } else {
-                wrapper.eq(SysDocSubmission::getSubmitterDeptId, userDeptId);
-            }
-        }
         List<SysDocSubmission> result = submissionMapper.selectList(wrapper);
         fillSubmissionInfo(result);
+        result.forEach(submission -> submission.setAttachments(attachments(submission.getId())));
         return result;
+    }
+
+    public SysDocSubmission mySubmission(Long userId, Long userDeptId, boolean superAdmin, Long itemId) {
+        requireItem(itemId);
+        SysDocSubmission submission = submissionMapper.selectOne(new LambdaQueryWrapper<SysDocSubmission>()
+                .eq(SysDocSubmission::getItemId, itemId)
+                .eq(SysDocSubmission::getUploadUserId, userId)
+                .orderByDesc(SysDocSubmission::getSubmittedAt)
+                .last("LIMIT 1"));
+        if (submission == null) {
+            return null;
+        }
+        requireSubmissionVisible(userId, userDeptId, superAdmin, submission);
+        fillSubmissionInfo(List.of(submission));
+        submission.setAttachments(attachments(submission.getId()));
+        return submission;
     }
 
     public SysDocSubmission detail(Long userId, Long userDeptId, boolean superAdmin, Long submissionId) {
@@ -350,14 +417,48 @@ public class DocWorkspaceService {
         return attachment;
     }
 
+    @Transactional
+    public List<SysDocItemAttachment> addItemAttachments(Long userId, Long userDeptId, boolean superAdmin, Long itemId, List<MultipartFile> files) {
+        SysDocItem item = requireItem(itemId);
+        requireManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
+        if (!"ISSUED".equals(normalizeBusinessType(item))) {
+            throw new BusinessException("只有下达文件可以上传下达附件");
+        }
+        List<MultipartFile> uploadFiles = files == null ? List.of() : files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+        if (uploadFiles.isEmpty()) {
+            throw new BusinessException("请上传附件");
+        }
+        for (MultipartFile file : uploadFiles) {
+            saveItemAttachment(userId, item.getId(), file);
+        }
+        return itemAttachments(item.getId());
+    }
+
+    public SysDocItemAttachment requireItemAttachment(Long attachmentId) {
+        SysDocItemAttachment attachment = itemAttachmentMapper.selectById(attachmentId);
+        if (attachment == null) {
+            throw new BusinessException("附件不存在");
+        }
+        requireItem(attachment.getItemId());
+        return attachment;
+    }
+
     private void applyItemRequest(SysDocItem item, SysDocItem request) {
         item.setItemName(requiredText(request.getItemName(), "请输入文件名称"));
+        String businessType = request.getBusinessType() == null
+                ? (request.getAttachmentEnabled() != null && request.getAttachmentEnabled() == 1 ? "UPLOAD" : "ISSUED")
+                : request.getBusinessType();
+        item.setBusinessType(normalizeBusinessType(businessType));
+        item.setSubmitterMode("UPLOAD".equals(item.getBusinessType()) ? normalizeSubmitterMode(request.getSubmitterMode()) : "SINGLE");
+        item.setFileType(normalizeFileType(request.getFileType()));
         item.setContentHtml(request.getContentHtml() == null ? "" : request.getContentHtml());
-        item.setAttachmentEnabled(request.getAttachmentEnabled() != null && request.getAttachmentEnabled() == 1 ? 1 : 0);
+        item.setAttachmentEnabled("UPLOAD".equals(item.getBusinessType()) ? 1 : 0);
         item.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
     }
 
-    private void saveAttachment(Long userId, Long submissionId, MultipartFile file) {
+    private void saveAttachment(Long userId, Long submissionId, Long requirementId, MultipartFile file) {
         String original = file.getOriginalFilename() == null ? "未命名文件" : file.getOriginalFilename();
         String extension = extension(original);
         String objectName = "doc-submissions/" + LocalDate.now() + "/" + UUID.randomUUID()
@@ -365,6 +466,7 @@ public class DocWorkspaceService {
         StoredObject stored = storageService.upload(file, objectName);
         SysDocAttachment attachment = new SysDocAttachment();
         attachment.setSubmissionId(submissionId);
+        attachment.setRequirementId(requirementId);
         attachment.setOriginalFileName(original);
         attachment.setExtension(extension);
         attachment.setMimeType(stored.contentType());
@@ -376,10 +478,38 @@ public class DocWorkspaceService {
         attachmentMapper.insert(attachment);
     }
 
+    private void saveItemAttachment(Long userId, Long itemId, MultipartFile file) {
+        String original = file.getOriginalFilename() == null ? "未命名文件" : file.getOriginalFilename();
+        String extension = extension(original);
+        String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
+                + (extension.isBlank() ? "" : "." + extension);
+        StoredObject stored = storageService.upload(file, objectName);
+        SysDocItemAttachment attachment = new SysDocItemAttachment();
+        attachment.setItemId(itemId);
+        attachment.setOriginalFileName(original);
+        attachment.setExtension(extension);
+        attachment.setMimeType(stored.contentType());
+        attachment.setFileSize(stored.size());
+        attachment.setStorageBucket(stored.bucket());
+        attachment.setStoragePath(stored.objectName());
+        attachment.setUploadedBy(userId);
+        attachment.setCreatedAt(LocalDateTime.now());
+        itemAttachmentMapper.insert(attachment);
+    }
+
     private List<SysDocAttachment> attachments(Long submissionId) {
-        return attachmentMapper.selectList(new LambdaQueryWrapper<SysDocAttachment>()
+        List<SysDocAttachment> attachments = attachmentMapper.selectList(new LambdaQueryWrapper<SysDocAttachment>()
                 .eq(SysDocAttachment::getSubmissionId, submissionId)
                 .orderByAsc(SysDocAttachment::getId));
+        fillAttachmentInfo(attachments);
+        return attachments;
+    }
+
+    private List<SysDocItemAttachment> itemAttachments(Long itemId) {
+        return itemAttachmentMapper.selectList(new LambdaQueryWrapper<SysDocItemAttachment>()
+                .eq(SysDocItemAttachment::getItemId, itemId)
+                .orderByAsc(SysDocItemAttachment::getCreatedAt)
+                .orderByAsc(SysDocItemAttachment::getId));
     }
 
     private void fillNodeItemInfo(List<SysDocNode> nodes) {
@@ -401,6 +531,8 @@ public class DocWorkspaceService {
             }
             node.setAttachmentEnabled(item.getAttachmentEnabled());
             node.setFileType(item.getFileType());
+            node.setBusinessType(normalizeBusinessType(item));
+            node.setSubmitterMode(normalizeSubmitterMode(item.getSubmitterMode()));
             node.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                     .eq(SysDocSubmission::getItemId, item.getId()))));
         }
@@ -423,6 +555,8 @@ public class DocWorkspaceService {
         Map<Long, SysDept> deptMap = deptMapper.selectList(new LambdaQueryWrapper<SysDept>().eq(SysDept::getDeleted, 0))
                 .stream().collect(Collectors.toMap(SysDept::getId, Function.identity(), (a, b) -> a));
         for (SysDocItem item : items) {
+            item.setBusinessType(normalizeBusinessType(item));
+            item.setSubmitterMode(normalizeSubmitterMode(item.getSubmitterMode()));
             SysDocCategory category = item.getCategoryId() == null ? null : categoryMap.get(item.getCategoryId());
             if (category != null) {
                 item.setCategoryName(category.getCategoryName());
@@ -457,6 +591,162 @@ public class DocWorkspaceService {
             submission.setUploadUserName(user == null ? null : (user.getRealName() == null ? user.getUsername() : user.getRealName()));
             submission.setAttachmentCount(Math.toIntExact(attachmentMapper.selectCount(new LambdaQueryWrapper<SysDocAttachment>()
                     .eq(SysDocAttachment::getSubmissionId, submission.getId()))));
+        }
+    }
+
+    private List<SysDocUploadRequirement> requirements(Long itemId) {
+        return requirementMapper.selectList(new LambdaQueryWrapper<SysDocUploadRequirement>()
+                .eq(SysDocUploadRequirement::getItemId, itemId)
+                .eq(SysDocUploadRequirement::getDeleted, 0)
+                .orderByAsc(SysDocUploadRequirement::getSortOrder)
+                .orderByAsc(SysDocUploadRequirement::getId));
+    }
+
+    private List<DocUploadRequirementRequest> requirementRequests(List<SysDocUploadRequirement> requirements) {
+        if (requirements == null) {
+            return List.of();
+        }
+        return requirements.stream()
+                .map(item -> new DocUploadRequirementRequest(item.getId(), item.getRequirementName(), item.getSortOrder()))
+                .toList();
+    }
+
+    private void replaceRequirements(Long itemId, List<DocUploadRequirementRequest> requests) {
+        deleteRequirements(itemId);
+        List<DocUploadRequirementRequest> source = requests == null ? List.of() : requests.stream()
+                .filter(request -> request != null && request.requirementName() != null && !request.requirementName().trim().isBlank())
+                .toList();
+        if (source.isEmpty()) {
+            source = List.of(new DocUploadRequirementRequest(null, "附件", 0));
+        }
+        int index = 0;
+        for (DocUploadRequirementRequest request : source) {
+            SysDocUploadRequirement requirement = new SysDocUploadRequirement();
+            requirement.setItemId(itemId);
+            requirement.setRequirementName(requiredText(request.requirementName(), "请输入收集项名称"));
+            requirement.setSortOrder(request.sortOrder() == null ? index : request.sortOrder());
+            requirement.setCreatedAt(LocalDateTime.now());
+            requirement.setUpdatedAt(LocalDateTime.now());
+            requirement.setDeleted(0);
+            requirementMapper.insert(requirement);
+            index++;
+        }
+    }
+
+    private void deleteRequirements(Long itemId) {
+        requirementMapper.delete(new LambdaQueryWrapper<SysDocUploadRequirement>()
+                .eq(SysDocUploadRequirement::getItemId, itemId));
+    }
+
+    private List<Long> normalizeSubmissionRequirementIds(List<SysDocUploadRequirement> requirements,
+                                                         List<Long> requirementIds,
+                                                         List<MultipartFile> uploadFiles) {
+        if (requirements.isEmpty()) {
+            throw new BusinessException("上传任务未配置收集项");
+        }
+        List<Long> requiredIds = requirements.stream().map(SysDocUploadRequirement::getId).toList();
+        List<Long> submittedIds = requirementIds == null ? List.of() : requirementIds.stream()
+                .filter(Objects::nonNull)
+                .toList();
+        if (submittedIds.isEmpty() && requiredIds.size() == 1 && uploadFiles.size() == 1) {
+            return requiredIds;
+        }
+        if (submittedIds.size() != uploadFiles.size()) {
+            throw new BusinessException("上传文件和收集项数量不一致");
+        }
+        Set<Long> requiredSet = Set.copyOf(requiredIds);
+        Set<Long> submittedSet = Set.copyOf(submittedIds);
+        if (submittedSet.size() != submittedIds.size() || !submittedSet.equals(requiredSet) || submittedIds.size() != requiredIds.size()) {
+            throw new BusinessException("请按全部收集项上传附件");
+        }
+        return submittedIds;
+    }
+
+    private void requireSubmissionOpen(Long userId, SysDocItem item) {
+        Long submittedCount = Objects.requireNonNullElse(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
+                .eq(SysDocSubmission::getItemId, item.getId())), 0L);
+        if ("SINGLE".equals(normalizeSubmitterMode(item.getSubmitterMode())) && submittedCount > 0) {
+            throw new BusinessException("该上传任务已完成");
+        }
+        Long userSubmittedCount = Objects.requireNonNullElse(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
+                .eq(SysDocSubmission::getItemId, item.getId())
+                .eq(SysDocSubmission::getUploadUserId, userId)), 0L);
+        if (userSubmittedCount > 0) {
+            throw new BusinessException("您已提交过该上传任务");
+        }
+    }
+
+    private Set<Long> completedUploadItemIds(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId) {
+        List<SysDocItem> uploadItems = itemMapper.selectList(new LambdaQueryWrapper<SysDocItem>()
+                .eq(SysDocItem::getSectionDeptId, sectionDeptId)
+                .eq(SysDocItem::getBusinessType, "UPLOAD")
+                .eq(SysDocItem::getDeleted, 0));
+        Set<Long> uploadItemIds = uploadItems.stream().map(SysDocItem::getId).collect(Collectors.toSet());
+        if (uploadItemIds.isEmpty()) {
+            return Set.of();
+        }
+        LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
+                .in(SysDocSubmission::getItemId, uploadItemIds);
+        if (!canManageSection(userDeptId, superAdmin, sectionDeptId)) {
+            if (userDeptId == null) {
+                wrapper.eq(SysDocSubmission::getUploadUserId, userId);
+            } else {
+                wrapper.and(query -> query.eq(SysDocSubmission::getSubmitterDeptId, userDeptId)
+                        .or()
+                        .eq(SysDocSubmission::getUploadUserId, userId));
+            }
+        }
+        return submissionMapper.selectList(wrapper).stream()
+                .map(SysDocSubmission::getItemId)
+                .collect(Collectors.toSet());
+    }
+
+    private int[] fillUploadProgress(SysDocNode node, Set<Long> completedItemIds) {
+        if ("FILE".equalsIgnoreCase(node.getNodeType())) {
+            int taskCount = "UPLOAD".equalsIgnoreCase(node.getBusinessType()) ? 1 : 0;
+            int completedCount = taskCount == 1 && completedItemIds.contains(node.getItemId()) ? 1 : 0;
+            node.setUploadTaskCount(taskCount);
+            node.setCompletedUploadTaskCount(completedCount);
+            node.setProgressPercent(taskCount == 0 ? 0 : completedCount * 100 / taskCount);
+            return new int[]{taskCount, completedCount};
+        }
+        int taskCount = 0;
+        int completedCount = 0;
+        for (SysDocNode child : node.getChildren()) {
+            int[] childProgress = fillUploadProgress(child, completedItemIds);
+            taskCount += childProgress[0];
+            completedCount += childProgress[1];
+        }
+        node.setUploadTaskCount(taskCount);
+        node.setCompletedUploadTaskCount(completedCount);
+        node.setProgressPercent(taskCount == 0 ? 0 : completedCount * 100 / taskCount);
+        return new int[]{taskCount, completedCount};
+    }
+
+    private void fillAttachmentInfo(List<SysDocAttachment> attachments) {
+        if (attachments.isEmpty()) {
+            return;
+        }
+        Set<Long> requirementIds = attachments.stream()
+                .map(SysDocAttachment::getRequirementId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, SysDocUploadRequirement> requirementMap = requirementIds.isEmpty() ? Map.of() : requirementMapper.selectList(new LambdaQueryWrapper<SysDocUploadRequirement>()
+                        .in(SysDocUploadRequirement::getId, requirementIds))
+                .stream().collect(Collectors.toMap(SysDocUploadRequirement::getId, Function.identity(), (a, b) -> a));
+        Set<Long> userIds = attachments.stream()
+                .map(SysDocAttachment::getUploadedBy)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, SysUser> userMap = userIds.isEmpty() ? Map.of() : userMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                        .in(SysUser::getId, userIds)
+                        .eq(SysUser::getDeleted, 0))
+                .stream().collect(Collectors.toMap(SysUser::getId, Function.identity(), (a, b) -> a));
+        for (SysDocAttachment attachment : attachments) {
+            SysDocUploadRequirement requirement = requirementMap.get(attachment.getRequirementId());
+            attachment.setRequirementName(requirement == null ? null : requirement.getRequirementName());
+            SysUser user = userMap.get(attachment.getUploadedBy());
+            attachment.setUploadedByName(user == null ? null : displayName(user));
         }
     }
 
@@ -645,6 +935,50 @@ public class DocWorkspaceService {
         };
     }
 
+    private String normalizeBusinessType(SysDocItem item) {
+        if (item.getBusinessType() == null || item.getBusinessType().trim().isBlank()) {
+            return item.getAttachmentEnabled() != null && item.getAttachmentEnabled() == 1 ? "UPLOAD" : "ISSUED";
+        }
+        return normalizeBusinessType(item.getBusinessType());
+    }
+
+    private String normalizeBusinessType(String businessType) {
+        if (businessType == null || businessType.trim().isBlank()) {
+            return "ISSUED";
+        }
+        String normalized = businessType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "UPLOAD", "ISSUED" -> normalized;
+            default -> "ISSUED";
+        };
+    }
+
+    private String normalizeBusinessTypeOrNull(String businessType) {
+        if (businessType == null || businessType.trim().isBlank()) {
+            return null;
+        }
+        String normalized = businessType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "UPLOAD", "ISSUED" -> normalized;
+            default -> null;
+        };
+    }
+
+    private String normalizeSubmitterMode(String submitterMode) {
+        if (submitterMode == null || submitterMode.trim().isBlank()) {
+            return "SINGLE";
+        }
+        String normalized = submitterMode.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "SINGLE", "MULTIPLE" -> normalized;
+            default -> "SINGLE";
+        };
+    }
+
+    private boolean isUploadItem(SysDocItem item) {
+        return "UPLOAD".equals(normalizeBusinessType(item));
+    }
+
     private String extension(String filename) {
         int idx = filename.lastIndexOf('.');
         return idx >= 0 && idx < filename.length() - 1 ? filename.substring(idx + 1).toLowerCase(Locale.ROOT) : "";
@@ -652,5 +986,15 @@ public class DocWorkspaceService {
 
     private String name(SysDept dept) {
         return dept == null ? null : dept.getDeptName();
+    }
+
+    private String displayName(SysUser user) {
+        if (user.getRealName() != null && !user.getRealName().isBlank()) {
+            return user.getRealName();
+        }
+        if (user.getPhone() != null && !user.getPhone().isBlank()) {
+            return user.getPhone();
+        }
+        return user.getUsername();
     }
 }

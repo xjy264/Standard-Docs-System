@@ -3,6 +3,7 @@ package cn.datong.standard.controller;
 import cn.datong.standard.common.ApiResponse;
 import cn.datong.standard.dto.CurrentUser;
 import cn.datong.standard.entity.SysDocAttachment;
+import cn.datong.standard.entity.SysDocItemAttachment;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.security.SecurityUtils;
 import cn.datong.standard.service.DocWorkspaceService;
@@ -35,10 +36,24 @@ public class DocSubmissionController {
     public void download(@PathVariable Long id, HttpServletResponse response) throws Exception {
         CurrentUser currentUser = SecurityUtils.currentUser();
         SysDocAttachment attachment = docWorkspaceService.requireAttachment(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id);
-        response.setContentType(attachment.getMimeType() == null ? "application/octet-stream" : attachment.getMimeType());
+        downloadObject(response, attachment.getMimeType(), attachment.getOriginalFileName(), attachment.getStorageBucket(), attachment.getStoragePath());
+    }
+
+    @GetMapping("/api/doc-item-attachments/{id}/download")
+    public void downloadItemAttachment(@PathVariable Long id, HttpServletResponse response) throws Exception {
+        SysDocItemAttachment attachment = docWorkspaceService.requireItemAttachment(id);
+        downloadObject(response, attachment.getMimeType(), attachment.getOriginalFileName(), attachment.getStorageBucket(), attachment.getStoragePath());
+    }
+
+    private void downloadObject(HttpServletResponse response,
+                                String mimeType,
+                                String originalFileName,
+                                String storageBucket,
+                                String storagePath) throws Exception {
+        response.setContentType(mimeType == null ? "application/octet-stream" : mimeType);
         response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''"
-                + URLEncoder.encode(attachment.getOriginalFileName(), StandardCharsets.UTF_8));
-        try (InputStream input = storageService.download(attachment.getStorageBucket(), attachment.getStoragePath())) {
+                + URLEncoder.encode(originalFileName, StandardCharsets.UTF_8));
+        try (InputStream input = storageService.download(storageBucket, storagePath)) {
             StreamUtils.copy(input, response.getOutputStream());
         }
     }
