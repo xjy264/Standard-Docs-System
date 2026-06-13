@@ -5,21 +5,39 @@
         <el-button link type="primary" @click="router.push(`/org/${deptId}?restore=1`)">返回文件菜单</el-button>
         <h2>{{ item?.itemName || '文件详情' }}</h2>
         <p v-if="item" class="detail-meta">
-          {{ [item.sectionDeptName, item.categoryName, item.docYear, item.businessType === 'UPLOAD' ? '上传任务' : '下达文件'].filter(Boolean).join(' / ') }}
+          {{ [item.sectionDeptName, item.categoryName, item.docYear, '通知文件'].filter(Boolean).join(' / ') }}
         </p>
       </div>
       <div class="header-actions">
-        <el-button v-if="canManageSection && isUploadItem" @click="openRecords">上传记录</el-button>
-        <el-button v-if="canManageSection && isIssuedItem" type="primary" plain @click="issuedUploadOpen = true">上传下达附件</el-button>
+        <el-button v-if="canManageSection && workshopUploadEnabled" @click="openRecords">上传记录</el-button>
+        <el-button v-if="canManageSection" type="primary" plain @click="issuedUploadOpen = true">上传正文附件</el-button>
       </div>
     </div>
 
-    <section v-if="isUploadItem" class="detail-content">
+    <section class="detail-content">
+      <div class="section-heading">
+        <h3>正文附件</h3>
+      </div>
+      <el-table v-if="item?.issuedAttachments?.length" :data="item.issuedAttachments" border>
+        <el-table-column prop="originalFileName" label="附件" />
+        <el-table-column prop="createdAt" label="上传时间" width="180" />
+        <el-table-column label="操作" width="150">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="previewIssuedAttachment(row)">预览</el-button>
+            <el-button link type="primary" @click="downloadIssuedAttachment(row)">下载</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else description="暂无正文附件" />
+    </section>
+
+    <section v-if="workshopUploadEnabled" class="detail-content">
       <div class="upload-task-status">
         <el-tag v-if="mySubmission" type="success">已提交</el-tag>
-        <el-tag v-else-if="item?.submitterMode === 'SINGLE' && item?.submissionCount" type="warning">已由他人提交</el-tag>
+        <el-tag v-else-if="deadlineExpired" type="danger">已截止</el-tag>
         <el-tag v-else type="info">待上传</el-tag>
-        <span>{{ item?.submitterMode === 'MULTIPLE' ? '多人提交' : '单人提交' }}</span>
+        <span>每人限提交一次</span>
+        <span v-if="item?.uploadDeadline">截止时间：{{ item.uploadDeadline }}</span>
       </div>
       <el-table :data="item?.requirements || []" border>
         <el-table-column prop="requirementName" label="收集内容" min-width="220" />
@@ -52,24 +70,7 @@
       </div>
     </section>
 
-    <section v-else class="detail-content">
-      <div v-if="item?.contentHtml" class="rich-content" v-html="item.contentHtml"></div>
-      <el-empty v-else description="暂无文件内容" />
-      <div v-if="item?.issuedAttachments?.length" class="issued-attachments">
-        <h3>下达附件</h3>
-        <el-table :data="item.issuedAttachments" border>
-          <el-table-column prop="originalFileName" label="附件" />
-          <el-table-column prop="createdAt" label="上传时间" width="180" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="downloadIssuedAttachment(row)">下载</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-    </section>
-
-    <section v-if="isUploadItem && mySubmission" class="detail-content">
+    <section v-if="workshopUploadEnabled && mySubmission" class="detail-content">
       <div class="section-heading">
         <h3>我的提交</h3>
       </div>
@@ -87,7 +88,7 @@
       </el-table>
     </section>
 
-    <el-dialog v-model="issuedUploadOpen" title="上传下达附件" width="720px" @closed="resetIssuedUpload">
+    <el-dialog v-model="issuedUploadOpen" title="上传正文附件" width="720px" @closed="resetIssuedUpload">
       <el-upload
         ref="issuedUploadRef"
         class="attachment-upload"
@@ -130,7 +131,6 @@
 </template>
 
 <script setup lang="ts">
-import '@wangeditor/editor/dist/css/style.css'
 import { ElMessage, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -148,6 +148,7 @@ interface DocItemAttachment {
   id: number
   originalFileName: string
   createdAt: string
+  extension?: string
 }
 
 interface DocItem {
@@ -162,6 +163,8 @@ interface DocItem {
   docYear?: number
   businessType?: 'UPLOAD' | 'ISSUED'
   submitterMode?: 'SINGLE' | 'MULTIPLE'
+  workshopUploadEnabled?: number
+  uploadDeadline?: string
   submissionCount?: number
   requirements?: DocUploadRequirement[]
   issuedAttachments?: DocItemAttachment[]
@@ -185,6 +188,15 @@ interface DocSubmission {
   attachments?: DocAttachment[]
 }
 
+interface AttachmentPreview {
+  previewType: 'PDF' | 'ONLYOFFICE' | 'UNCONFIGURED' | 'UNSUPPORTED'
+  fileType: string
+  title: string
+  url?: string
+  documentServerUrl?: string
+  message?: string
+}
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -201,14 +213,11 @@ const issuedUploadRef = ref<any>()
 const submitting = ref(false)
 const submittingIssued = ref(false)
 
-const isUploadItem = computed(() => item.value?.businessType === 'UPLOAD' || Boolean(item.value?.attachmentEnabled))
-const isIssuedItem = computed(() => !isUploadItem.value)
+const workshopUploadEnabled = computed(() => Boolean(item.value?.workshopUploadEnabled || item.value?.attachmentEnabled))
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === item.value?.sectionDeptId)
+const deadlineExpired = computed(() => Boolean(item.value?.uploadDeadline && new Date(item.value.uploadDeadline).getTime() < Date.now()))
 const canUploadAttachment = computed(() => {
-  if (!isUploadItem.value || mySubmission.value) {
-    return false
-  }
-  if (item.value?.submitterMode === 'SINGLE' && item.value.submissionCount) {
+  if (!workshopUploadEnabled.value || mySubmission.value || deadlineExpired.value) {
     return false
   }
   return true
@@ -217,7 +226,7 @@ const canUploadAttachment = computed(() => {
 async function load() {
   resetUpload()
   item.value = await apiGet<DocItem>(`/doc-items/${itemId.value}`)
-  if (isUploadItem.value) {
+  if (workshopUploadEnabled.value) {
     mySubmission.value = await apiGet<DocSubmission | null>(`/doc-items/${itemId.value}/my-submission`)
   } else {
     mySubmission.value = null
@@ -241,7 +250,7 @@ function onRequirementFileChange(row: DocUploadRequirement) {
 async function submitAttachment() {
   const requirements = item.value?.requirements || []
   if (!requirements.length) {
-    ElMessage.warning('该上传任务未配置收集项')
+    ElMessage.warning('该文件未配置上传收集项')
     return
   }
   const missing = requirements.find((requirement) => !selectedRequirementFiles.value[requirement.id])
@@ -290,7 +299,7 @@ async function submitIssuedAttachments() {
   try {
     const form = new FormData()
     issuedAttachmentFiles.value.forEach((file) => form.append('files', file))
-    await http.post(`/doc-items/${itemId.value}/issued-attachments`, form)
+    await http.post(`/doc-items/${itemId.value}/body-attachments`, form)
     ElMessage.success('上传成功')
     issuedUploadOpen.value = false
     await load()
@@ -317,6 +326,19 @@ async function downloadAttachment(attachment: DocAttachment) {
 async function downloadIssuedAttachment(attachment: DocItemAttachment) {
   const response = await http.get(`/doc-item-attachments/${attachment.id}/download`, { responseType: 'blob' })
   downloadBlob(response.data, attachment.originalFileName || '附件')
+}
+
+async function previewIssuedAttachment(attachment: DocItemAttachment) {
+  const preview = await apiGet<AttachmentPreview>(`/doc-item-attachments/${attachment.id}/preview`)
+  if (preview.previewType === 'PDF' && preview.url) {
+    window.open(preview.url, '_blank')
+    return
+  }
+  if (preview.previewType === 'ONLYOFFICE') {
+    ElMessage.info('Office 预览服务已配置，请通过 OnlyOffice 集成页打开')
+    return
+  }
+  ElMessage.warning(preview.message || '该格式暂不支持在线预览')
 }
 
 function downloadBlob(data: BlobPart, filename: string) {
