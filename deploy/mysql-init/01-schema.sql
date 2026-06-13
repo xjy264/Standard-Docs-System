@@ -101,6 +101,9 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   doc_year INT NOT NULL DEFAULT 2026,
   content_html MEDIUMTEXT,
   attachment_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  workshop_upload_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  upload_deadline DATETIME NULL,
+  visibility_scope VARCHAR(32) NOT NULL DEFAULT 'ALL',
   sort_order INT NOT NULL DEFAULT 0,
   created_by BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -108,6 +111,15 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   deleted TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_doc_item_category (category_id, deleted, sort_order),
   INDEX idx_doc_item_section_type (section_dept_id, business_type, deleted, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sys_doc_item_workshop_scope (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  item_id BIGINT NOT NULL,
+  workshop_dept_id BIGINT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_doc_item_workshop_scope (item_id, workshop_dept_id),
+  INDEX idx_doc_item_workshop_scope_workshop (workshop_dept_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_doc_upload_requirement (
@@ -125,7 +137,7 @@ CREATE TABLE IF NOT EXISTS sys_doc_upload_requirement (
 CREATE TABLE IF NOT EXISTS sys_doc_submission (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   item_id BIGINT NOT NULL,
-  category_id BIGINT NOT NULL,
+  category_id BIGINT NULL,
   section_dept_id BIGINT NOT NULL,
   workshop_dept_id BIGINT NULL,
   submitter_dept_id BIGINT NULL,
@@ -165,6 +177,30 @@ CREATE TABLE IF NOT EXISTS sys_doc_item_attachment (
   uploaded_by BIGINT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_doc_item_attachment_item (item_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sys_repair_project_template (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  template_name VARCHAR(128) NOT NULL,
+  section_dept_id BIGINT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_by BIGINT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted TINYINT(1) NOT NULL DEFAULT 0,
+  INDEX idx_repair_template_deleted_sort (deleted, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sys_repair_project_template_item (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  template_id BIGINT NOT NULL,
+  item_name VARCHAR(128) NOT NULL,
+  file_type VARCHAR(32) NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted TINYINT(1) NOT NULL DEFAULT 0,
+  INDEX idx_repair_template_item_template (template_id, deleted, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_notification (

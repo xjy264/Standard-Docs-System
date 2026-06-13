@@ -6,15 +6,10 @@
       </div>
     </div>
 
-    <el-tabs v-model="activeTab" class="business-tabs" @tab-change="handleTabChange">
-      <el-tab-pane label="上传" name="UPLOAD" />
-      <el-tab-pane label="下达" name="ISSUED" />
-    </el-tabs>
-
     <section class="doc-tree-panel">
       <div v-if="canManageSection" class="tree-toolbar">
         <el-button type="primary" plain @click="openFolderDialog()">新增文件夹</el-button>
-        <el-button type="primary" @click="openFileDialog()">{{ activeTab === 'UPLOAD' ? '新增上传任务' : '新增下达文件' }}</el-button>
+        <el-button type="primary" @click="openFileDialog()">发布通知文件</el-button>
       </div>
 
       <div class="doc-search-bar">
@@ -71,7 +66,7 @@
                 <span>{{ node.label }}</span>
               </div>
               <div
-                v-if="activeTab === 'UPLOAD' && data.nodeType === 'FOLDER' && data.uploadTaskCount"
+                v-if="data.nodeType === 'FOLDER' && data.uploadTaskCount"
                 class="folder-progress"
               >
                 <el-progress :percentage="data.progressPercent || 0" :show-text="false" />
@@ -80,7 +75,8 @@
             </div>
             <div v-if="canManageSection" class="doc-tree-actions">
               <el-button v-if="data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
-              <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">{{ activeTab === 'UPLOAD' ? '新增上传任务' : '新增下达文件' }}</el-button>
+              <el-button v-if="data.nodeType === 'FOLDER' && isRepairFolder(data)" link type="primary" @click.stop="openImportDialog(data)">从项目模板导入</el-button>
+              <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">发布通知文件</el-button>
               <el-button link type="primary" @click.stop="openEditDialog(data)">编辑</el-button>
               <el-button link type="danger" @click.stop="deleteNode(data)">删除</el-button>
             </div>
@@ -98,7 +94,7 @@
       @closed="handleDialogClosed"
     >
       <el-form label-position="top">
-        <el-form-item :label="nodeForm.nodeType === 'FOLDER' ? '文件夹名称' : activeTab === 'UPLOAD' ? '上传任务名称' : '下达文件名称'">
+        <el-form-item :label="nodeForm.nodeType === 'FOLDER' ? '文件夹名称' : '通知文件名称'">
           <el-input v-model="nodeForm.nodeName" maxlength="128" />
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="nodeForm.sortOrder" :min="0" /></el-form-item>
@@ -107,37 +103,7 @@
             <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
           </el-select>
         </el-form-item>
-        <template v-if="nodeForm.nodeType === 'FILE' && nodeForm.businessType === 'UPLOAD'">
-          <el-form-item label="提交方式">
-            <el-radio-group v-model="nodeForm.submitterMode">
-              <el-radio-button label="SINGLE">单人提交</el-radio-button>
-              <el-radio-button label="MULTIPLE">多人提交</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="收集项">
-            <div class="requirement-editor">
-              <div class="requirement-row requirement-row-heading">
-                <span>收集内容</span>
-                <span>说明</span>
-                <span>排序</span>
-                <span>操作</span>
-              </div>
-              <div v-for="(requirement, index) in nodeForm.requirements" :key="index" class="requirement-row">
-                <el-input v-model="requirement.requirementName" maxlength="128" placeholder="请输入要收集的文件" />
-                <el-input
-                  v-model="requirement.description"
-                  maxlength="500"
-                  show-word-limit
-                  placeholder="请输入说明"
-                />
-                <el-input-number v-model="requirement.sortOrder" :min="0" />
-                <el-button link type="danger" @click="removeRequirement(index)">删除</el-button>
-              </div>
-              <el-button type="primary" plain @click="addRequirement">新增收集项</el-button>
-            </div>
-          </el-form-item>
-        </template>
-        <template v-if="nodeForm.nodeType === 'FILE' && nodeForm.businessType === 'ISSUED'">
+        <template v-if="nodeForm.nodeType === 'FILE'">
           <el-form-item label="文件类型">
             <el-select v-model="nodeForm.fileType" placeholder="请选择文件类型" style="width: 220px">
               <el-option
@@ -148,20 +114,7 @@
               />
             </el-select>
           </el-form-item>
-          <el-form-item label="文件内容">
-            <div class="editor-box">
-              <Toolbar :editor="editorRef" :default-config="toolbarConfig" mode="default" />
-              <Editor
-                v-model="nodeForm.contentHtml"
-                :default-config="editorConfig"
-                mode="default"
-                class="content-editor"
-                style="height: 300px; overflow-y: hidden"
-                @on-created="handleEditorCreated"
-              />
-            </div>
-          </el-form-item>
-          <el-form-item label="下达附件">
+          <el-form-item label="正文附件">
             <el-upload
               ref="issuedUploadRef"
               class="issued-upload"
@@ -174,6 +127,34 @@
               <div>拖拽附件到此处，或点击选择文件</div>
             </el-upload>
           </el-form-item>
+          <el-form-item label="可见车间">
+            <el-select
+              v-model="nodeForm.visibleWorkshopIds"
+              multiple
+              clearable
+              placeholder="默认全部车间可见"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="dept in workshopOptions"
+                :key="dept.id"
+                :label="dept.deptName"
+                :value="dept.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="车间上传">
+            <el-switch v-model="nodeForm.workshopUploadEnabled" active-text="需要车间上传" inactive-text="不需要" />
+          </el-form-item>
+          <el-form-item v-if="nodeForm.workshopUploadEnabled" label="上传截止时间">
+            <el-date-picker
+              v-model="nodeForm.uploadDeadline"
+              type="datetime"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              placeholder="请选择截止时间"
+              style="width: 260px"
+            />
+          </el-form-item>
         </template>
       </el-form>
       <template #footer>
@@ -181,16 +162,33 @@
         <el-button type="primary" @click="submitNode">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="importDialogOpen" title="从项目模板导入" width="560px">
+      <el-form label-position="top">
+        <el-form-item label="项目文件夹名称"><el-input v-model="importForm.projectFolderName" maxlength="128" /></el-form-item>
+        <el-form-item label="文件年份">
+          <el-select v-model="importForm.docYear" style="width: 220px">
+            <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="项目模板">
+          <el-select v-model="importForm.templateId" style="width: 100%">
+            <el-option v-for="template in repairTemplates" :key="template.id" :label="template.templateName" :value="template.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="importDialogOpen = false">取消</el-button>
+        <el-button type="primary" @click="submitImportTemplate">导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import '@wangeditor/editor/dist/css/style.css'
-import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
-import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
 import { Folder } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiDelete, apiGet, apiPost, apiPut, http } from '../api/http'
 import { useAuthStore } from '../stores/auth'
@@ -198,6 +196,17 @@ import { useAuthStore } from '../stores/auth'
 interface SectionItem {
   id: number
   deptName: string
+}
+
+interface DeptItem {
+  id: number
+  deptName: string
+  deptType?: string
+}
+
+interface RepairTemplate {
+  id: number
+  templateName: string
 }
 
 interface DocUploadRequirement {
@@ -222,6 +231,10 @@ interface DocNode {
   docYear?: number
   businessType?: BusinessType
   submitterMode?: SubmitterMode
+  workshopUploadEnabled?: number
+  uploadDeadline?: string
+  visibilityScope?: string
+  visibleWorkshopIds?: number[]
   uploadTaskCount?: number
   completedUploadTaskCount?: number
   progressPercent?: number
@@ -238,17 +251,20 @@ interface DocItem {
   docYear?: number
   businessType?: BusinessType
   submitterMode?: SubmitterMode
+  workshopUploadEnabled?: number
+  uploadDeadline?: string
+  visibilityScope?: string
+  visibleWorkshopIds?: number[]
   requirements?: DocUploadRequirement[]
 }
 
 interface SavedTreeState {
-  tab: BusinessType
   expandedKeys: number[]
   scrollTop: number
 }
 
 type DialogMode = 'create' | 'edit'
-type FileType = 'WORD' | 'EXCEL' | 'PDF' | 'IMAGE' | 'OTHER'
+type FileType = 'WORD' | 'EXCEL' | 'PPT' | 'PDF' | 'IMAGE' | 'ZIP' | 'OTHER'
 type BusinessType = 'UPLOAD' | 'ISSUED'
 type SubmitterMode = 'SINGLE' | 'MULTIPLE'
 
@@ -257,26 +273,28 @@ const router = useRouter()
 const auth = useAuthStore()
 const deptId = computed(() => Number(route.params.deptId))
 const sections = ref<SectionItem[]>([])
+const depts = ref<DeptItem[]>([])
 const treeData = ref<DocNode[]>([])
 const treeRef = ref()
 const issuedUploadRef = ref<any>()
-const activeTab = ref<BusinessType>('UPLOAD')
 const nodeDialogOpen = ref(false)
+const importDialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
-const editorRef = shallowRef<IDomEditor>()
+const importingParent = ref<DocNode>()
+const repairTemplates = ref<RepairTemplate[]>([])
 const currentYear = new Date().getFullYear()
 const selectedYear = ref(currentYear)
 const searchKeyword = ref('')
 const activeKeyword = ref('')
 const issuedFiles = ref<UploadRawFile[]>([])
-const toolbarConfig: Partial<IToolbarConfig> = {}
-const editorConfig: Partial<IEditorConfig> = { placeholder: '请输入文件内容' }
 const yearOptions = Array.from({ length: 21 }, (_, index) => 2016 + index)
 const fileTypeOptions: Array<{ label: string; value: FileType }> = [
   { label: 'Word', value: 'WORD' },
   { label: 'Excel', value: 'EXCEL' },
+  { label: 'PPT', value: 'PPT' },
   { label: 'PDF', value: 'PDF' },
+  { label: 'ZIP', value: 'ZIP' },
   { label: '图片', value: 'IMAGE' },
   { label: '其他', value: 'OTHER' }
 ]
@@ -285,16 +303,24 @@ const nodeForm = reactive({
   parentId: undefined as number | undefined,
   nodeName: '',
   sortOrder: 0,
-  contentHtml: '',
-  fileType: '' as FileType | '',
+  fileType: 'PDF' as FileType | '',
   docYear: currentYear,
-  businessType: 'UPLOAD' as BusinessType,
+  businessType: 'ISSUED' as BusinessType,
   submitterMode: 'SINGLE' as SubmitterMode,
+  workshopUploadEnabled: false,
+  uploadDeadline: '' as string | '',
+  visibleWorkshopIds: [] as number[],
   requirements: [{ requirementName: '附件', description: '', sortOrder: 0 }] as DocUploadRequirement[]
+})
+const importForm = reactive({
+  projectFolderName: '',
+  docYear: currentYear,
+  templateId: undefined as number | undefined
 })
 
 const currentSection = computed(() => sections.value.find((item) => item.id === deptId.value))
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === deptId.value)
+const workshopOptions = computed(() => depts.value.filter((dept) => dept.deptType === 'WORKSHOP' || dept.deptName.includes('车间')))
 const allFiles = computed(() => flattenFiles(treeData.value))
 const searchMode = computed(() => Boolean(activeKeyword.value))
 const yearTreeData = computed(() => filterTreeByYear(treeData.value, selectedYear.value))
@@ -309,40 +335,30 @@ const searchResultFiles = computed(() => {
 const emptyDescription = computed(() => {
   if (searchMode.value) return '暂无匹配文件'
   if (!yearTreeData.value.length) return '暂无该年份资料目录'
-  return activeTab.value === 'UPLOAD' ? '暂无上传任务' : '暂无下达文件'
+  return '暂无通知文件'
 })
 const dialogTitle = computed(() => {
   if (dialogMode.value === 'edit') {
     if (nodeForm.nodeType === 'FOLDER') return '编辑文件夹'
-    return nodeForm.businessType === 'UPLOAD' ? '编辑上传任务' : '编辑下达文件'
+    return '编辑通知文件'
   }
   if (nodeForm.nodeType === 'FOLDER') return '新增文件夹'
-  return nodeForm.businessType === 'UPLOAD' ? '新增上传任务' : '新增下达文件'
+  return '发布通知文件'
 })
 const treeStateKey = computed(() => `org-tree-state:${deptId.value}`)
 
 async function load(restore = route.query.restore === '1') {
-  if (restore) {
-    const saved = readSavedTreeState()
-    if (saved) {
-      activeTab.value = saved.tab
-    }
-  }
   sections.value = await apiGet<SectionItem[]>('/sections/navigation')
+  depts.value = await apiGet<DeptItem[]>('/depts/tree')
   await loadTree(restore)
 }
 
 async function loadTree(restore = false) {
-  treeData.value = await apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value, businessType: activeTab.value })
+  treeData.value = await apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value })
   await nextTick()
   if (restore) {
     restoreTreeState()
   }
-}
-
-async function handleTabChange() {
-  await loadTree(false)
-  window.scrollTo({ top: 0 })
 }
 
 function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
@@ -352,11 +368,13 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.parentId = parent?.id
   nodeForm.nodeName = ''
   nodeForm.sortOrder = 0
-  nodeForm.contentHtml = ''
   nodeForm.docYear = parent?.docYear || selectedYear.value || currentYear
-  nodeForm.fileType = type === 'FILE' && activeTab.value === 'ISSUED' ? 'WORD' : ''
-  nodeForm.businessType = activeTab.value
+  nodeForm.fileType = type === 'FILE' ? 'PDF' : ''
+  nodeForm.businessType = 'ISSUED'
   nodeForm.submitterMode = 'SINGLE'
+  nodeForm.workshopUploadEnabled = false
+  nodeForm.uploadDeadline = ''
+  nodeForm.visibleWorkshopIds = []
   nodeForm.requirements = [{ requirementName: '附件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
 }
@@ -371,6 +389,35 @@ function openFileDialog(parent?: DocNode) {
   nodeDialogOpen.value = true
 }
 
+async function openImportDialog(parent: DocNode) {
+  importingParent.value = parent
+  importForm.projectFolderName = ''
+  importForm.docYear = parent.docYear || selectedYear.value || currentYear
+  repairTemplates.value = await apiGet<RepairTemplate[]>('/repair-project-templates')
+  importForm.templateId = repairTemplates.value[0]?.id
+  importDialogOpen.value = true
+}
+
+async function submitImportTemplate() {
+  if (!importingParent.value) return
+  if (!importForm.projectFolderName.trim()) {
+    ElMessage.warning('请输入项目文件夹名称')
+    return
+  }
+  if (!importForm.templateId) {
+    ElMessage.warning('请选择项目模板')
+    return
+  }
+  const node = await apiPost<DocNode>(`/repair-project-templates/import/${importingParent.value.id}`, {
+    templateId: importForm.templateId,
+    projectFolderName: importForm.projectFolderName.trim(),
+    docYear: importForm.docYear
+  })
+  importDialogOpen.value = false
+  ElMessage.success('导入成功')
+  await afterNodeChanged(node)
+}
+
 async function openEditDialog(node: DocNode) {
   editingNode.value = node
   dialogMode.value = 'edit'
@@ -378,20 +425,24 @@ async function openEditDialog(node: DocNode) {
   nodeForm.parentId = node.parentId
   nodeForm.nodeName = node.nodeName
   nodeForm.sortOrder = node.sortOrder || 0
-  nodeForm.contentHtml = ''
   nodeForm.fileType = node.nodeType === 'FILE' ? node.fileType || guessFileType(node.nodeName) : ''
   nodeForm.docYear = node.docYear || selectedYear.value || currentYear
-  nodeForm.businessType = node.nodeType === 'FILE' ? node.businessType || activeTab.value : activeTab.value
+  nodeForm.businessType = node.nodeType === 'FILE' ? node.businessType || 'ISSUED' : 'ISSUED'
   nodeForm.submitterMode = node.submitterMode || 'SINGLE'
+  nodeForm.workshopUploadEnabled = Boolean(node.workshopUploadEnabled)
+  nodeForm.uploadDeadline = node.uploadDeadline || ''
+  nodeForm.visibleWorkshopIds = node.visibleWorkshopIds || []
   nodeForm.requirements = [{ requirementName: '附件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
   if (node.nodeType === 'FILE' && node.itemId) {
     const item = await apiGet<DocItem>(`/doc-items/${node.itemId}`)
-    nodeForm.contentHtml = item.contentHtml || ''
     nodeForm.fileType = item.fileType || node.fileType || guessFileType(node.nodeName)
     nodeForm.docYear = item.docYear || node.docYear || currentYear
-    nodeForm.businessType = item.businessType || node.businessType || activeTab.value
+    nodeForm.businessType = item.businessType || node.businessType || 'ISSUED'
     nodeForm.submitterMode = item.submitterMode || 'SINGLE'
+    nodeForm.workshopUploadEnabled = Boolean(item.workshopUploadEnabled)
+    nodeForm.uploadDeadline = item.uploadDeadline || ''
+    nodeForm.visibleWorkshopIds = item.visibleWorkshopIds || []
     nodeForm.requirements = item.requirements?.length
       ? item.requirements.map((requirement, index) => ({
           id: requirement.id,
@@ -421,7 +472,7 @@ async function submitNode() {
     ElMessage.warning(nodeForm.nodeType === 'FOLDER' ? '请输入文件夹名称' : '请输入文件名称')
     return
   }
-  if (nodeForm.nodeType === 'FILE' && nodeForm.businessType === 'ISSUED' && !nodeForm.fileType) {
+  if (nodeForm.nodeType === 'FILE' && !nodeForm.fileType) {
     ElMessage.warning('请选择文件类型')
     return
   }
@@ -429,8 +480,8 @@ async function submitNode() {
     ElMessage.warning('请选择文件年份')
     return
   }
-  if (nodeForm.nodeType === 'FILE' && nodeForm.businessType === 'UPLOAD' && !nodeForm.requirements.some((item) => item.requirementName.trim())) {
-    ElMessage.warning('请至少填写一个收集项')
+  if (nodeForm.nodeType === 'FILE' && nodeForm.workshopUploadEnabled && !nodeForm.uploadDeadline) {
+    ElMessage.warning('请选择上传截止时间')
     return
   }
   const body = {
@@ -439,19 +490,15 @@ async function submitNode() {
     nodeName: nodeForm.nodeName.trim(),
     sortOrder: nodeForm.sortOrder,
     docYear: nodeForm.docYear,
-    contentHtml: nodeForm.businessType === 'ISSUED' ? nodeForm.contentHtml : '',
-    fileType: nodeForm.businessType === 'ISSUED' ? nodeForm.fileType : 'OTHER',
-    businessType: nodeForm.businessType,
-    submitterMode: nodeForm.businessType === 'UPLOAD' ? nodeForm.submitterMode : 'SINGLE',
-    requirements: nodeForm.businessType === 'UPLOAD'
-      ? nodeForm.requirements
-          .filter((item) => item.requirementName.trim())
-          .map((item, index) => ({
-            id: item.id,
-            requirementName: item.requirementName.trim(),
-            description: item.description?.trim() || '',
-            sortOrder: item.sortOrder ?? index
-          }))
+    contentHtml: '',
+    fileType: nodeForm.fileType,
+    businessType: nodeForm.workshopUploadEnabled ? 'UPLOAD' : 'ISSUED',
+    submitterMode: 'MULTIPLE',
+    uploadDeadline: nodeForm.workshopUploadEnabled ? nodeForm.uploadDeadline || null : null,
+    workshopUploadEnabled: nodeForm.workshopUploadEnabled,
+    visibleWorkshopIds: nodeForm.visibleWorkshopIds,
+    requirements: nodeForm.workshopUploadEnabled
+      ? [{ requirementName: '附件', description: '', sortOrder: 0 }]
       : []
   }
   let changedNode: DocNode | undefined
@@ -462,10 +509,10 @@ async function submitNode() {
   } else {
     changedNode = await apiPost<DocNode>('/doc-nodes/files', body)
   }
-  if (nodeForm.nodeType === 'FILE' && nodeForm.businessType === 'ISSUED' && issuedFiles.value.length && changedNode?.itemId) {
+  if (nodeForm.nodeType === 'FILE' && issuedFiles.value.length && changedNode?.itemId) {
     const form = new FormData()
     issuedFiles.value.forEach((file) => form.append('files', file))
-    await http.post(`/doc-items/${changedNode.itemId}/issued-attachments`, form)
+    await http.post(`/doc-items/${changedNode.itemId}/body-attachments`, form)
   }
   nodeDialogOpen.value = false
   await afterNodeChanged(changedNode)
@@ -544,6 +591,33 @@ function resetSearch() {
   activeKeyword.value = ''
 }
 
+function isRepairFolder(node: DocNode): boolean {
+  if (node.nodeName === '房建大修') {
+    return true
+  }
+  let parentId = node.parentId
+  while (parentId) {
+    const parent = findNodeById(treeData.value, parentId)
+    if (!parent) return false
+    if (parent.nodeName === '房建大修') return true
+    parentId = parent.parentId
+  }
+  return false
+}
+
+function findNodeById(nodes: DocNode[], id: number): DocNode | undefined {
+  for (const node of nodes) {
+    if (node.id === id) {
+      return node
+    }
+    const found = findNodeById(node.children || [], id)
+    if (found) {
+      return found
+    }
+  }
+  return undefined
+}
+
 function openItemDetail(node: DocNode) {
   if (!node.itemId) {
     return
@@ -567,7 +641,6 @@ function syncIssuedFiles(files: UploadFiles) {
 function saveTreeState() {
   const expandedKeys = collectExpandedNodeIds()
   const state: SavedTreeState = {
-    tab: activeTab.value,
     expandedKeys,
     scrollTop: window.scrollY || document.documentElement.scrollTop || 0
   }
@@ -604,7 +677,9 @@ function guessFileType(name: string): FileType {
   const lower = name.toLowerCase()
   if (/\.(doc|docx)$/.test(lower) || /文件|通知|报告|合同|说明/.test(name)) return 'WORD'
   if (/\.(xls|xlsx|csv)$/.test(lower) || /表|台账|统计|明细|记录|清单/.test(name)) return 'EXCEL'
+  if (/\.(ppt|pptx)$/.test(lower)) return 'PPT'
   if (/\.pdf$/.test(lower)) return 'PDF'
+  if (/\.zip$/.test(lower)) return 'ZIP'
   if (/\.(png|jpg|jpeg)$/.test(lower) || /照片|影像|图纸|平面示意图/.test(name)) return 'IMAGE'
   return 'OTHER'
 }
@@ -614,28 +689,26 @@ function resolveFileType(node: DocNode): FileType {
 }
 
 function fileTypeClass(node: DocNode) {
-  if (node.businessType === 'UPLOAD') {
-    return 'is-upload'
-  }
   const classes: Record<FileType, string> = {
     WORD: 'word',
     EXCEL: 'excel',
+    PPT: 'ppt',
     PDF: 'pdf',
     IMAGE: 'image',
+    ZIP: 'zip',
     OTHER: 'other'
   }
   return `is-${classes[resolveFileType(node)]}`
 }
 
 function fileTypeLabel(node: DocNode) {
-  if (node.businessType === 'UPLOAD') {
-    return 'U'
-  }
   const labels: Record<FileType, string> = {
     WORD: 'W',
     EXCEL: 'X',
+    PPT: 'T',
     PDF: 'P',
     IMAGE: 'I',
+    ZIP: 'Z',
     OTHER: 'F'
   }
   return labels[resolveFileType(node)]
@@ -645,30 +718,21 @@ function fileTypeText(node: DocNode) {
   const labels: Record<FileType, string> = {
     WORD: 'Word',
     EXCEL: 'Excel',
+    PPT: 'PPT',
     PDF: 'PDF',
     IMAGE: '图片',
+    ZIP: 'ZIP',
     OTHER: '其他'
   }
   return labels[resolveFileType(node)]
 }
 
-function handleEditorCreated(editor: IDomEditor) {
-  editorRef.value = editor
-}
-
-function destroyEditor() {
-  editorRef.value?.destroy()
-  editorRef.value = undefined
-}
-
 function handleDialogClosed() {
-  destroyEditor()
   issuedFiles.value = []
   issuedUploadRef.value?.clearFiles()
 }
 
 onMounted(() => load())
-onBeforeUnmount(destroyEditor)
 watch(() => [route.params.deptId, route.query.restore], () => load(route.query.restore === '1'))
 watch(selectedYear, () => {
   activeKeyword.value = ''
@@ -869,12 +933,20 @@ watch(selectedYear, () => {
   background: #238b45;
 }
 
+.doc-file-icon.is-ppt {
+  background: #c65a2e;
+}
+
 .doc-file-icon.is-pdf {
   background: #d14343;
 }
 
 .doc-file-icon.is-image {
   background: #7c5cc4;
+}
+
+.doc-file-icon.is-zip {
+  background: #6b7280;
 }
 
 .doc-file-icon.is-other {

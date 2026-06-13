@@ -9,6 +9,9 @@ import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocNode;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.entity.SysDocUploadRequirement;
+import cn.datong.standard.entity.SysDocItemWorkshopScope;
+import cn.datong.standard.entity.SysRepairProjectTemplate;
+import cn.datong.standard.entity.SysRepairProjectTemplateItem;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
@@ -16,7 +19,10 @@ import cn.datong.standard.mapper.SysDocItemMapper;
 import cn.datong.standard.mapper.SysDocItemAttachmentMapper;
 import cn.datong.standard.mapper.SysDocNodeMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
+import cn.datong.standard.mapper.SysDocItemWorkshopScopeMapper;
 import cn.datong.standard.mapper.SysDocUploadRequirementMapper;
+import cn.datong.standard.mapper.SysRepairProjectTemplateItemMapper;
+import cn.datong.standard.mapper.SysRepairProjectTemplateMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
@@ -24,6 +30,7 @@ import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -146,6 +153,126 @@ class DocWorkspaceServiceTest {
         verify(fx.requirementMapper).insert(requirementCaptor.capture());
         assertThat(requirementCaptor.getValue().getRequirementName()).isEqualTo("成员信息表");
         assertThat(requirementCaptor.getValue().getDescription()).isEqualTo("请上传盖章后的 Excel 文件");
+    }
+
+    @Test
+    void createFilePersistsUnifiedUploadDeadlineAndVisibleWorkshops() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
+        when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
+            SysDocItem item = invocation.getArgument(0);
+            item.setId(88L);
+            return 1;
+        });
+        LocalDateTime deadline = LocalDateTime.now().plusDays(3);
+        DocNodeRequest request = new DocNodeRequest(
+                2L,
+                null,
+                "施工通知",
+                30,
+                null,
+                true,
+                "",
+                "PDF",
+                2026,
+                null,
+                null,
+                List.of(),
+                deadline,
+                true,
+                List.of(5L)
+        );
+
+        fx.service.createFileNode(10L, 2L, false, request);
+
+        ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
+        verify(fx.itemMapper).insert(itemCaptor.capture());
+        assertThat(itemCaptor.getValue().getBusinessType()).isEqualTo("UPLOAD");
+        assertThat(itemCaptor.getValue().getWorkshopUploadEnabled()).isEqualTo(1);
+        assertThat(itemCaptor.getValue().getUploadDeadline()).isEqualTo(deadline);
+        assertThat(itemCaptor.getValue().getVisibilityScope()).isEqualTo("SELECTED");
+        ArgumentCaptor<SysDocItemWorkshopScope> scopeCaptor = ArgumentCaptor.forClass(SysDocItemWorkshopScope.class);
+        verify(fx.itemWorkshopScopeMapper).insert(scopeCaptor.capture());
+        assertThat(scopeCaptor.getValue().getItemId()).isEqualTo(88L);
+        assertThat(scopeCaptor.getValue().getWorkshopDeptId()).isEqualTo(5L);
+    }
+
+    @Test
+    void workshopDocumentTreeOnlyShowsVisibleFiles() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
+        SysDocNode folder = node(1L, 2L, null, "FOLDER", "通知", null, 1, 10);
+        SysDocNode visible = node(2L, 2L, 1L, "FILE", "可见文件", 8L, 2, 10);
+        SysDocNode hidden = node(3L, 2L, 1L, "FILE", "不可见文件", 9L, 2, 20);
+        SysDocItem visibleItem = item(8L, null, 2L, true, "PDF", 2026);
+        visibleItem.setVisibilityScope("SELECTED");
+        SysDocItem hiddenItem = item(9L, null, 2L, true, "PDF", 2026);
+        hiddenItem.setVisibilityScope("SELECTED");
+        when(fx.nodeMapper.selectList(any())).thenReturn(List.of(folder, visible, hidden));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(visibleItem, hiddenItem));
+        when(fx.itemWorkshopScopeMapper.selectList(any())).thenReturn(List.of(scope(8L, 5L), scope(9L, 6L)));
+        when(fx.submissionMapper.selectCount(any())).thenReturn(0L);
+
+        List<SysDocNode> tree = fx.service.documentTree(20L, 5L, false, 2L, null);
+
+        assertThat(tree).extracting(SysDocNode::getNodeName).containsExactly("通知");
+        assertThat(tree.getFirst().getChildren()).extracting(SysDocNode::getNodeName).containsExactly("可见文件");
+    }
+
+    @Test
+    void workshopSubmissionRejectsAfterDeadline() {
+        Fixtures fx = fixtures();
+        SysDocItem item = item(8L, 6L, true);
+        item.setWorkshopUploadEnabled(1);
+        item.setUploadDeadline(LocalDateTime.now().minusMinutes(1));
+        when(fx.itemMapper.selectById(8L)).thenReturn(item);
+        when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
+        when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("合同.pdf");
+
+        assertThatThrownBy(() -> fx.service.submit(20L, 5L, 8L, null, List.of(file)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已超过上传截止时间");
+    }
+
+    @Test
+    void repairTemplateImportCreatesProjectFolderAndTemplateFiles() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(3L)).thenReturn(dept(3L, 1L, "技术科", "SECTION"));
+        when(fx.nodeMapper.selectById(10L)).thenReturn(node(10L, 3L, null, "FOLDER", "房建大修", null, 1, 10));
+        when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(20L));
+        SysRepairProjectTemplate template = new SysRepairProjectTemplate();
+        template.setId(100L);
+        template.setTemplateName("大修项目标准模板");
+        template.setDeleted(0);
+        when(fx.repairTemplateMapper.selectById(100L)).thenReturn(template);
+        SysRepairProjectTemplateItem contract = templateItem(100L, "施工合同", 10);
+        SysRepairProjectTemplateItem report = templateItem(100L, "开工报告", 20);
+        when(fx.repairTemplateItemMapper.selectList(any())).thenReturn(List.of(contract, report));
+        when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
+            SysDocItem item = invocation.getArgument(0);
+            item.setId(item.getSortOrder().longValue());
+            return 1;
+        });
+        when(fx.nodeMapper.insert(any(SysDocNode.class))).thenAnswer(invocation -> {
+            SysDocNode node = invocation.getArgument(0);
+            if ("FOLDER".equals(node.getNodeType())) {
+                node.setId(200L);
+            }
+            return 1;
+        });
+
+        fx.service.importRepairProjectTemplate(20L, 3L, false, 10L, 100L, "2026年站房大修", 2026);
+
+        ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
+        verify(fx.nodeMapper, times(3)).insert(nodeCaptor.capture());
+        assertThat(nodeCaptor.getAllValues()).extracting(SysDocNode::getNodeName)
+                .containsExactly("2026年站房大修", "施工合同", "开工报告");
+        verify(fx.itemMapper, times(2)).insert(any(SysDocItem.class));
     }
 
     @Test
@@ -378,7 +505,7 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void singleSubmitterTaskLocksAfterFirstSubmission() {
+    void sameUserCannotSubmitNotificationTwice() {
         Fixtures fx = fixtures();
         when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
@@ -391,7 +518,7 @@ class DocWorkspaceServiceTest {
 
         assertThatThrownBy(() -> fx.service.submit(20L, 5L, 8L, null, List.of(file)))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("该上传任务已完成");
+                .hasMessageContaining("您已提交过该文件");
     }
 
     @Test
@@ -513,6 +640,9 @@ class DocWorkspaceServiceTest {
         SysDocAttachmentMapper attachmentMapper = mock(SysDocAttachmentMapper.class);
         SysDocUploadRequirementMapper requirementMapper = mock(SysDocUploadRequirementMapper.class);
         SysDocItemAttachmentMapper itemAttachmentMapper = mock(SysDocItemAttachmentMapper.class);
+        SysDocItemWorkshopScopeMapper itemWorkshopScopeMapper = mock(SysDocItemWorkshopScopeMapper.class);
+        SysRepairProjectTemplateMapper repairTemplateMapper = mock(SysRepairProjectTemplateMapper.class);
+        SysRepairProjectTemplateItemMapper repairTemplateItemMapper = mock(SysRepairProjectTemplateItemMapper.class);
         FileStorageService storageService = mock(FileStorageService.class);
         OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
         DocWorkspaceService service = new DocWorkspaceService(
@@ -525,10 +655,13 @@ class DocWorkspaceServiceTest {
                 attachmentMapper,
                 requirementMapper,
                 itemAttachmentMapper,
+                itemWorkshopScopeMapper,
+                repairTemplateMapper,
+                repairTemplateItemMapper,
                 storageService,
                 orgAssignmentService
         );
-        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, nodeMapper, submissionMapper, attachmentMapper, requirementMapper, itemAttachmentMapper, storageService, orgAssignmentService, service);
+        return new Fixtures(deptMapper, userMapper, categoryMapper, itemMapper, nodeMapper, submissionMapper, attachmentMapper, requirementMapper, itemAttachmentMapper, itemWorkshopScopeMapper, repairTemplateMapper, repairTemplateItemMapper, storageService, orgAssignmentService, service);
     }
 
     private SysDept dept(Long id, Long parentId, String name, String type) {
@@ -608,6 +741,22 @@ class DocWorkspaceServiceTest {
         return requirement;
     }
 
+    private SysDocItemWorkshopScope scope(Long itemId, Long workshopDeptId) {
+        SysDocItemWorkshopScope scope = new SysDocItemWorkshopScope();
+        scope.setItemId(itemId);
+        scope.setWorkshopDeptId(workshopDeptId);
+        return scope;
+    }
+
+    private SysRepairProjectTemplateItem templateItem(Long templateId, String itemName, Integer sortOrder) {
+        SysRepairProjectTemplateItem item = new SysRepairProjectTemplateItem();
+        item.setTemplateId(templateId);
+        item.setItemName(itemName);
+        item.setSortOrder(sortOrder);
+        item.setDeleted(0);
+        return item;
+    }
+
     private SysDocSubmission submission(Long id, Long itemId, Long categoryId, Long sectionDeptId, Long workshopDeptId, Long submitterDeptId) {
         SysDocSubmission submission = new SysDocSubmission();
         submission.setId(id);
@@ -630,6 +779,9 @@ class DocWorkspaceServiceTest {
             SysDocAttachmentMapper attachmentMapper,
             SysDocUploadRequirementMapper requirementMapper,
             SysDocItemAttachmentMapper itemAttachmentMapper,
+            SysDocItemWorkshopScopeMapper itemWorkshopScopeMapper,
+            SysRepairProjectTemplateMapper repairTemplateMapper,
+            SysRepairProjectTemplateItemMapper repairTemplateItemMapper,
             FileStorageService storageService,
             OrgAssignmentService orgAssignmentService,
             DocWorkspaceService service

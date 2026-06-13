@@ -24,6 +24,9 @@ public class SysDocItem {
     private Integer docYear;
     private String contentHtml;
     private Integer attachmentEnabled;
+    private Integer workshopUploadEnabled;
+    private LocalDateTime uploadDeadline;
+    private String visibilityScope;
     private Integer sortOrder;
     private Long createdBy;
     private LocalDateTime createdAt;
@@ -41,4 +44,6 @@ public class SysDocItem {
     private List<SysDocUploadRequirement> requirements;
     @TableField(exist = false)
     private List<SysDocItemAttachment> issuedAttachments;
+    @TableField(exist = false)
+    private List<Long> visibleWorkshopIds;
 }

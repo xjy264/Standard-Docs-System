@@ -35,7 +35,8 @@ public class DocItemController {
 
     @GetMapping("/{id}")
     public ApiResponse<SysDocItem> detail(@PathVariable Long id) {
-        return ApiResponse.success(docWorkspaceService.item(id));
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.item(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id));
     }
 
     @PostMapping
@@ -69,7 +70,7 @@ public class DocItemController {
                                                 @RequestParam(required = false) List<Long> requirementIds,
                                                 @RequestParam(required = false) List<MultipartFile> files) {
         CurrentUser currentUser = SecurityUtils.currentUser();
-        return ApiResponse.success(docWorkspaceService.submit(currentUser.userId(), currentUser.deptId(), id, valuesJson, requirementIds, files));
+        return ApiResponse.success(docWorkspaceService.submit(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id, valuesJson, requirementIds, files));
     }
 
     @GetMapping("/{id}/my-submission")
@@ -81,6 +82,14 @@ public class DocItemController {
     @PostMapping(value = "/{id}/issued-attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<List<SysDocItemAttachment>> addIssuedAttachments(@PathVariable Long id,
                                                                         @RequestParam(required = false) List<MultipartFile> files) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.addItemAttachments(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), id, files));
+    }
+
+    @PostMapping(value = "/{id}/body-attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<List<SysDocItemAttachment>> addBodyAttachments(@PathVariable Long id,
+                                                                      @RequestParam(required = false) List<MultipartFile> files) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(docWorkspaceService.addItemAttachments(currentUser.userId(), currentUser.deptId(),
                 currentUser.superAdmin(), id, files));

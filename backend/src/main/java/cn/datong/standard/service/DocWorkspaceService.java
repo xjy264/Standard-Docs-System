@@ -9,7 +9,10 @@ import cn.datong.standard.entity.SysDocAttachment;
 import cn.datong.standard.entity.SysDocCategory;
 import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocItemAttachment;
+import cn.datong.standard.entity.SysDocItemWorkshopScope;
 import cn.datong.standard.entity.SysDocNode;
+import cn.datong.standard.entity.SysRepairProjectTemplate;
+import cn.datong.standard.entity.SysRepairProjectTemplateItem;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.entity.SysDocUploadRequirement;
 import cn.datong.standard.entity.SysUser;
@@ -18,9 +21,12 @@ import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
 import cn.datong.standard.mapper.SysDocItemMapper;
 import cn.datong.standard.mapper.SysDocItemAttachmentMapper;
+import cn.datong.standard.mapper.SysDocItemWorkshopScopeMapper;
 import cn.datong.standard.mapper.SysDocNodeMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
 import cn.datong.standard.mapper.SysDocUploadRequirementMapper;
+import cn.datong.standard.mapper.SysRepairProjectTemplateItemMapper;
+import cn.datong.standard.mapper.SysRepairProjectTemplateMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
@@ -55,6 +61,9 @@ public class DocWorkspaceService {
     private final SysDocAttachmentMapper attachmentMapper;
     private final SysDocUploadRequirementMapper requirementMapper;
     private final SysDocItemAttachmentMapper itemAttachmentMapper;
+    private final SysDocItemWorkshopScopeMapper itemWorkshopScopeMapper;
+    private final SysRepairProjectTemplateMapper repairTemplateMapper;
+    private final SysRepairProjectTemplateItemMapper repairTemplateItemMapper;
     private final FileStorageService storageService;
     private final OrgAssignmentService orgAssignmentService;
 
@@ -97,6 +106,8 @@ public class DocWorkspaceService {
                 .filter(node -> !"FILE".equalsIgnoreCase(node.getNodeType())
                         || normalizedBusinessType == null
                         || normalizedBusinessType.equalsIgnoreCase(node.getBusinessType()))
+                .filter(node -> !"FILE".equalsIgnoreCase(node.getNodeType())
+                        || canViewItemNode(userDeptId, superAdmin, node))
                 .toList();
         Map<Long, SysDocNode> nodeMap = nodes.stream()
                 .peek(node -> node.setChildren(new ArrayList<>()))
@@ -137,22 +148,27 @@ public class DocWorkspaceService {
     @Transactional
     public SysDocNode createFileNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
         NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), false);
-        String businessType = normalizeBusinessType(request.businessType());
+        String businessType = resolveUnifiedBusinessType(request);
+        boolean workshopUploadEnabled = Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType);
         SysDocItem item = new SysDocItem();
         item.setSectionDeptId(placement.sectionDeptId());
         item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
         item.setBusinessType(businessType);
-        item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
+        item.setSubmitterMode("UPLOAD".equals(businessType) ? "MULTIPLE" : "SINGLE");
         item.setFileType(normalizeFileType(request.fileType()));
         item.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
         item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
-        item.setAttachmentEnabled("UPLOAD".equals(businessType) ? 1 : 0);
+        item.setAttachmentEnabled(workshopUploadEnabled ? 1 : 0);
+        item.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
+        item.setUploadDeadline(request.uploadDeadline());
+        item.setVisibilityScope(resolveVisibilityScope(request.visibleWorkshopIds()));
         item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         item.setCreatedBy(userId);
         item.setCreatedAt(LocalDateTime.now());
         item.setUpdatedAt(LocalDateTime.now());
         item.setDeleted(0);
         itemMapper.insert(item);
+        replaceWorkshopScopes(item.getId(), request.visibleWorkshopIds());
 
         SysDocNode node = new SysDocNode();
         node.setSectionDeptId(placement.sectionDeptId());
@@ -168,8 +184,8 @@ public class DocWorkspaceService {
         node.setUpdatedAt(LocalDateTime.now());
         node.setDeleted(0);
         nodeMapper.insert(node);
-        if ("UPLOAD".equals(businessType)) {
-            replaceRequirements(item.getId(), request.requirements());
+        if (workshopUploadEnabled) {
+            replaceRequirements(item.getId(), defaultRequirements(request.requirements()));
         }
         return node;
     }
@@ -189,21 +205,31 @@ public class DocWorkspaceService {
         nodeMapper.updateById(node);
         if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
             SysDocItem item = requireItem(node.getItemId());
-            String businessType = normalizeBusinessType(request.businessType() == null ? item.getBusinessType() : request.businessType());
+            String businessType = request.businessType() == null ? normalizeBusinessType(item) : resolveUnifiedBusinessType(request);
+            boolean workshopUploadEnabled = request.workshopUploadEnabled() == null
+                    ? Objects.equals(item.getWorkshopUploadEnabled(), 1)
+                    : Boolean.TRUE.equals(request.workshopUploadEnabled());
+            if ("UPLOAD".equals(businessType)) {
+                workshopUploadEnabled = true;
+            }
             item.setItemName(node.getNodeName());
             item.setSortOrder(node.getSortOrder());
             item.setBusinessType(businessType);
-            item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
+            item.setSubmitterMode("UPLOAD".equals(businessType) ? "MULTIPLE" : "SINGLE");
             item.setFileType(normalizeFileType(request.fileType()));
             item.setDocYear(node.getDocYear());
             if (request.contentHtml() != null) {
                 item.setContentHtml(request.contentHtml());
             }
-            item.setAttachmentEnabled("UPLOAD".equals(businessType) ? 1 : 0);
+            item.setAttachmentEnabled(workshopUploadEnabled ? 1 : 0);
+            item.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
+            item.setUploadDeadline(request.uploadDeadline());
+            item.setVisibilityScope(resolveVisibilityScope(request.visibleWorkshopIds()));
             item.setUpdatedAt(LocalDateTime.now());
             itemMapper.updateById(item);
-            if ("UPLOAD".equals(businessType)) {
-                replaceRequirements(item.getId(), request.requirements());
+            replaceWorkshopScopes(item.getId(), request.visibleWorkshopIds());
+            if (workshopUploadEnabled) {
+                replaceRequirements(item.getId(), defaultRequirements(request.requirements()));
             } else {
                 deleteRequirements(item.getId());
             }
@@ -269,8 +295,15 @@ public class DocWorkspaceService {
         SysDocItem item = requireItem(id);
         fillItemCounts(List.of(item));
         fillItemInfo(List.of(item));
+        fillItemWorkshopScopes(List.of(item));
         item.setRequirements(requirements(item.getId()));
         item.setIssuedAttachments(itemAttachments(item.getId()));
+        return item;
+    }
+
+    public SysDocItem item(Long userId, Long userDeptId, boolean superAdmin, Long id) {
+        SysDocItem item = item(id);
+        requireItemVisible(userDeptId, superAdmin, item);
         return item;
     }
 
@@ -287,6 +320,7 @@ public class DocWorkspaceService {
         item.setUpdatedAt(LocalDateTime.now());
         item.setDeleted(0);
         itemMapper.insert(item);
+        replaceWorkshopScopes(item.getId(), request.getVisibleWorkshopIds());
         if ("UPLOAD".equals(item.getBusinessType())) {
             replaceRequirements(item.getId(), requirementRequests(request.getRequirements()));
         }
@@ -300,6 +334,7 @@ public class DocWorkspaceService {
         applyItemRequest(item, request);
         item.setUpdatedAt(LocalDateTime.now());
         itemMapper.updateById(item);
+        replaceWorkshopScopes(item.getId(), request.getVisibleWorkshopIds());
         if ("UPLOAD".equals(item.getBusinessType())) {
             replaceRequirements(item.getId(), requirementRequests(request.getRequirements()));
         } else {
@@ -316,11 +351,16 @@ public class DocWorkspaceService {
 
     @Transactional
     public SysDocSubmission submit(Long userId, Long userDeptId, Long itemId, String valuesJson, List<MultipartFile> files) {
-        return submit(userId, userDeptId, itemId, valuesJson, null, files);
+        return submit(userId, userDeptId, false, itemId, valuesJson, null, files);
     }
 
     @Transactional
     public SysDocSubmission submit(Long userId, Long userDeptId, Long itemId, String valuesJson, List<Long> requirementIds, List<MultipartFile> files) {
+        return submit(userId, userDeptId, false, itemId, valuesJson, requirementIds, files);
+    }
+
+    @Transactional
+    public SysDocSubmission submit(Long userId, Long userDeptId, boolean superAdmin, Long itemId, String valuesJson, List<Long> requirementIds, List<MultipartFile> files) {
         SysDocItem item = requireItem(itemId);
         SysDocCategory category = item.getCategoryId() == null ? null : requireCategory(item.getCategoryId());
         Long sectionDeptId = itemSectionDeptId(item, category);
@@ -330,6 +370,13 @@ public class DocWorkspaceService {
                 .toList();
         if (!isUploadItem(item)) {
             throw new BusinessException("该文件不是上传任务");
+        }
+        requireItemVisible(userDeptId, superAdmin, item);
+        if (!Objects.equals(item.getWorkshopUploadEnabled(), 1) && !Objects.equals(item.getAttachmentEnabled(), 1)) {
+            throw new BusinessException("该文件未开启车间上传");
+        }
+        if (item.getUploadDeadline() != null && LocalDateTime.now().isAfter(item.getUploadDeadline())) {
+            throw new BusinessException("已超过上传截止时间");
         }
         if (uploadFiles.isEmpty()) {
             throw new BusinessException("请上传附件");
@@ -374,6 +421,7 @@ public class DocWorkspaceService {
 
     public List<SysDocSubmission> itemSubmissions(Long userId, Long userDeptId, boolean superAdmin, Long itemId) {
         SysDocItem item = requireItem(itemId);
+        requireItemVisible(userDeptId, superAdmin, item);
         boolean sectionManager = canManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
         if (!superAdmin && !sectionManager) {
             throw new BusinessException(403, "只有科室用户可以查看全部上传记录");
@@ -388,7 +436,7 @@ public class DocWorkspaceService {
     }
 
     public SysDocSubmission mySubmission(Long userId, Long userDeptId, boolean superAdmin, Long itemId) {
-        requireItem(itemId);
+        requireItemVisible(userDeptId, superAdmin, requireItem(itemId));
         SysDocSubmission submission = submissionMapper.selectOne(new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, itemId)
                 .eq(SysDocSubmission::getUploadUserId, userId)
@@ -431,9 +479,6 @@ public class DocWorkspaceService {
     public List<SysDocItemAttachment> addItemAttachments(Long userId, Long userDeptId, boolean superAdmin, Long itemId, List<MultipartFile> files) {
         SysDocItem item = requireItem(itemId);
         requireManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
-        if (!"ISSUED".equals(normalizeBusinessType(item))) {
-            throw new BusinessException("只有下达文件可以上传下达附件");
-        }
         List<MultipartFile> uploadFiles = files == null ? List.of() : files.stream()
                 .filter(file -> file != null && !file.isEmpty())
                 .toList();
@@ -455,6 +500,155 @@ public class DocWorkspaceService {
         return attachment;
     }
 
+    public SysDocItemAttachment requireItemAttachment(Long userId, Long userDeptId, boolean superAdmin, Long attachmentId) {
+        SysDocItemAttachment attachment = itemAttachmentMapper.selectById(attachmentId);
+        if (attachment == null) {
+            throw new BusinessException("附件不存在");
+        }
+        SysDocItem item = requireItem(attachment.getItemId());
+        requireItemVisible(userDeptId, superAdmin, item);
+        return attachment;
+    }
+
+    public List<SysRepairProjectTemplate> repairProjectTemplates(Long userId, Long userDeptId, boolean superAdmin) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        return repairTemplateMapper.selectList(new LambdaQueryWrapper<SysRepairProjectTemplate>()
+                .eq(SysRepairProjectTemplate::getDeleted, 0)
+                .orderByAsc(SysRepairProjectTemplate::getSortOrder)
+                .orderByAsc(SysRepairProjectTemplate::getId));
+    }
+
+    @Transactional
+    public SysRepairProjectTemplate saveRepairProjectTemplate(Long userId, Long userDeptId, boolean superAdmin, SysRepairProjectTemplate request) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        SysRepairProjectTemplate template = request.getId() == null ? new SysRepairProjectTemplate() : requireRepairTemplate(request.getId());
+        template.setTemplateName(requiredText(request.getTemplateName(), "请输入模板名称"));
+        template.setSectionDeptId(request.getSectionDeptId() == null ? userDeptId : request.getSectionDeptId());
+        template.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
+        template.setUpdatedAt(LocalDateTime.now());
+        if (template.getId() == null) {
+            template.setCreatedBy(userId);
+            template.setCreatedAt(LocalDateTime.now());
+            template.setDeleted(0);
+            repairTemplateMapper.insert(template);
+        } else {
+            repairTemplateMapper.updateById(template);
+        }
+        return template;
+    }
+
+    @Transactional
+    public void deleteRepairProjectTemplate(Long userId, Long userDeptId, boolean superAdmin, Long id) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        repairTemplateMapper.deleteById(id);
+    }
+
+    public List<SysRepairProjectTemplateItem> repairProjectTemplateItems(Long userId, Long userDeptId, boolean superAdmin, Long templateId) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        requireRepairTemplate(templateId);
+        return repairTemplateItemMapper.selectList(new LambdaQueryWrapper<SysRepairProjectTemplateItem>()
+                .eq(SysRepairProjectTemplateItem::getTemplateId, templateId)
+                .eq(SysRepairProjectTemplateItem::getDeleted, 0)
+                .orderByAsc(SysRepairProjectTemplateItem::getSortOrder)
+                .orderByAsc(SysRepairProjectTemplateItem::getId));
+    }
+
+    @Transactional
+    public SysRepairProjectTemplateItem saveRepairProjectTemplateItem(Long userId, Long userDeptId, boolean superAdmin, Long templateId,
+                                                                      SysRepairProjectTemplateItem request) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        requireRepairTemplate(templateId);
+        SysRepairProjectTemplateItem item = request.getId() == null ? new SysRepairProjectTemplateItem() : requireRepairTemplateItem(request.getId());
+        item.setTemplateId(templateId);
+        item.setItemName(requiredText(request.getItemName(), "请输入资料项名称"));
+        item.setFileType(normalizeFileType(request.getFileType()));
+        item.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
+        item.setUpdatedAt(LocalDateTime.now());
+        if (item.getId() == null) {
+            item.setCreatedAt(LocalDateTime.now());
+            item.setDeleted(0);
+            repairTemplateItemMapper.insert(item);
+        } else {
+            repairTemplateItemMapper.updateById(item);
+        }
+        return item;
+    }
+
+    @Transactional
+    public void deleteRepairProjectTemplateItem(Long userId, Long userDeptId, boolean superAdmin, Long id) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        repairTemplateItemMapper.deleteById(id);
+    }
+
+    @Transactional
+    public SysDocNode importRepairProjectTemplate(Long userId, Long userDeptId, boolean superAdmin, Long parentNodeId,
+                                                  Long templateId, String projectFolderName, Integer docYear) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        SysDocNode parent = requireNode(parentNodeId);
+        if (!isUnderRepairFolder(parent)) {
+            throw new BusinessException("只能在房建大修目录下导入项目");
+        }
+        SysRepairProjectTemplate template = requireRepairTemplate(templateId);
+        List<SysRepairProjectTemplateItem> templateItems = repairTemplateItemMapper.selectList(new LambdaQueryWrapper<SysRepairProjectTemplateItem>()
+                .eq(SysRepairProjectTemplateItem::getTemplateId, template.getId())
+                .eq(SysRepairProjectTemplateItem::getDeleted, 0)
+                .orderByAsc(SysRepairProjectTemplateItem::getSortOrder)
+                .orderByAsc(SysRepairProjectTemplateItem::getId));
+        if (templateItems.isEmpty()) {
+            throw new BusinessException("模板未配置资料项");
+        }
+        Integer resolvedYear = requiredDocYear(docYear, "请选择文件年份");
+        SysDocNode projectFolder = new SysDocNode();
+        projectFolder.setSectionDeptId(parent.getSectionDeptId());
+        projectFolder.setParentId(parent.getId());
+        projectFolder.setNodeType("FOLDER");
+        projectFolder.setNodeName(requiredText(projectFolderName, "请输入项目文件夹名称"));
+        projectFolder.setDocYear(resolvedYear);
+        projectFolder.setSortOrder(0);
+        projectFolder.setLevel((parent.getLevel() == null ? 1 : parent.getLevel()) + 1);
+        projectFolder.setCreatedBy(userId);
+        projectFolder.setCreatedAt(LocalDateTime.now());
+        projectFolder.setUpdatedAt(LocalDateTime.now());
+        projectFolder.setDeleted(0);
+        nodeMapper.insert(projectFolder);
+
+        for (SysRepairProjectTemplateItem templateItem : templateItems) {
+            SysDocItem item = new SysDocItem();
+            item.setSectionDeptId(parent.getSectionDeptId());
+            item.setItemName(requiredText(templateItem.getItemName(), "请输入资料项名称"));
+            item.setBusinessType("ISSUED");
+            item.setSubmitterMode("SINGLE");
+            item.setFileType(normalizeFileType(templateItem.getFileType()));
+            item.setDocYear(resolvedYear);
+            item.setContentHtml("");
+            item.setAttachmentEnabled(0);
+            item.setWorkshopUploadEnabled(0);
+            item.setVisibilityScope("ALL");
+            item.setSortOrder(templateItem.getSortOrder() == null ? 0 : templateItem.getSortOrder());
+            item.setCreatedBy(userId);
+            item.setCreatedAt(LocalDateTime.now());
+            item.setUpdatedAt(LocalDateTime.now());
+            item.setDeleted(0);
+            itemMapper.insert(item);
+
+            SysDocNode fileNode = new SysDocNode();
+            fileNode.setSectionDeptId(parent.getSectionDeptId());
+            fileNode.setParentId(projectFolder.getId());
+            fileNode.setNodeType("FILE");
+            fileNode.setNodeName(item.getItemName());
+            fileNode.setItemId(item.getId());
+            fileNode.setDocYear(resolvedYear);
+            fileNode.setSortOrder(item.getSortOrder());
+            fileNode.setLevel(projectFolder.getLevel() + 1);
+            fileNode.setCreatedBy(userId);
+            fileNode.setCreatedAt(LocalDateTime.now());
+            fileNode.setUpdatedAt(LocalDateTime.now());
+            fileNode.setDeleted(0);
+            nodeMapper.insert(fileNode);
+        }
+        return projectFolder;
+    }
+
     private void applyItemRequest(SysDocItem item, SysDocItem request) {
         item.setItemName(requiredText(request.getItemName(), "请输入文件名称"));
         String businessType = request.getBusinessType() == null
@@ -465,6 +659,9 @@ public class DocWorkspaceService {
         item.setFileType(normalizeFileType(request.getFileType()));
         item.setContentHtml(request.getContentHtml() == null ? "" : request.getContentHtml());
         item.setAttachmentEnabled("UPLOAD".equals(item.getBusinessType()) ? 1 : 0);
+        item.setWorkshopUploadEnabled(request.getWorkshopUploadEnabled() == null ? item.getAttachmentEnabled() : request.getWorkshopUploadEnabled());
+        item.setUploadDeadline(request.getUploadDeadline());
+        item.setVisibilityScope(normalizeVisibilityScope(request.getVisibilityScope()));
         item.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
     }
 
@@ -534,6 +731,11 @@ public class DocWorkspaceService {
                         .in(SysDocItem::getId, itemIds)
                         .eq(SysDocItem::getDeleted, 0))
                 .stream().collect(Collectors.toMap(SysDocItem::getId, Function.identity(), (a, b) -> a));
+        Map<Long, List<Long>> scopeMap = itemWorkshopScopeMapper.selectList(new LambdaQueryWrapper<SysDocItemWorkshopScope>()
+                        .in(SysDocItemWorkshopScope::getItemId, itemIds))
+                .stream()
+                .collect(Collectors.groupingBy(SysDocItemWorkshopScope::getItemId,
+                        Collectors.mapping(SysDocItemWorkshopScope::getWorkshopDeptId, Collectors.toList())));
         for (SysDocNode node : nodes) {
             SysDocItem item = itemMap.get(node.getItemId());
             if (item == null) {
@@ -544,6 +746,10 @@ public class DocWorkspaceService {
             node.setDocYear(item.getDocYear());
             node.setBusinessType(normalizeBusinessType(item));
             node.setSubmitterMode(normalizeSubmitterMode(item.getSubmitterMode()));
+            node.setWorkshopUploadEnabled(normalizeWorkshopUploadEnabled(item));
+            node.setUploadDeadline(item.getUploadDeadline());
+            node.setVisibilityScope(normalizeVisibilityScope(item.getVisibilityScope()));
+            node.setVisibleWorkshopIds(scopeMap.getOrDefault(item.getId(), List.of()));
             node.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                     .eq(SysDocSubmission::getItemId, item.getId()))));
         }
@@ -568,6 +774,8 @@ public class DocWorkspaceService {
         for (SysDocItem item : items) {
             item.setBusinessType(normalizeBusinessType(item));
             item.setSubmitterMode(normalizeSubmitterMode(item.getSubmitterMode()));
+            item.setWorkshopUploadEnabled(normalizeWorkshopUploadEnabled(item));
+            item.setVisibilityScope(normalizeVisibilityScope(item.getVisibilityScope()));
             SysDocCategory category = item.getCategoryId() == null ? null : categoryMap.get(item.getCategoryId());
             if (category != null) {
                 item.setCategoryName(category.getCategoryName());
@@ -575,6 +783,19 @@ public class DocWorkspaceService {
             }
             item.setSectionDeptName(name(deptMap.get(item.getSectionDeptId())));
         }
+    }
+
+    private void fillItemWorkshopScopes(List<SysDocItem> items) {
+        Set<Long> itemIds = items.stream().map(SysDocItem::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (itemIds.isEmpty()) {
+            return;
+        }
+        Map<Long, List<Long>> scopeMap = itemWorkshopScopeMapper.selectList(new LambdaQueryWrapper<SysDocItemWorkshopScope>()
+                        .in(SysDocItemWorkshopScope::getItemId, itemIds))
+                .stream()
+                .collect(Collectors.groupingBy(SysDocItemWorkshopScope::getItemId,
+                        Collectors.mapping(SysDocItemWorkshopScope::getWorkshopDeptId, Collectors.toList())));
+        items.forEach(item -> item.setVisibleWorkshopIds(scopeMap.getOrDefault(item.getId(), List.of())));
     }
 
     private void fillSubmissionInfo(List<SysDocSubmission> submissions) {
@@ -650,6 +871,86 @@ public class DocWorkspaceService {
                 .eq(SysDocUploadRequirement::getItemId, itemId));
     }
 
+    private List<DocUploadRequirementRequest> defaultRequirements(List<DocUploadRequirementRequest> requirements) {
+        if (requirements != null && !requirements.isEmpty()) {
+            return requirements;
+        }
+        return List.of(new DocUploadRequirementRequest(null, "附件", null, 0));
+    }
+
+    private void replaceWorkshopScopes(Long itemId, List<Long> workshopIds) {
+        itemWorkshopScopeMapper.delete(new LambdaQueryWrapper<SysDocItemWorkshopScope>()
+                .eq(SysDocItemWorkshopScope::getItemId, itemId));
+        List<Long> normalizedIds = normalizeVisibleWorkshopIds(workshopIds);
+        for (Long workshopId : normalizedIds) {
+            SysDocItemWorkshopScope scope = new SysDocItemWorkshopScope();
+            scope.setItemId(itemId);
+            scope.setWorkshopDeptId(workshopId);
+            scope.setCreatedAt(LocalDateTime.now());
+            itemWorkshopScopeMapper.insert(scope);
+        }
+    }
+
+    private List<Long> normalizeVisibleWorkshopIds(List<Long> workshopIds) {
+        if (workshopIds == null) {
+            return List.of();
+        }
+        return workshopIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private String resolveVisibilityScope(List<Long> visibleWorkshopIds) {
+        return normalizeVisibleWorkshopIds(visibleWorkshopIds).isEmpty() ? "ALL" : "SELECTED";
+    }
+
+    private String normalizeVisibilityScope(String visibilityScope) {
+        if (visibilityScope == null || visibilityScope.trim().isBlank()) {
+            return "ALL";
+        }
+        String normalized = visibilityScope.trim().toUpperCase(Locale.ROOT);
+        return "SELECTED".equals(normalized) ? "SELECTED" : "ALL";
+    }
+
+    private Integer normalizeWorkshopUploadEnabled(SysDocItem item) {
+        if (item.getWorkshopUploadEnabled() != null) {
+            return item.getWorkshopUploadEnabled();
+        }
+        return "UPLOAD".equals(normalizeBusinessType(item)) || Objects.equals(item.getAttachmentEnabled(), 1) ? 1 : 0;
+    }
+
+    private boolean canViewItemNode(Long userDeptId, boolean superAdmin, SysDocNode node) {
+        if (superAdmin || canManageSection(userDeptId, false, node.getSectionDeptId())) {
+            return true;
+        }
+        if (!"SELECTED".equals(normalizeVisibilityScope(node.getVisibilityScope()))) {
+            return true;
+        }
+        return userDeptId != null && node.getVisibleWorkshopIds() != null && node.getVisibleWorkshopIds().contains(userDeptId);
+    }
+
+    private void requireItemVisible(Long userDeptId, boolean superAdmin, SysDocItem item) {
+        if (superAdmin || canManageSection(userDeptId, false, itemSectionDeptId(item))) {
+            return;
+        }
+        if (!"SELECTED".equals(normalizeVisibilityScope(item.getVisibilityScope()))) {
+            return;
+        }
+        List<Long> visibleWorkshopIds = item.getVisibleWorkshopIds();
+        if (visibleWorkshopIds == null) {
+            visibleWorkshopIds = itemWorkshopScopeMapper.selectList(new LambdaQueryWrapper<SysDocItemWorkshopScope>()
+                            .eq(SysDocItemWorkshopScope::getItemId, item.getId()))
+                    .stream()
+                    .map(SysDocItemWorkshopScope::getWorkshopDeptId)
+                    .toList();
+        }
+        if (userDeptId != null && visibleWorkshopIds.contains(userDeptId)) {
+            return;
+        }
+        throw new BusinessException(403, "无权查看该文件");
+    }
+
     private List<Long> normalizeSubmissionRequirementIds(List<SysDocUploadRequirement> requirements,
                                                          List<Long> requirementIds,
                                                          List<MultipartFile> uploadFiles) {
@@ -675,16 +976,11 @@ public class DocWorkspaceService {
     }
 
     private void requireSubmissionOpen(Long userId, SysDocItem item) {
-        Long submittedCount = Objects.requireNonNullElse(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
-                .eq(SysDocSubmission::getItemId, item.getId())), 0L);
-        if ("SINGLE".equals(normalizeSubmitterMode(item.getSubmitterMode())) && submittedCount > 0) {
-            throw new BusinessException("该上传任务已完成");
-        }
         Long userSubmittedCount = Objects.requireNonNullElse(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, item.getId())
                 .eq(SysDocSubmission::getUploadUserId, userId)), 0L);
         if (userSubmittedCount > 0) {
-            throw new BusinessException("您已提交过该上传任务");
+            throw new BusinessException("您已提交过该文件");
         }
     }
 
@@ -910,6 +1206,51 @@ public class DocWorkspaceService {
         return item;
     }
 
+    private SysRepairProjectTemplate requireRepairTemplate(Long id) {
+        SysRepairProjectTemplate template = repairTemplateMapper.selectById(id);
+        if (template == null || template.getDeleted() != null && template.getDeleted() == 1) {
+            throw new BusinessException("大修项目模板不存在");
+        }
+        return template;
+    }
+
+    private SysRepairProjectTemplateItem requireRepairTemplateItem(Long id) {
+        SysRepairProjectTemplateItem item = repairTemplateItemMapper.selectById(id);
+        if (item == null || item.getDeleted() != null && item.getDeleted() == 1) {
+            throw new BusinessException("模板资料项不存在");
+        }
+        return item;
+    }
+
+    private void requireRepairTemplateManage(Long userId, Long userDeptId, boolean superAdmin) {
+        if (superAdmin) {
+            return;
+        }
+        SysDept dept = userDeptId == null ? null : deptMapper.selectById(userDeptId);
+        Set<Long> adminUserIds = orgAssignmentService.adminUserIds();
+        boolean techSectionAdmin = dept != null
+                && "技术科".equals(dept.getDeptName())
+                && adminUserIds != null
+                && adminUserIds.contains(userId);
+        if (!techSectionAdmin) {
+            throw new BusinessException(403, "只有技术科管理员可以维护房建大修项目模板");
+        }
+    }
+
+    private boolean isUnderRepairFolder(SysDocNode node) {
+        SysDocNode current = node;
+        while (current != null) {
+            if ("房建大修".equals(current.getNodeName())) {
+                return true;
+            }
+            if (current.getParentId() == null) {
+                return false;
+            }
+            current = nodeMapper.selectById(current.getParentId());
+        }
+        return false;
+    }
+
     private List<SysDept> sectionDepts() {
         return deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
                         .eq(SysDept::getDeleted, 0)
@@ -965,7 +1306,7 @@ public class DocWorkspaceService {
         }
         String normalized = fileType.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
-            case "WORD", "EXCEL", "PDF", "IMAGE", "OTHER" -> normalized;
+            case "WORD", "EXCEL", "PPT", "PDF", "IMAGE", "ZIP", "OTHER" -> normalized;
             default -> "OTHER";
         };
     }
@@ -1004,6 +1345,13 @@ public class DocWorkspaceService {
             case "UPLOAD", "ISSUED" -> normalized;
             default -> "ISSUED";
         };
+    }
+
+    private String resolveUnifiedBusinessType(DocNodeRequest request) {
+        if (request.businessType() != null && !request.businessType().trim().isBlank()) {
+            return normalizeBusinessType(request.businessType());
+        }
+        return Boolean.TRUE.equals(request.workshopUploadEnabled()) || Boolean.TRUE.equals(request.attachmentEnabled()) ? "UPLOAD" : "ISSUED";
     }
 
     private String normalizeBusinessTypeOrNull(String businessType) {

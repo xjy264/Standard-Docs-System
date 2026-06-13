@@ -41,6 +41,14 @@ public class SysDocNode {
     @TableField(exist = false)
     private String submitterMode;
     @TableField(exist = false)
+    private Integer workshopUploadEnabled;
+    @TableField(exist = false)
+    private LocalDateTime uploadDeadline;
+    @TableField(exist = false)
+    private String visibilityScope;
+    @TableField(exist = false)
+    private List<Long> visibleWorkshopIds;
+    @TableField(exist = false)
     private Integer uploadTaskCount;
     @TableField(exist = false)
     private Integer completedUploadTaskCount;

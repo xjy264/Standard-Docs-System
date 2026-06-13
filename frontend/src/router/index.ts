@@ -19,6 +19,7 @@ import PermissionMatrixView from '../views/PermissionMatrixView.vue'
 import LogsView from '../views/LogsView.vue'
 import StorageView from '../views/StorageView.vue'
 import SettingsView from '../views/SettingsView.vue'
+import RepairProjectTemplateView from '../views/RepairProjectTemplateView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -39,6 +40,7 @@ const router = createRouter({
         { path: 'console/personal', component: PersonalSpaceView },
         { path: 'console/doc-categories', component: DocCategorySettingsView },
         { path: 'console/doc-root-folders', component: DocRootFolderSettingsView },
+        { path: 'console/repair-project-templates', component: RepairProjectTemplateView },
         { path: 'console/depts', component: DeptView },
         { path: 'console/depts/:id', component: DeptDetailView },
         { path: 'console/users', component: UsersView },
