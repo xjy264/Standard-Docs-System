@@ -23,10 +23,11 @@
       <div class="template-side">
         <div class="side-header">
           <h3>{{ selectedTemplate?.templateName || '模板资料项' }}</h3>
-          <el-button :disabled="!selectedTemplate" type="primary" plain @click="openItemDialog()">新增资料项</el-button>
+          <el-button :disabled="!selectedTemplate" type="primary" plain @click="openItemDialog()">新增模板文件</el-button>
         </div>
         <el-table v-if="selectedTemplate" :data="templateItems" border>
-          <el-table-column prop="itemName" label="资料项" min-width="180" />
+          <el-table-column prop="itemName" label="模板文件" min-width="180" />
+          <el-table-column prop="originalFileName" label="文件" min-width="180" />
           <el-table-column prop="fileType" label="类型" width="100" />
           <el-table-column prop="sortOrder" label="排序" width="90" />
           <el-table-column label="操作" width="130">
@@ -51,18 +52,25 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="itemDialogOpen" :title="editingItem ? '编辑资料项' : '新增资料项'" width="560px">
+    <el-dialog v-model="itemDialogOpen" :title="editingItem ? '编辑模板文件' : '新增模板文件'" width="560px" @closed="resetItemUpload">
       <el-form label-position="top">
-        <el-form-item label="资料项名称"><el-input v-model="itemForm.itemName" maxlength="128" /></el-form-item>
+        <el-form-item label="模板文件名称"><el-input v-model="itemForm.itemName" maxlength="128" /></el-form-item>
         <el-form-item label="文件类型">
-          <el-select v-model="itemForm.fileType" style="width: 220px">
-            <el-option label="Word" value="WORD" />
-            <el-option label="Excel" value="EXCEL" />
-            <el-option label="PPT" value="PPT" />
-            <el-option label="PDF" value="PDF" />
-            <el-option label="ZIP" value="ZIP" />
-            <el-option label="其他" value="OTHER" />
-          </el-select>
+          <el-tag>{{ fileTypeText(itemForm.fileType) }}</el-tag>
+        </el-form-item>
+        <el-form-item label="文件">
+          <el-upload
+            ref="itemUploadRef"
+            drag
+            :auto-upload="false"
+            :limit="1"
+            :on-change="onItemFileChange"
+            :on-remove="onItemFileRemove"
+            :on-exceed="onItemFileExceed"
+          >
+            <div>拖拽文件到此处，或点击选择文件</div>
+          </el-upload>
+          <div v-if="editingItem?.originalFileName && !itemFile" class="current-file">当前文件：{{ editingItem.originalFileName }}</div>
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="itemForm.sortOrder" :min="0" /></el-form-item>
       </el-form>
@@ -75,9 +83,9 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
-import { apiDelete, apiGet, apiPost, apiPut } from '../api/http'
+import { apiDelete, apiGet, apiPost, apiPut, http } from '../api/http'
 
 interface Template {
   id: number
@@ -90,6 +98,7 @@ interface TemplateItem {
   templateId: number
   itemName: string
   fileType: string
+  originalFileName?: string
   sortOrder: number
 }
 
@@ -101,7 +110,9 @@ const editingItem = ref<TemplateItem>()
 const templateDialogOpen = ref(false)
 const itemDialogOpen = ref(false)
 const templateForm = reactive({ templateName: '', sortOrder: 0 })
-const itemForm = reactive({ itemName: '', fileType: 'WORD', sortOrder: 0 })
+const itemForm = reactive({ itemName: '', fileType: 'OTHER', sortOrder: 0 })
+const itemFile = ref<UploadRawFile>()
+const itemUploadRef = ref<any>()
 
 async function loadTemplates() {
   templates.value = await apiGet<Template[]>('/repair-project-templates')
@@ -153,8 +164,9 @@ function openItemDialog(item?: TemplateItem) {
   if (!selectedTemplate.value) return
   editingItem.value = item
   itemForm.itemName = item?.itemName || ''
-  itemForm.fileType = item?.fileType || 'WORD'
+  itemForm.fileType = item?.fileType || 'OTHER'
   itemForm.sortOrder = item?.sortOrder || 0
+  itemFile.value = undefined
   itemDialogOpen.value = true
 }
 
@@ -164,15 +176,78 @@ async function submitItem() {
     ElMessage.warning('请输入资料项名称')
     return
   }
-  const body = { itemName: itemForm.itemName.trim(), fileType: itemForm.fileType, sortOrder: itemForm.sortOrder }
-  if (editingItem.value) {
+  if (!editingItem.value && !itemFile.value) {
+    ElMessage.warning('请上传模板文件')
+    return
+  }
+  if (itemFile.value) {
+    const form = new FormData()
+    form.append('itemName', itemForm.itemName.trim())
+    form.append('sortOrder', String(itemForm.sortOrder || 0))
+    form.append('file', itemFile.value)
+    if (editingItem.value) {
+      await http.put(`/repair-project-templates/${selectedTemplate.value.id}/items/${editingItem.value.id}`, form)
+    } else {
+      await http.post(`/repair-project-templates/${selectedTemplate.value.id}/items`, form)
+    }
+  } else if (editingItem.value) {
+    const body = { itemName: itemForm.itemName.trim(), fileType: itemForm.fileType, sortOrder: itemForm.sortOrder }
     await apiPut(`/repair-project-templates/${selectedTemplate.value.id}/items/${editingItem.value.id}`, body)
-  } else {
-    await apiPost(`/repair-project-templates/${selectedTemplate.value.id}/items`, body)
   }
   itemDialogOpen.value = false
   ElMessage.success('保存成功')
   await selectTemplate(selectedTemplate.value)
+}
+
+function onItemFileChange(_file: UploadFile, files: UploadFiles) {
+  syncItemFile(files)
+}
+
+function onItemFileRemove(_file: UploadFile, files: UploadFiles) {
+  syncItemFile(files)
+}
+
+function syncItemFile(files: UploadFiles) {
+  itemFile.value = files.map((file) => file.raw).find((file): file is UploadRawFile => Boolean(file))
+  if (!itemFile.value) {
+    itemForm.fileType = editingItem.value?.fileType || 'OTHER'
+    return
+  }
+  itemForm.fileType = guessFileType(itemFile.value.name)
+  if (!itemForm.itemName.trim()) {
+    itemForm.itemName = itemFile.value.name.replace(/\.[^.]+$/, '')
+  }
+}
+
+function onItemFileExceed() {
+  ElMessage.warning('只能上传一个文件')
+}
+
+function resetItemUpload() {
+  itemFile.value = undefined
+  itemUploadRef.value?.clearFiles()
+}
+
+function guessFileType(name: string) {
+  const lower = name.toLowerCase()
+  if (/\.(doc|docx)$/.test(lower)) return 'WORD'
+  if (/\.(xls|xlsx)$/.test(lower)) return 'EXCEL'
+  if (/\.(ppt|pptx)$/.test(lower)) return 'PPT'
+  if (/\.pdf$/.test(lower)) return 'PDF'
+  if (/\.zip$/.test(lower)) return 'ZIP'
+  return 'OTHER'
+}
+
+function fileTypeText(type: string) {
+  const labels: Record<string, string> = {
+    WORD: 'Word',
+    EXCEL: 'Excel',
+    PPT: 'PPT',
+    PDF: 'PDF',
+    ZIP: 'ZIP',
+    OTHER: '其他'
+  }
+  return labels[type] || '其他'
 }
 
 async function deleteItem(item: TemplateItem) {
@@ -217,6 +292,12 @@ onMounted(loadTemplates)
 .side-header h3 {
   margin: 0;
   font-size: 16px;
+}
+
+.current-file {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 @media (max-width: 1000px) {

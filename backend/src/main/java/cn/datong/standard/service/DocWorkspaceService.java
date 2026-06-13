@@ -36,6 +36,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -147,6 +150,9 @@ public class DocWorkspaceService {
 
     @Transactional
     public SysDocNode createFileNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
+        if (request.parentId() == null) {
+            throw new BusinessException("只能在文件夹下新建文件");
+        }
         NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), false);
         String businessType = resolveUnifiedBusinessType(request);
         boolean workshopUploadEnabled = Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType);
@@ -184,6 +190,69 @@ public class DocWorkspaceService {
         node.setUpdatedAt(LocalDateTime.now());
         node.setDeleted(0);
         nodeMapper.insert(node);
+        if (workshopUploadEnabled) {
+            replaceRequirements(item.getId(), defaultRequirements(request.requirements()));
+        }
+        return node;
+    }
+
+    @Transactional
+    public SysDocNode createFileNodeWithMainFile(Long userId, Long userDeptId, boolean superAdmin,
+                                                 DocNodeRequest request, MultipartFile file) {
+        if (request.parentId() == null) {
+            throw new BusinessException("只能在文件夹下新建文件");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("请上传文件");
+        }
+        String original = file.getOriginalFilename() == null || file.getOriginalFilename().trim().isBlank()
+                ? "未命名文件"
+                : file.getOriginalFilename().trim();
+        NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), false);
+        String itemName = requiredText(request.nodeName(), "请输入文件名称");
+        Integer docYear = requiredDocYear(request.docYear(), "请选择文件年份");
+        String businessType = resolveUnifiedBusinessType(request);
+        boolean workshopUploadEnabled = Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType);
+        String extension = extension(original);
+        String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
+                + (extension.isBlank() ? "" : "." + extension);
+        StoredObject stored = storageService.upload(file, objectName);
+
+        SysDocItem item = new SysDocItem();
+        item.setSectionDeptId(placement.sectionDeptId());
+        item.setItemName(itemName);
+        item.setBusinessType(businessType);
+        item.setSubmitterMode("UPLOAD".equals(businessType) ? "MULTIPLE" : "SINGLE");
+        item.setFileType(inferFileTypeFromFilename(original));
+        item.setDocYear(docYear);
+        item.setContentHtml("");
+        item.setAttachmentEnabled(workshopUploadEnabled ? 1 : 0);
+        item.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
+        item.setUploadDeadline(request.uploadDeadline());
+        item.setVisibilityScope(resolveVisibilityScope(request.visibleWorkshopIds()));
+        item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
+        item.setCreatedBy(userId);
+        item.setCreatedAt(LocalDateTime.now());
+        item.setUpdatedAt(LocalDateTime.now());
+        item.setDeleted(0);
+        itemMapper.insert(item);
+        replaceWorkshopScopes(item.getId(), request.visibleWorkshopIds());
+
+        SysDocNode node = new SysDocNode();
+        node.setSectionDeptId(placement.sectionDeptId());
+        node.setParentId(request.parentId());
+        node.setNodeType("FILE");
+        node.setNodeName(item.getItemName());
+        node.setItemId(item.getId());
+        node.setDocYear(item.getDocYear());
+        node.setSortOrder(item.getSortOrder());
+        node.setLevel(placement.level());
+        node.setCreatedBy(userId);
+        node.setCreatedAt(LocalDateTime.now());
+        node.setUpdatedAt(LocalDateTime.now());
+        node.setDeleted(0);
+        nodeMapper.insert(node);
+        saveItemAttachmentFromStored(userId, item.getId(), original, extension, stored);
         if (workshopUploadEnabled) {
             replaceRequirements(item.getId(), defaultRequirements(request.requirements()));
         }
@@ -575,6 +644,45 @@ public class DocWorkspaceService {
     }
 
     @Transactional
+    public SysRepairProjectTemplateItem saveRepairProjectTemplateItemWithFile(Long userId, Long userDeptId, boolean superAdmin,
+                                                                               Long templateId,
+                                                                               SysRepairProjectTemplateItem request,
+                                                                               MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("请上传模板文件");
+        }
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        requireRepairTemplate(templateId);
+        String original = file.getOriginalFilename() == null || file.getOriginalFilename().trim().isBlank()
+                ? "未命名文件"
+                : file.getOriginalFilename().trim();
+        String extension = extension(original);
+        String objectName = "repair-templates/" + LocalDate.now() + "/" + UUID.randomUUID()
+                + (extension.isBlank() ? "" : "." + extension);
+        StoredObject stored = storageService.upload(file, objectName);
+        SysRepairProjectTemplateItem item = request.getId() == null ? new SysRepairProjectTemplateItem() : requireRepairTemplateItem(request.getId());
+        item.setTemplateId(templateId);
+        item.setItemName(requiredText(request.getItemName(), "请输入资料项名称"));
+        item.setFileType(inferFileTypeFromFilename(original));
+        item.setOriginalFileName(original);
+        item.setExtension(extension);
+        item.setMimeType(stored.contentType());
+        item.setFileSize(stored.size());
+        item.setStorageBucket(stored.bucket());
+        item.setStoragePath(stored.objectName());
+        item.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
+        item.setUpdatedAt(LocalDateTime.now());
+        if (item.getId() == null) {
+            item.setCreatedAt(LocalDateTime.now());
+            item.setDeleted(0);
+            repairTemplateItemMapper.insert(item);
+        } else {
+            repairTemplateItemMapper.updateById(item);
+        }
+        return item;
+    }
+
+    @Transactional
     public void deleteRepairProjectTemplateItem(Long userId, Long userDeptId, boolean superAdmin, Long id) {
         requireRepairTemplateManage(userId, userDeptId, superAdmin);
         repairTemplateItemMapper.deleteById(id);
@@ -649,6 +757,84 @@ public class DocWorkspaceService {
         return projectFolder;
     }
 
+    @Transactional
+    public List<SysDocNode> importRepairTemplateFiles(Long userId, Long userDeptId, boolean superAdmin,
+                                                      Long parentNodeId, List<Long> templateItemIds, Integer docYear) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        SysDocNode parent = requireNode(parentNodeId);
+        if (!"FOLDER".equalsIgnoreCase(parent.getNodeType()) || !isRepairChildFolder(parent)) {
+            throw new BusinessException("只能在房建大修子文件夹下导入模板文件");
+        }
+        requireManageSection(userDeptId, superAdmin, parent.getSectionDeptId());
+        List<Long> ids = templateItemIds == null ? List.of() : templateItemIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            throw new BusinessException("请选择模板文件");
+        }
+        List<SysRepairProjectTemplateItem> templateItems = repairTemplateItemMapper.selectList(new LambdaQueryWrapper<SysRepairProjectTemplateItem>()
+                .in(SysRepairProjectTemplateItem::getId, ids)
+                .eq(SysRepairProjectTemplateItem::getDeleted, 0)
+                .orderByAsc(SysRepairProjectTemplateItem::getSortOrder)
+                .orderByAsc(SysRepairProjectTemplateItem::getId));
+        if (templateItems.isEmpty()) {
+            throw new BusinessException("模板文件不存在");
+        }
+        Integer resolvedYear = requiredDocYear(docYear, "请选择文件年份");
+        List<SysDocNode> importedNodes = new ArrayList<>();
+        for (SysRepairProjectTemplateItem templateItem : templateItems) {
+            if (templateItem.getStorageBucket() == null || templateItem.getStoragePath() == null) {
+                throw new BusinessException("模板文件未上传主文件");
+            }
+            String original = templateItem.getOriginalFileName() == null || templateItem.getOriginalFileName().isBlank()
+                    ? templateItem.getItemName()
+                    : templateItem.getOriginalFileName();
+            String extension = extension(original);
+            byte[] bytes = readTemplateFile(templateItem);
+            MultipartFile copyFile = new StoredMultipartFile("file", original, templateItem.getMimeType(), bytes);
+            String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
+                    + (extension.isBlank() ? "" : "." + extension);
+            StoredObject stored = storageService.upload(copyFile, objectName);
+
+            SysDocItem item = new SysDocItem();
+            item.setSectionDeptId(parent.getSectionDeptId());
+            item.setItemName(requiredText(templateItem.getItemName(), "请输入资料项名称"));
+            item.setBusinessType("ISSUED");
+            item.setSubmitterMode("SINGLE");
+            item.setFileType(normalizeFileType(templateItem.getFileType()));
+            item.setDocYear(resolvedYear);
+            item.setContentHtml("");
+            item.setAttachmentEnabled(0);
+            item.setWorkshopUploadEnabled(0);
+            item.setVisibilityScope("ALL");
+            item.setSortOrder(templateItem.getSortOrder() == null ? 0 : templateItem.getSortOrder());
+            item.setCreatedBy(userId);
+            item.setCreatedAt(LocalDateTime.now());
+            item.setUpdatedAt(LocalDateTime.now());
+            item.setDeleted(0);
+            itemMapper.insert(item);
+
+            SysDocNode fileNode = new SysDocNode();
+            fileNode.setSectionDeptId(parent.getSectionDeptId());
+            fileNode.setParentId(parent.getId());
+            fileNode.setNodeType("FILE");
+            fileNode.setNodeName(item.getItemName());
+            fileNode.setItemId(item.getId());
+            fileNode.setDocYear(resolvedYear);
+            fileNode.setSortOrder(item.getSortOrder());
+            fileNode.setLevel((parent.getLevel() == null ? 1 : parent.getLevel()) + 1);
+            fileNode.setCreatedBy(userId);
+            fileNode.setCreatedAt(LocalDateTime.now());
+            fileNode.setUpdatedAt(LocalDateTime.now());
+            fileNode.setDeleted(0);
+            nodeMapper.insert(fileNode);
+            saveItemAttachmentFromStored(userId, item.getId(), original, extension, stored);
+            importedNodes.add(fileNode);
+        }
+        return importedNodes;
+    }
+
     private void applyItemRequest(SysDocItem item, SysDocItem request) {
         item.setItemName(requiredText(request.getItemName(), "请输入文件名称"));
         String businessType = request.getBusinessType() == null
@@ -691,6 +877,10 @@ public class DocWorkspaceService {
         String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
                 + (extension.isBlank() ? "" : "." + extension);
         StoredObject stored = storageService.upload(file, objectName);
+        saveItemAttachmentFromStored(userId, itemId, original, extension, stored);
+    }
+
+    private void saveItemAttachmentFromStored(Long userId, Long itemId, String original, String extension, StoredObject stored) {
         SysDocItemAttachment attachment = new SysDocItemAttachment();
         attachment.setItemId(itemId);
         attachment.setOriginalFileName(original);
@@ -702,6 +892,14 @@ public class DocWorkspaceService {
         attachment.setUploadedBy(userId);
         attachment.setCreatedAt(LocalDateTime.now());
         itemAttachmentMapper.insert(attachment);
+    }
+
+    private byte[] readTemplateFile(SysRepairProjectTemplateItem templateItem) {
+        try (InputStream inputStream = storageService.download(templateItem.getStorageBucket(), templateItem.getStoragePath())) {
+            return inputStream.readAllBytes();
+        } catch (IOException e) {
+            throw new BusinessException("模板文件读取失败");
+        }
     }
 
     private List<SysDocAttachment> attachments(Long submissionId) {
@@ -1251,6 +1449,20 @@ public class DocWorkspaceService {
         return false;
     }
 
+    private boolean isRepairChildFolder(SysDocNode node) {
+        if ("房建大修".equals(node.getNodeName())) {
+            return false;
+        }
+        SysDocNode current = node;
+        while (current != null && current.getParentId() != null) {
+            current = nodeMapper.selectById(current.getParentId());
+            if (current != null && "房建大修".equals(current.getNodeName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private List<SysDept> sectionDepts() {
         return deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
                         .eq(SysDept::getDeleted, 0)
@@ -1307,6 +1519,18 @@ public class DocWorkspaceService {
         String normalized = fileType.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "WORD", "EXCEL", "PPT", "PDF", "IMAGE", "ZIP", "OTHER" -> normalized;
+            default -> "OTHER";
+        };
+    }
+
+    private String inferFileTypeFromFilename(String filename) {
+        String extension = extension(filename);
+        return switch (extension) {
+            case "doc", "docx" -> "WORD";
+            case "xls", "xlsx" -> "EXCEL";
+            case "ppt", "pptx" -> "PPT";
+            case "pdf" -> "PDF";
+            case "zip" -> "ZIP";
             default -> "OTHER";
         };
     }
@@ -1397,5 +1621,59 @@ public class DocWorkspaceService {
             return user.getPhone();
         }
         return user.getUsername();
+    }
+
+    private static class StoredMultipartFile implements MultipartFile {
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+        private final byte[] bytes;
+
+        private StoredMultipartFile(String name, String originalFilename, String contentType, byte[] bytes) {
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+            this.bytes = bytes == null ? new byte[0] : bytes;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return bytes.length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return bytes.length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return bytes;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return new ByteArrayInputStream(bytes);
+        }
+
+        @Override
+        public void transferTo(java.io.File dest) throws IOException {
+            java.nio.file.Files.write(dest.toPath(), bytes);
+        }
     }
 }

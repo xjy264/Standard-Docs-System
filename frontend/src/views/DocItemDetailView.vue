@@ -5,21 +5,20 @@
         <el-button link type="primary" @click="router.push(`/org/${deptId}?restore=1`)">返回文件菜单</el-button>
         <h2>{{ item?.itemName || '文件详情' }}</h2>
         <p v-if="item" class="detail-meta">
-          {{ [item.sectionDeptName, item.categoryName, item.docYear, '通知文件'].filter(Boolean).join(' / ') }}
+          {{ [item.sectionDeptName, item.categoryName, item.docYear, '文件'].filter(Boolean).join(' / ') }}
         </p>
       </div>
       <div class="header-actions">
-        <el-button v-if="canManageSection && workshopUploadEnabled" @click="openRecords">上传记录</el-button>
-        <el-button v-if="canManageSection" type="primary" plain @click="issuedUploadOpen = true">上传正文附件</el-button>
+        <el-button v-if="canManageSection && workshopUploadEnabled" @click="openRecords">车间提交记录</el-button>
       </div>
     </div>
 
     <section class="detail-content">
       <div class="section-heading">
-        <h3>正文附件</h3>
+        <h3>文件</h3>
       </div>
       <el-table v-if="item?.issuedAttachments?.length" :data="item.issuedAttachments" border>
-        <el-table-column prop="originalFileName" label="附件" />
+        <el-table-column prop="originalFileName" label="文件" />
         <el-table-column prop="createdAt" label="上传时间" width="180" />
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
@@ -28,14 +27,17 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-else description="暂无正文附件" />
+      <el-empty v-else description="暂无文件" />
     </section>
 
     <section v-if="workshopUploadEnabled" class="detail-content">
+      <div class="section-heading">
+        <h3>车间提交文件</h3>
+      </div>
       <div class="upload-task-status">
         <el-tag v-if="mySubmission" type="success">已提交</el-tag>
         <el-tag v-else-if="deadlineExpired" type="danger">已截止</el-tag>
-        <el-tag v-else type="info">待上传</el-tag>
+        <el-tag v-else type="info">待提交</el-tag>
         <span>每人限提交一次</span>
         <span v-if="item?.uploadDeadline">截止时间：{{ item.uploadDeadline }}</span>
       </div>
@@ -46,11 +48,11 @@
             <span>{{ row.description || '无' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="上传附件" min-width="260">
+        <el-table-column label="提交文件" min-width="260">
           <template #default="{ row }">
             <div class="requirement-upload-cell">
               <span class="selected-file-name">
-                {{ selectedRequirementFiles[row.id]?.name || (canUploadAttachment ? '未选择' : mySubmission ? '已提交' : '不可上传') }}
+                {{ selectedRequirementFiles[row.id]?.name || (canUploadAttachment ? '未选择' : mySubmission ? '已提交' : '不可提交') }}
               </span>
               <el-upload
                 v-if="canUploadAttachment"
@@ -59,14 +61,14 @@
                 :disabled="submitting"
                 :on-change="onRequirementFileChange(row)"
               >
-                <el-button link type="primary" :disabled="submitting">选择附件</el-button>
+                <el-button link type="primary" :disabled="submitting">选择文件</el-button>
               </el-upload>
             </div>
           </template>
         </el-table-column>
       </el-table>
       <div v-if="canUploadAttachment" class="upload-actions inline-upload-actions">
-        <el-button type="primary" :loading="submitting" @click="submitAttachment">上传附件</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitAttachment">提交文件</el-button>
       </div>
     </section>
 
@@ -81,14 +83,14 @@
       </el-descriptions>
       <el-table :data="mySubmission.attachments || []" style="margin-top: 14px" border>
         <el-table-column prop="requirementName" label="收集内容" width="180" />
-        <el-table-column prop="originalFileName" label="附件" />
+        <el-table-column prop="originalFileName" label="文件" />
         <el-table-column label="操作" width="100">
           <template #default="{ row }"><el-button link type="primary" @click="downloadAttachment(row)">下载</el-button></template>
         </el-table-column>
       </el-table>
     </section>
 
-    <el-dialog v-model="issuedUploadOpen" title="上传正文附件" width="720px" @closed="resetIssuedUpload">
+    <el-dialog v-model="issuedUploadOpen" title="上传文件" width="720px" @closed="resetIssuedUpload">
       <el-upload
         ref="issuedUploadRef"
         class="attachment-upload"
@@ -98,19 +100,19 @@
         :on-change="onIssuedFileChange"
         :on-remove="onIssuedFileRemove"
       >
-        <div>拖拽附件到此处，或点击选择文件</div>
+        <div>拖拽文件到此处，或点击选择文件</div>
       </el-upload>
       <div class="upload-actions">
-        <el-button type="primary" :loading="submittingIssued" @click="submitIssuedAttachments">上传附件</el-button>
+        <el-button type="primary" :loading="submittingIssued" @click="submitIssuedAttachments">上传文件</el-button>
       </div>
     </el-dialog>
 
-    <el-dialog v-model="recordsOpen" title="上传记录" width="980px">
+    <el-dialog v-model="recordsOpen" title="车间提交记录" width="980px">
       <el-table :data="records" stripe>
         <el-table-column prop="submittedAt" label="上传时间" width="180" />
         <el-table-column prop="submitterDeptName" label="所属车间" width="150" />
         <el-table-column prop="uploadUserName" label="上传人" width="120" />
-        <el-table-column label="附件下载" min-width="260">
+        <el-table-column label="文件下载" min-width="260">
           <template #default="{ row }">
             <div class="attachment-links">
               <el-button
@@ -261,7 +263,7 @@ async function submitAttachment() {
   }
   const missing = requirements.find((requirement) => !selectedRequirementFiles.value[requirement.id])
   if (missing) {
-    ElMessage.warning(`请选择“${missing.requirementName}”附件`)
+    ElMessage.warning(`请选择“${missing.requirementName}”文件`)
     return
   }
   submitting.value = true
@@ -298,7 +300,7 @@ function syncIssuedFiles(files: UploadFiles) {
 
 async function submitIssuedAttachments() {
   if (!issuedAttachmentFiles.value.length) {
-    ElMessage.warning('请选择附件')
+    ElMessage.warning('请选择文件')
     return
   }
   submittingIssued.value = true
@@ -326,12 +328,12 @@ async function openRecords() {
 
 async function downloadAttachment(attachment: DocAttachment) {
   const response = await http.get(`/doc-attachments/${attachment.id}/download`, { responseType: 'blob' })
-  downloadBlob(response.data, attachment.originalFileName || '附件')
+  downloadBlob(response.data, attachment.originalFileName || '文件')
 }
 
 async function downloadIssuedAttachment(attachment: DocItemAttachment) {
   const response = await http.get(`/doc-item-attachments/${attachment.id}/download`, { responseType: 'blob' })
-  downloadBlob(response.data, attachment.originalFileName || '附件')
+  downloadBlob(response.data, attachment.originalFileName || '文件')
 }
 
 async function previewIssuedAttachment(attachment: DocItemAttachment) {

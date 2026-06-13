@@ -16,6 +16,12 @@ public class SysRepairProjectTemplateItem {
     private Long templateId;
     private String itemName;
     private String fileType;
+    private String originalFileName;
+    private String extension;
+    private String mimeType;
+    private Long fileSize;
+    private String storageBucket;
+    private String storagePath;
     private Integer sortOrder;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

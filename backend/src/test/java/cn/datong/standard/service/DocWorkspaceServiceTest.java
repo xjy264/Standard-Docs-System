@@ -6,6 +6,7 @@ import cn.datong.standard.dto.DocUploadRequirementRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocCategory;
 import cn.datong.standard.entity.SysDocItem;
+import cn.datong.standard.entity.SysDocItemAttachment;
 import cn.datong.standard.entity.SysDocNode;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.entity.SysDocUploadRequirement;
@@ -28,6 +29,7 @@ import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
@@ -82,30 +84,66 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void createFileCreatesItemAndTreeNodeWithoutLegacyCategory() {
+    void createFileRejectsRootLevelFile() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD", 2026);
+
+        assertThatThrownBy(() -> fx.service.createFileNode(10L, 2L, false, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只能在文件夹下新建文件");
+    }
+
+    @Test
+    void createFileWithMainFileInfersExcelTypeAndSavesOneMainAttachment() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-items/test.xlsx", 100L, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
         when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
             SysDocItem item = invocation.getArgument(0);
             item.setId(88L);
             return 1;
         });
-        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD", 2026);
+        MultipartFile file = new MockMultipartFile("file", "计划表.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "demo".getBytes());
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "计划表", 30, null, false, "", null, 2026);
 
-        fx.service.createFileNode(10L, 2L, false, request);
+        fx.service.createFileNodeWithMainFile(10L, 2L, false, request, file);
 
         ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
         verify(fx.itemMapper).insert(itemCaptor.capture());
-        assertThat(itemCaptor.getValue().getFileType()).isEqualTo("WORD");
+        assertThat(itemCaptor.getValue().getFileType()).isEqualTo("EXCEL");
         assertThat(itemCaptor.getValue().getDocYear()).isEqualTo(2026);
+        ArgumentCaptor<SysDocItemAttachment> attachmentCaptor = ArgumentCaptor.forClass(SysDocItemAttachment.class);
+        verify(fx.itemAttachmentMapper).insert(attachmentCaptor.capture());
+        assertThat(attachmentCaptor.getValue().getItemId()).isEqualTo(88L);
+        assertThat(attachmentCaptor.getValue().getOriginalFileName()).isEqualTo("计划表.xlsx");
         verify(fx.nodeMapper).insert(any(SysDocNode.class));
+    }
+
+    @Test
+    void createFileWithMainFileDoesNotInsertRowsWhenStorageFails() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
+        when(fx.storageService.upload(any(), any())).thenThrow(new BusinessException("文件上传失败：无法连接 MinIO 存储服务，请检查 9000 端口"));
+        MultipartFile file = new MockMultipartFile("file", "通知.pdf", "application/pdf", "demo".getBytes());
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "通知", 30, null, false, "", null, 2026);
+
+        assertThatThrownBy(() -> fx.service.createFileNodeWithMainFile(10L, 2L, false, request, file))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无法连接 MinIO");
+        verify(fx.itemMapper, never()).insert(any(SysDocItem.class));
+        verify(fx.nodeMapper, never()).insert(any(SysDocNode.class));
+        verify(fx.itemAttachmentMapper, never()).insert(any(SysDocItemAttachment.class));
     }
 
     @Test
     void createFileRejectsMissingDocYear() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
-        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD", null);
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "新建资料", 30, null, true, "<p>内容</p>", "WORD", null);
 
         assertThatThrownBy(() -> fx.service.createFileNode(10L, 2L, false, request))
                 .isInstanceOf(BusinessException.class)
@@ -116,7 +154,8 @@ class DocWorkspaceServiceTest {
     void createFileRejectsInvalidDocYear() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
-        DocNodeRequest request = new DocNodeRequest(2L, null, "新建资料", 30, null, true, "<p>内容</p>", "WORD", 99);
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "新建资料", 30, null, true, "<p>内容</p>", "WORD", 99);
 
         assertThatThrownBy(() -> fx.service.createFileNode(10L, 2L, false, request))
                 .isInstanceOf(BusinessException.class)
@@ -134,7 +173,7 @@ class DocWorkspaceServiceTest {
         });
         DocNodeRequest request = new DocNodeRequest(
                 2L,
-                null,
+                5L,
                 "车间成员信息收集表",
                 30,
                 null,
@@ -146,6 +185,7 @@ class DocWorkspaceServiceTest {
                 "MULTIPLE",
                 List.of(new DocUploadRequirementRequest(null, "成员信息表", "请上传盖章后的 Excel 文件", 0))
         );
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
 
         fx.service.createFileNode(10L, 2L, false, request);
 
@@ -168,7 +208,7 @@ class DocWorkspaceServiceTest {
         LocalDateTime deadline = LocalDateTime.now().plusDays(3);
         DocNodeRequest request = new DocNodeRequest(
                 2L,
-                null,
+                5L,
                 "施工通知",
                 30,
                 null,
@@ -183,6 +223,7 @@ class DocWorkspaceServiceTest {
                 true,
                 List.of(5L)
         );
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
 
         fx.service.createFileNode(10L, 2L, false, request);
 
@@ -240,46 +281,70 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void repairTemplateImportCreatesProjectFolderAndTemplateFiles() {
+    void repairTemplateImportRejectsRepairRootItself() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(3L)).thenReturn(dept(3L, 1L, "技术科", "SECTION"));
         when(fx.nodeMapper.selectById(10L)).thenReturn(node(10L, 3L, null, "FOLDER", "房建大修", null, 1, 10));
+        when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(20L));
+
+        assertThatThrownBy(() -> fx.service.importRepairTemplateFiles(20L, 3L, false, 10L, List.of(1000L), 2026))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只能在房建大修子文件夹下导入模板文件");
+    }
+
+    @Test
+    void repairTemplateImportCopiesSelectedTemplateFilesIntoExistingFolder() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(3L)).thenReturn(dept(3L, 1L, "技术科", "SECTION"));
+        when(fx.nodeMapper.selectById(10L)).thenReturn(node(10L, 3L, null, "FOLDER", "房建大修", null, 1, 10));
+        when(fx.nodeMapper.selectById(11L)).thenReturn(node(11L, 3L, 10L, "FOLDER", "2026年站房大修", null, 2, 10));
         when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(20L));
         SysRepairProjectTemplate template = new SysRepairProjectTemplate();
         template.setId(100L);
         template.setTemplateName("大修项目标准模板");
         template.setDeleted(0);
-        when(fx.repairTemplateMapper.selectById(100L)).thenReturn(template);
         SysRepairProjectTemplateItem contract = templateItem(100L, "施工合同", 10);
+        contract.setId(1000L);
+        contract.setFileType("WORD");
+        contract.setOriginalFileName("施工合同.docx");
+        contract.setExtension("docx");
+        contract.setMimeType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        contract.setFileSize(100L);
+        contract.setStorageBucket("standard-docs");
+        contract.setStoragePath("repair-template/contract.docx");
         SysRepairProjectTemplateItem report = templateItem(100L, "开工报告", 20);
+        report.setId(1001L);
+        report.setFileType("PDF");
+        report.setOriginalFileName("开工报告.pdf");
+        report.setExtension("pdf");
+        report.setMimeType("application/pdf");
+        report.setFileSize(80L);
+        report.setStorageBucket("standard-docs");
+        report.setStoragePath("repair-template/report.pdf");
         when(fx.repairTemplateItemMapper.selectList(any())).thenReturn(List.of(contract, report));
+        when(fx.storageService.download(any(), any())).thenReturn(new java.io.ByteArrayInputStream("demo".getBytes()));
+        when(fx.storageService.upload(any(), any())).thenAnswer(invocation -> new StoredObject("standard-docs", "doc-items/copied-" + java.util.UUID.randomUUID(), 100L, "application/octet-stream"));
         when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
             SysDocItem item = invocation.getArgument(0);
             item.setId(item.getSortOrder().longValue());
             return 1;
         });
-        when(fx.nodeMapper.insert(any(SysDocNode.class))).thenAnswer(invocation -> {
-            SysDocNode node = invocation.getArgument(0);
-            if ("FOLDER".equals(node.getNodeType())) {
-                node.setId(200L);
-            }
-            return 1;
-        });
 
-        fx.service.importRepairProjectTemplate(20L, 3L, false, 10L, 100L, "2026年站房大修", 2026);
+        fx.service.importRepairTemplateFiles(20L, 3L, false, 11L, List.of(1000L, 1001L), 2026);
 
         ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
-        verify(fx.nodeMapper, times(3)).insert(nodeCaptor.capture());
+        verify(fx.nodeMapper, times(2)).insert(nodeCaptor.capture());
         assertThat(nodeCaptor.getAllValues()).extracting(SysDocNode::getNodeName)
-                .containsExactly("2026年站房大修", "施工合同", "开工报告");
+                .containsExactly("施工合同", "开工报告");
         verify(fx.itemMapper, times(2)).insert(any(SysDocItem.class));
+        verify(fx.itemAttachmentMapper, times(2)).insert(any(SysDocItemAttachment.class));
     }
 
     @Test
     void updateFileNodeCanChangeFileType() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
-        when(fx.nodeMapper.selectById(9L)).thenReturn(node(9L, 2L, null, "FILE", "旧文件", 88L, 1, 10));
+        when(fx.nodeMapper.selectById(9L)).thenReturn(node(9L, 2L, 5L, "FILE", "旧文件", 88L, 2, 10));
         when(fx.itemMapper.selectById(88L)).thenReturn(item(88L, null, 2L, true, "WORD", 2025));
         DocNodeRequest request = new DocNodeRequest(2L, null, "新文件", 20, null, true, "<p>新内容</p>", "PDF", 2026);
 

@@ -9,6 +9,7 @@ import cn.datong.standard.entity.SysRepairProjectTemplateItem;
 import cn.datong.standard.security.SecurityUtils;
 import cn.datong.standard.service.DocWorkspaceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,7 +17,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -58,19 +61,47 @@ public class RepairProjectTemplateController {
         return ApiResponse.success(docWorkspaceService.repairProjectTemplateItems(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id));
     }
 
-    @PostMapping("/{id}/items")
+    @PostMapping(value = "/{id}/items", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<SysRepairProjectTemplateItem> createItem(@PathVariable Long id, @RequestBody SysRepairProjectTemplateItem request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(docWorkspaceService.saveRepairProjectTemplateItem(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id, request));
     }
 
-    @PutMapping("/{templateId}/items/{itemId}")
+    @PostMapping(value = "/{id}/items", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<SysRepairProjectTemplateItem> createItemWithFile(@PathVariable Long id,
+                                                                        @RequestParam String itemName,
+                                                                        @RequestParam(required = false) Integer sortOrder,
+                                                                        @RequestParam MultipartFile file) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        SysRepairProjectTemplateItem request = new SysRepairProjectTemplateItem();
+        request.setItemName(itemName);
+        request.setSortOrder(sortOrder);
+        return ApiResponse.success(docWorkspaceService.saveRepairProjectTemplateItemWithFile(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), id, request, file));
+    }
+
+    @PutMapping(value = "/{templateId}/items/{itemId}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<SysRepairProjectTemplateItem> updateItem(@PathVariable Long templateId,
                                                                 @PathVariable Long itemId,
                                                                 @RequestBody SysRepairProjectTemplateItem request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         request.setId(itemId);
         return ApiResponse.success(docWorkspaceService.saveRepairProjectTemplateItem(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), templateId, request));
+    }
+
+    @PutMapping(value = "/{templateId}/items/{itemId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<SysRepairProjectTemplateItem> updateItemWithFile(@PathVariable Long templateId,
+                                                                        @PathVariable Long itemId,
+                                                                        @RequestParam String itemName,
+                                                                        @RequestParam(required = false) Integer sortOrder,
+                                                                        @RequestParam MultipartFile file) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        SysRepairProjectTemplateItem request = new SysRepairProjectTemplateItem();
+        request.setId(itemId);
+        request.setItemName(itemName);
+        request.setSortOrder(sortOrder);
+        return ApiResponse.success(docWorkspaceService.saveRepairProjectTemplateItemWithFile(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), templateId, request, file));
     }
 
     @DeleteMapping("/{templateId}/items/{itemId}")
@@ -81,9 +112,9 @@ public class RepairProjectTemplateController {
     }
 
     @PostMapping("/import/{parentNodeId}")
-    public ApiResponse<SysDocNode> importTemplate(@PathVariable Long parentNodeId, @RequestBody RepairProjectImportRequest request) {
+    public ApiResponse<List<SysDocNode>> importTemplate(@PathVariable Long parentNodeId, @RequestBody RepairProjectImportRequest request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
-        return ApiResponse.success(docWorkspaceService.importRepairProjectTemplate(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(),
-                parentNodeId, request.templateId(), request.projectFolderName(), request.docYear()));
+        return ApiResponse.success(docWorkspaceService.importRepairTemplateFiles(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), parentNodeId, request.templateItemIds(), request.docYear()));
     }
 }
