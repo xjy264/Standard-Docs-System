@@ -2,6 +2,7 @@ package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
 import cn.datong.standard.dto.CurrentUser;
+import cn.datong.standard.entity.SysDocItemAttachment;
 import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.security.SecurityUtils;
@@ -65,8 +66,23 @@ public class DocItemController {
     @PostMapping(value = "/{id}/submissions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<SysDocSubmission> submit(@PathVariable Long id,
                                                 @RequestParam(required = false) String valuesJson,
+                                                @RequestParam(required = false) List<Long> requirementIds,
                                                 @RequestParam(required = false) List<MultipartFile> files) {
         CurrentUser currentUser = SecurityUtils.currentUser();
-        return ApiResponse.success(docWorkspaceService.submit(currentUser.userId(), currentUser.deptId(), id, valuesJson, files));
+        return ApiResponse.success(docWorkspaceService.submit(currentUser.userId(), currentUser.deptId(), id, valuesJson, requirementIds, files));
+    }
+
+    @GetMapping("/{id}/my-submission")
+    public ApiResponse<SysDocSubmission> mySubmission(@PathVariable Long id) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.mySubmission(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id));
+    }
+
+    @PostMapping(value = "/{id}/issued-attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<List<SysDocItemAttachment>> addIssuedAttachments(@PathVariable Long id,
+                                                                        @RequestParam(required = false) List<MultipartFile> files) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.addItemAttachments(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), id, files));
     }
 }

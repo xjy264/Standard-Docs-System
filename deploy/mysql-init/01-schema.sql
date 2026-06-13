@@ -92,8 +92,11 @@ CREATE TABLE IF NOT EXISTS sys_doc_category (
 
 CREATE TABLE IF NOT EXISTS sys_doc_item (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  category_id BIGINT NOT NULL,
+  category_id BIGINT NULL,
+  section_dept_id BIGINT NULL,
   item_name VARCHAR(128) NOT NULL,
+  business_type VARCHAR(32) NOT NULL DEFAULT 'ISSUED',
+  submitter_mode VARCHAR(32) NOT NULL DEFAULT 'SINGLE',
   file_type VARCHAR(32) NULL,
   doc_year INT NOT NULL DEFAULT 2026,
   content_html MEDIUMTEXT,
@@ -103,7 +106,20 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted TINYINT(1) NOT NULL DEFAULT 0,
-  INDEX idx_doc_item_category (category_id, deleted, sort_order)
+  INDEX idx_doc_item_category (category_id, deleted, sort_order),
+  INDEX idx_doc_item_section_type (section_dept_id, business_type, deleted, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sys_doc_upload_requirement (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  item_id BIGINT NOT NULL,
+  requirement_name VARCHAR(128) NOT NULL,
+  description VARCHAR(500) NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted TINYINT(1) NOT NULL DEFAULT 0,
+  INDEX idx_doc_upload_requirement_item (item_id, deleted, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_doc_submission (
@@ -124,6 +140,7 @@ CREATE TABLE IF NOT EXISTS sys_doc_submission (
 CREATE TABLE IF NOT EXISTS sys_doc_attachment (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   submission_id BIGINT NOT NULL,
+  requirement_id BIGINT NULL,
   original_file_name VARCHAR(255) NOT NULL,
   extension VARCHAR(32),
   mime_type VARCHAR(128),
@@ -132,7 +149,22 @@ CREATE TABLE IF NOT EXISTS sys_doc_attachment (
   storage_path VARCHAR(500) NOT NULL,
   uploaded_by BIGINT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_doc_attachment_submission (submission_id)
+  INDEX idx_doc_attachment_submission (submission_id),
+  INDEX idx_doc_attachment_requirement (requirement_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS sys_doc_item_attachment (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  item_id BIGINT NOT NULL,
+  original_file_name VARCHAR(255) NOT NULL,
+  extension VARCHAR(32),
+  mime_type VARCHAR(128),
+  file_size BIGINT NOT NULL DEFAULT 0,
+  storage_bucket VARCHAR(128) NOT NULL,
+  storage_path VARCHAR(500) NOT NULL,
+  uploaded_by BIGINT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_doc_item_attachment_item (item_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_notification (

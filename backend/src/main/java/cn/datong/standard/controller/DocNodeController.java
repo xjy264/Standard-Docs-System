@@ -25,8 +25,11 @@ public class DocNodeController {
     private final DocWorkspaceService docWorkspaceService;
 
     @GetMapping("/api/doc-tree")
-    public ApiResponse<List<SysDocNode>> tree(@RequestParam Long sectionDeptId) {
-        return ApiResponse.success(docWorkspaceService.documentTree(sectionDeptId));
+    public ApiResponse<List<SysDocNode>> tree(@RequestParam Long sectionDeptId,
+                                              @RequestParam(required = false) String businessType) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.documentTree(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), sectionDeptId, businessType));
     }
 
     @PostMapping("/api/doc-nodes/folders")

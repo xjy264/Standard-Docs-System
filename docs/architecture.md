@@ -21,9 +21,9 @@
 ## 资料业务模型
 
 - `sys_doc_node` 表示科室下的多级资料目录节点，节点类型包含文件夹和文件。
-- `sys_doc_item` 表示文件入口，包含文件年份、富文本内容和附件上传开关，文件节点通过 `item_id` 关联文件入口。
-- `sys_doc_submission` 表示车间用户对某个文件入口的上传记录。
-- `sys_doc_attachment` 保存上传记录附件元数据，真实文件保存在 MinIO。
+- `sys_doc_item` 表示文件入口，包含文件年份，并按 `business_type` 分为上传任务和下达文件，文件节点通过 `item_id` 关联文件入口。
+- 上传任务通过 `sys_doc_upload_requirement` 配置一个或多个收集项，用户完整提交后写入 `sys_doc_submission`，附件保存到 `sys_doc_attachment` 并记录对应收集项。
+- 下达文件通过富文本内容和 `sys_doc_item_attachment` 承载公示附件，不参与上传任务进度统计。
 
 ## 存储设计
 

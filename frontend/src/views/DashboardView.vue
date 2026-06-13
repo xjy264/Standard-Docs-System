@@ -17,6 +17,29 @@
     <div class="dashboard-grid">
       <section class="section dashboard-section">
         <div class="section-heading">
+          <h3>科室组织树</h3>
+        </div>
+        <el-tree
+          v-if="sectionFileTree.length"
+          class="section-file-tree"
+          :data="sectionFileTree"
+          node-key="id"
+          default-expand-all
+          :props="{ children: 'children', label: 'deptName' }"
+          @node-click="openDept"
+        >
+          <template #default="{ data }">
+            <div class="section-tree-row">
+              <span>{{ data.deptName }}</span>
+              <el-tag size="small" type="info">{{ data.fileCount || 0 }} 个文件</el-tag>
+            </div>
+          </template>
+        </el-tree>
+        <el-empty v-else description="暂无科室数据" />
+      </section>
+
+      <section class="section dashboard-section">
+        <div class="section-heading">
           <h3>工作状态</h3>
         </div>
         <div class="status-list">
@@ -72,9 +95,19 @@ interface DashboardStats {
   sectionCount: number
 }
 
+interface SectionFileTreeItem {
+  id: number
+  parentId?: number
+  deptName: string
+  deptType?: string
+  fileCount: number
+  children: SectionFileTreeItem[]
+}
+
 const router = useRouter()
 const auth = useAuthStore()
 const stats = ref<Partial<DashboardStats>>({})
+const sectionFileTree = ref<SectionFileTreeItem[]>([])
 
 const coreStats = computed(() => [
   { label: '用户总数', value: statValue('userCount') },
@@ -94,8 +127,19 @@ function statValue(key: keyof DashboardStats) {
   return stats.value[key] || 0
 }
 
+function openDept(node: SectionFileTreeItem) {
+  if (node.deptType === 'SECTION') {
+    router.push(`/org/${node.id}`)
+  }
+}
+
 onMounted(async () => {
-  stats.value = await apiGet('/dashboard/stats')
+  const [statsData, treeData] = await Promise.all([
+    apiGet<DashboardStats>('/dashboard/stats'),
+    apiGet<SectionFileTreeItem[]>('/dashboard/section-file-tree')
+  ])
+  stats.value = statsData
+  sectionFileTree.value = treeData
 })
 </script>
 
@@ -142,7 +186,7 @@ onMounted(async () => {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  grid-template-columns: minmax(320px, 1.2fr) minmax(0, 1fr) minmax(280px, 0.8fr);
   gap: 14px;
 }
 
@@ -188,6 +232,27 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.section-file-tree {
+  --el-tree-node-hover-bg-color: #f3f7fc;
+}
+
+.section-tree-row {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 8px;
+}
+
+.section-tree-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1100px) {

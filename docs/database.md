@@ -19,9 +19,11 @@
 
 - `sys_doc_node`：科室资料多级目录节点，节点类型包含文件夹和文件，最高五层，包含 `doc_year` 用于区分年度目录。
 - `sys_doc_category`：旧科室资料二级侧边栏，保留兼容历史数据。
-- `sys_doc_item`：文件入口，包含 `section_dept_id`、`file_type`、`doc_year`、`content_html` 富文本文件内容和附件上传开关；新目录树中文件节点通过 `item_id` 关联该表。
+- `sys_doc_item`：文件入口，包含 `section_dept_id`、`business_type`、`submitter_mode`、`file_type`、`doc_year`、`content_html` 富文本文件内容和附件上传开关；新目录树中文件节点通过 `item_id` 关联该表。`business_type` 为 `UPLOAD` 时表示上传任务，为 `ISSUED` 时表示下达文件。
+- `sys_doc_upload_requirement`：上传任务收集项表，记录每个上传任务需要收集的文件类型或文件项，以及任务发起者填写的收集说明。
 - `sys_doc_submission`：附件上传记录，`submitter_dept_id` 记录实际上传人所属组织；无所属组织用户上传时允许为空。
-- `sys_doc_attachment`：上传记录附件元数据，真实文件保存在 MinIO。
+- `sys_doc_attachment`：上传记录附件元数据，`requirement_id` 标记附件对应的上传任务收集项，真实文件保存在 MinIO。
+- `sys_doc_item_attachment`：下达文件自身附件元数据，真实文件保存在 MinIO，不与上传记录附件混用。
 
 ## 初始化数据
 
@@ -35,3 +37,4 @@
 - `08-doc-tree-nodes.sql`：新增多级资料目录节点表，并迁移旧二级菜单和文件入口。
 - `10-doc-item-year.sql`：为历史文件入口补充 `doc_year`，默认回填 `2026`。
 - `11-doc-node-year.sql`：为历史目录节点补充 `doc_year`，历史文件夹默认回填 `2026`，文件节点同步文件年份。
+- `10-doc-item-business-type.sql`：新增上传任务、下达文件、收集项、收集项说明和下达附件所需字段与表，并为历史上传文件生成默认收集项。

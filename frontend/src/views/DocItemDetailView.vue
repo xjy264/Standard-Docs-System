@@ -2,64 +2,127 @@
   <div class="doc-detail-page">
     <div class="detail-header">
       <div>
-        <el-button link type="primary" @click="router.push(`/org/${deptId}`)">返回文件菜单</el-button>
+        <el-button link type="primary" @click="router.push(`/org/${deptId}?restore=1`)">返回文件菜单</el-button>
         <h2>{{ item?.itemName || '文件详情' }}</h2>
-        <p v-if="item" class="detail-meta">{{ [item.sectionDeptName, item.categoryName, item.docYear].filter(Boolean).join(' / ') }}</p>
+        <p v-if="item" class="detail-meta">
+          {{ [item.sectionDeptName, item.categoryName, item.docYear, item.businessType === 'UPLOAD' ? '上传任务' : '下达文件'].filter(Boolean).join(' / ') }}
+        </p>
       </div>
       <div class="header-actions">
-        <el-button v-if="canUploadAttachment" type="primary" @click="uploadOpen = true">上传附件</el-button>
-        <el-button @click="openRecords">上传记录</el-button>
+        <el-button v-if="canManageSection && isUploadItem" @click="openRecords">上传记录</el-button>
+        <el-button v-if="canManageSection && isIssuedItem" type="primary" plain @click="issuedUploadOpen = true">上传下达附件</el-button>
       </div>
     </div>
 
-    <section class="detail-content">
-      <div v-if="item?.contentHtml" class="rich-content" v-html="item.contentHtml"></div>
-      <el-empty v-else description="暂无文件内容" />
+    <section v-if="isUploadItem" class="detail-content">
+      <div class="upload-task-status">
+        <el-tag v-if="mySubmission" type="success">已提交</el-tag>
+        <el-tag v-else-if="item?.submitterMode === 'SINGLE' && item?.submissionCount" type="warning">已由他人提交</el-tag>
+        <el-tag v-else type="info">待上传</el-tag>
+        <span>{{ item?.submitterMode === 'MULTIPLE' ? '多人提交' : '单人提交' }}</span>
+      </div>
+      <el-table :data="item?.requirements || []" border>
+        <el-table-column prop="requirementName" label="收集内容" min-width="220" />
+        <el-table-column prop="description" label="说明" min-width="220">
+          <template #default="{ row }">
+            <span>{{ row.description || '无' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="上传附件" min-width="260">
+          <template #default="{ row }">
+            <div class="requirement-upload-cell">
+              <span class="selected-file-name">
+                {{ selectedRequirementFiles[row.id]?.name || (canUploadAttachment ? '未选择' : mySubmission ? '已提交' : '不可上传') }}
+              </span>
+              <el-upload
+                v-if="canUploadAttachment"
+                :auto-upload="false"
+                :show-file-list="false"
+                :disabled="submitting"
+                :on-change="onRequirementFileChange(row)"
+              >
+                <el-button link type="primary" :disabled="submitting">选择附件</el-button>
+              </el-upload>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="canUploadAttachment" class="upload-actions inline-upload-actions">
+        <el-button type="primary" :loading="submitting" @click="submitAttachment">上传附件</el-button>
+      </div>
     </section>
 
-    <el-dialog v-model="uploadOpen" title="上传附件" width="720px" @closed="resetUpload">
+    <section v-else class="detail-content">
+      <div v-if="item?.contentHtml" class="rich-content" v-html="item.contentHtml"></div>
+      <el-empty v-else description="暂无文件内容" />
+      <div v-if="item?.issuedAttachments?.length" class="issued-attachments">
+        <h3>下达附件</h3>
+        <el-table :data="item.issuedAttachments" border>
+          <el-table-column prop="originalFileName" label="附件" />
+          <el-table-column prop="createdAt" label="上传时间" width="180" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="downloadIssuedAttachment(row)">下载</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </section>
+
+    <section v-if="isUploadItem && mySubmission" class="detail-content">
+      <div class="section-heading">
+        <h3>我的提交</h3>
+      </div>
+      <el-descriptions :column="3" border>
+        <el-descriptions-item label="上传时间">{{ mySubmission.submittedAt }}</el-descriptions-item>
+        <el-descriptions-item label="所属组织">{{ mySubmission.submitterDeptName }}</el-descriptions-item>
+        <el-descriptions-item label="上传人">{{ mySubmission.uploadUserName }}</el-descriptions-item>
+      </el-descriptions>
+      <el-table :data="mySubmission.attachments || []" style="margin-top: 14px" border>
+        <el-table-column prop="requirementName" label="收集内容" width="180" />
+        <el-table-column prop="originalFileName" label="附件" />
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }"><el-button link type="primary" @click="downloadAttachment(row)">下载</el-button></template>
+        </el-table-column>
+      </el-table>
+    </section>
+
+    <el-dialog v-model="issuedUploadOpen" title="上传下达附件" width="720px" @closed="resetIssuedUpload">
       <el-upload
-        ref="uploadRef"
+        ref="issuedUploadRef"
         class="attachment-upload"
         drag
         multiple
         :auto-upload="false"
-        :on-change="onFileChange"
-        :on-remove="onFileRemove"
+        :on-change="onIssuedFileChange"
+        :on-remove="onIssuedFileRemove"
       >
         <div>拖拽附件到此处，或点击选择文件</div>
       </el-upload>
       <div class="upload-actions">
-        <el-button type="primary" :loading="submitting" @click="submitAttachment">上传附件</el-button>
+        <el-button type="primary" :loading="submittingIssued" @click="submitIssuedAttachments">上传附件</el-button>
       </div>
     </el-dialog>
 
     <el-dialog v-model="recordsOpen" title="上传记录" width="980px">
       <el-table :data="records" stripe>
         <el-table-column prop="submittedAt" label="上传时间" width="180" />
-        <el-table-column prop="sectionDeptName" label="所属科室" width="120" />
-        <el-table-column prop="categoryName" label="所属目录" width="140" />
-        <el-table-column prop="itemName" label="文件名称" min-width="150" />
-        <el-table-column prop="submitterDeptName" label="所属组织" width="130" />
+        <el-table-column prop="submitterDeptName" label="所属车间" width="150" />
         <el-table-column prop="uploadUserName" label="上传人" width="120" />
-        <el-table-column prop="attachmentCount" label="附件数" width="90" />
-        <el-table-column label="操作" width="90">
-          <template #default="{ row }"><el-button link type="primary" @click="openRecordDetail(row)">查看</el-button></template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
-
-    <el-dialog v-model="recordDetailOpen" title="上传记录详情" width="720px">
-      <el-descriptions v-if="recordDetail" :column="2" border>
-        <el-descriptions-item label="文件名称">{{ recordDetail.itemName }}</el-descriptions-item>
-        <el-descriptions-item label="上传时间">{{ recordDetail.submittedAt }}</el-descriptions-item>
-        <el-descriptions-item label="所属组织">{{ recordDetail.submitterDeptName }}</el-descriptions-item>
-        <el-descriptions-item label="上传人">{{ recordDetail.uploadUserName }}</el-descriptions-item>
-      </el-descriptions>
-      <el-table v-if="recordDetail" :data="recordDetail.attachments || []" style="margin-top: 14px" border>
-        <el-table-column prop="originalFileName" label="附件" />
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }"><el-button link type="primary" @click="downloadAttachment(row)">下载</el-button></template>
+        <el-table-column label="附件下载" min-width="260">
+          <template #default="{ row }">
+            <div class="attachment-links">
+              <el-button
+                v-for="attachment in row.attachments || []"
+                :key="attachment.id"
+                link
+                type="primary"
+                @click="downloadAttachment(attachment)"
+              >
+                {{ attachment.requirementName || attachment.originalFileName }}
+              </el-button>
+            </div>
+          </template>
         </el-table-column>
       </el-table>
     </el-dialog>
@@ -69,14 +132,22 @@
 <script setup lang="ts">
 import '@wangeditor/editor/dist/css/style.css'
 import { ElMessage, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiGet, http } from '../api/http'
 import { useAuthStore } from '../stores/auth'
 
-interface SectionItem {
+interface DocUploadRequirement {
   id: number
-  deptName: string
+  requirementName: string
+  description?: string
+  sortOrder: number
+}
+
+interface DocItemAttachment {
+  id: number
+  originalFileName: string
+  createdAt: string
 }
 
 interface DocItem {
@@ -89,6 +160,17 @@ interface DocItem {
   sectionDeptId?: number
   sectionDeptName?: string
   docYear?: number
+  businessType?: 'UPLOAD' | 'ISSUED'
+  submitterMode?: 'SINGLE' | 'MULTIPLE'
+  submissionCount?: number
+  requirements?: DocUploadRequirement[]
+  issuedAttachments?: DocItemAttachment[]
+}
+
+interface DocAttachment {
+  id: number
+  requirementName?: string
+  originalFileName: string
 }
 
 interface DocSubmission {
@@ -100,7 +182,7 @@ interface DocSubmission {
   uploadUserName: string
   submittedAt: string
   attachmentCount: number
-  attachments?: Array<{ id: number; originalFileName: string }>
+  attachments?: DocAttachment[]
 }
 
 const route = useRoute()
@@ -108,59 +190,118 @@ const router = useRouter()
 const auth = useAuthStore()
 const deptId = computed(() => Number(route.params.deptId))
 const itemId = computed(() => Number(route.params.itemId))
-const sections = ref<SectionItem[]>([])
 const item = ref<DocItem>()
 const recordsOpen = ref(false)
-const uploadOpen = ref(false)
-const recordDetailOpen = ref(false)
+const issuedUploadOpen = ref(false)
 const records = ref<DocSubmission[]>([])
-const recordDetail = ref<DocSubmission>()
-const uploadFiles = ref<UploadRawFile[]>([])
-const uploadRef = ref<any>()
+const mySubmission = ref<DocSubmission | null>(null)
+const selectedRequirementFiles = ref<Record<number, { raw: UploadRawFile; name: string }>>({})
+const issuedAttachmentFiles = ref<UploadRawFile[]>([])
+const issuedUploadRef = ref<any>()
 const submitting = ref(false)
+const submittingIssued = ref(false)
 
-const canUploadAttachment = computed(() => Boolean(item.value?.attachmentEnabled))
+const isUploadItem = computed(() => item.value?.businessType === 'UPLOAD' || Boolean(item.value?.attachmentEnabled))
+const isIssuedItem = computed(() => !isUploadItem.value)
+const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === item.value?.sectionDeptId)
+const canUploadAttachment = computed(() => {
+  if (!isUploadItem.value || mySubmission.value) {
+    return false
+  }
+  if (item.value?.submitterMode === 'SINGLE' && item.value.submissionCount) {
+    return false
+  }
+  return true
+})
 
 async function load() {
-  sections.value = await apiGet<SectionItem[]>('/sections/navigation')
+  resetUpload()
   item.value = await apiGet<DocItem>(`/doc-items/${itemId.value}`)
+  if (isUploadItem.value) {
+    mySubmission.value = await apiGet<DocSubmission | null>(`/doc-items/${itemId.value}/my-submission`)
+  } else {
+    mySubmission.value = null
+  }
 }
 
-function onFileChange(_file: UploadFile, files: UploadFiles) {
-  syncFiles(files)
+function selectRequirementFile(row: DocUploadRequirement, file: UploadFile) {
+  if (!row.id || !file.raw) {
+    return
+  }
+  selectedRequirementFiles.value = {
+    ...selectedRequirementFiles.value,
+    [row.id]: { raw: file.raw, name: file.name }
+  }
 }
 
-function onFileRemove(_file: UploadFile, files: UploadFiles) {
-  syncFiles(files)
-}
-
-function syncFiles(files: UploadFiles) {
-  uploadFiles.value = files.map((file) => file.raw).filter((file): file is UploadRawFile => Boolean(file))
+function onRequirementFileChange(row: DocUploadRequirement) {
+  return (file: UploadFile) => selectRequirementFile(row, file)
 }
 
 async function submitAttachment() {
-  if (!uploadFiles.value.length) {
-    ElMessage.warning('请选择附件')
+  const requirements = item.value?.requirements || []
+  if (!requirements.length) {
+    ElMessage.warning('该上传任务未配置收集项')
+    return
+  }
+  const missing = requirements.find((requirement) => !selectedRequirementFiles.value[requirement.id])
+  if (missing) {
+    ElMessage.warning(`请选择“${missing.requirementName}”附件`)
     return
   }
   submitting.value = true
   try {
     const form = new FormData()
-    uploadFiles.value.forEach((file) => form.append('files', file))
+    requirements.forEach((requirement) => {
+      form.append('requirementIds', String(requirement.id))
+      form.append('files', selectedRequirementFiles.value[requirement.id].raw)
+    })
     await http.post(`/doc-items/${itemId.value}/submissions`, form)
     ElMessage.success('上传成功')
-    uploadOpen.value = false
-    if (recordsOpen.value) {
-      await openRecords()
-    }
+    resetUpload()
+    await load()
   } finally {
     submitting.value = false
   }
 }
 
 function resetUpload() {
-  uploadFiles.value = []
-  uploadRef.value?.clearFiles()
+  selectedRequirementFiles.value = {}
+}
+
+function onIssuedFileChange(_file: UploadFile, files: UploadFiles) {
+  syncIssuedFiles(files)
+}
+
+function onIssuedFileRemove(_file: UploadFile, files: UploadFiles) {
+  syncIssuedFiles(files)
+}
+
+function syncIssuedFiles(files: UploadFiles) {
+  issuedAttachmentFiles.value = files.map((file) => file.raw).filter((file): file is UploadRawFile => Boolean(file))
+}
+
+async function submitIssuedAttachments() {
+  if (!issuedAttachmentFiles.value.length) {
+    ElMessage.warning('请选择附件')
+    return
+  }
+  submittingIssued.value = true
+  try {
+    const form = new FormData()
+    issuedAttachmentFiles.value.forEach((file) => form.append('files', file))
+    await http.post(`/doc-items/${itemId.value}/issued-attachments`, form)
+    ElMessage.success('上传成功')
+    issuedUploadOpen.value = false
+    await load()
+  } finally {
+    submittingIssued.value = false
+  }
+}
+
+function resetIssuedUpload() {
+  issuedAttachmentFiles.value = []
+  issuedUploadRef.value?.clearFiles()
 }
 
 async function openRecords() {
@@ -168,18 +309,22 @@ async function openRecords() {
   recordsOpen.value = true
 }
 
-async function openRecordDetail(record: DocSubmission) {
-  recordDetail.value = await apiGet<DocSubmission>(`/submissions/${record.id}`)
-  recordDetailOpen.value = true
+async function downloadAttachment(attachment: DocAttachment) {
+  const response = await http.get(`/doc-attachments/${attachment.id}/download`, { responseType: 'blob' })
+  downloadBlob(response.data, attachment.originalFileName || '附件')
 }
 
-async function downloadAttachment(attachment: { id: number; originalFileName: string }) {
-  const response = await http.get(`/doc-attachments/${attachment.id}/download`, { responseType: 'blob' })
-  const blob = new Blob([response.data])
+async function downloadIssuedAttachment(attachment: DocItemAttachment) {
+  const response = await http.get(`/doc-item-attachments/${attachment.id}/download`, { responseType: 'blob' })
+  downloadBlob(response.data, attachment.originalFileName || '附件')
+}
+
+function downloadBlob(data: BlobPart, filename: string) {
+  const blob = new Blob([data])
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = attachment.originalFileName || '附件'
+  link.download = filename
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -187,6 +332,7 @@ async function downloadAttachment(attachment: { id: number; originalFileName: st
 }
 
 onMounted(load)
+watch(() => route.params.itemId, load)
 </script>
 
 <style scoped>
@@ -223,6 +369,39 @@ onMounted(load)
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 18px;
+}
+
+.section-heading {
+  margin-bottom: 14px;
+}
+
+.section-heading h3,
+.issued-attachments h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.upload-task-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: #637083;
+}
+
+.requirement-upload-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.selected-file-name {
+  min-width: 0;
+  color: #1f2d3d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rich-content {
@@ -267,6 +446,14 @@ onMounted(load)
   color: #4b5b70;
 }
 
+.issued-attachments {
+  margin-top: 18px;
+}
+
+.issued-attachments h3 {
+  margin-bottom: 12px;
+}
+
 .attachment-upload,
 .attachment-upload :deep(.el-upload),
 .attachment-upload :deep(.el-upload-dragger) {
@@ -277,5 +464,25 @@ onMounted(load)
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+.inline-upload-actions {
+  margin-top: 14px;
+}
+
+.attachment-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .detail-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
+  }
 }
 </style>
