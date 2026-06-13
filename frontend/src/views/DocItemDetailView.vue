@@ -20,14 +20,31 @@
       <el-table v-if="item?.issuedAttachments?.length" :data="item.issuedAttachments" border>
         <el-table-column prop="originalFileName" label="文件" />
         <el-table-column prop="createdAt" label="上传时间" width="180" />
-        <el-table-column label="操作" width="150">
+        <el-table-column label="操作" width="100">
           <template #default="{ row }">
-            <el-button link type="primary" @click="previewIssuedAttachment(row)">预览</el-button>
             <el-button link type="primary" @click="downloadIssuedAttachment(row)">下载</el-button>
           </template>
         </el-table-column>
       </el-table>
       <el-empty v-else description="暂无文件" />
+      <div v-if="item?.issuedAttachments?.length" class="inline-preview-section">
+        <div class="section-heading">
+          <h3>文件预览</h3>
+        </div>
+        <div class="preview-paper">
+          <iframe
+            v-if="inlinePreviewKind === 'PDF' && inlinePreviewUrl"
+            class="pdf-preview-frame"
+            :src="inlinePreviewUrl"
+            title="PDF 文件预览"
+          ></iframe>
+          <div v-else-if="inlinePreviewKind === 'ONLYOFFICE'" id="onlyoffice-inline-preview-host" class="office-preview-host"></div>
+          <div v-else class="preview-placeholder">
+            <p>{{ inlinePreviewMessage }}</p>
+            <el-button v-if="primaryAttachment" type="primary" plain @click="downloadIssuedAttachment(primaryAttachment)">下载文件</el-button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section v-if="workshopUploadEnabled" class="detail-content">
@@ -130,9 +147,6 @@
       </el-table>
     </el-dialog>
 
-    <el-dialog v-model="officePreviewOpen" :title="officePreviewTitle" width="92vw" top="4vh" @closed="destroyOfficePreview">
-      <div id="onlyoffice-preview-host" class="office-preview-host"></div>
-    </el-dialog>
   </div>
 </template>
 
@@ -211,8 +225,6 @@ const itemId = computed(() => Number(route.params.itemId))
 const item = ref<DocItem>()
 const recordsOpen = ref(false)
 const issuedUploadOpen = ref(false)
-const officePreviewOpen = ref(false)
-const officePreviewTitle = ref('Office 预览')
 const records = ref<DocSubmission[]>([])
 const mySubmission = ref<DocSubmission | null>(null)
 const selectedRequirementFiles = ref<Record<number, { raw: UploadRawFile; name: string }>>({})
@@ -220,10 +232,14 @@ const issuedAttachmentFiles = ref<UploadRawFile[]>([])
 const issuedUploadRef = ref<any>()
 const submitting = ref(false)
 const submittingIssued = ref(false)
+const inlinePreviewKind = ref<'PDF' | 'ONLYOFFICE' | 'MESSAGE'>('MESSAGE')
+const inlinePreviewUrl = ref('')
+const inlinePreviewMessage = ref('暂无可预览文件')
 
 const workshopUploadEnabled = computed(() => Boolean(item.value?.workshopUploadEnabled || item.value?.attachmentEnabled))
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === item.value?.sectionDeptId)
 const deadlineExpired = computed(() => Boolean(item.value?.uploadDeadline && new Date(item.value.uploadDeadline).getTime() < Date.now()))
+const primaryAttachment = computed(() => item.value?.issuedAttachments?.[0])
 const canUploadAttachment = computed(() => {
   if (!workshopUploadEnabled.value || mySubmission.value || deadlineExpired.value) {
     return false
@@ -233,12 +249,17 @@ const canUploadAttachment = computed(() => {
 
 async function load() {
   resetUpload()
+  destroyOfficePreview()
+  inlinePreviewKind.value = 'MESSAGE'
+  inlinePreviewUrl.value = ''
+  inlinePreviewMessage.value = '正在加载预览'
   item.value = await apiGet<DocItem>(`/doc-items/${itemId.value}`)
   if (workshopUploadEnabled.value) {
     mySubmission.value = await apiGet<DocSubmission | null>(`/doc-items/${itemId.value}/my-submission`)
   } else {
     mySubmission.value = null
   }
+  await loadPrimaryPreview()
 }
 
 function selectRequirementFile(row: DocUploadRequirement, file: UploadFile) {
@@ -336,54 +357,88 @@ async function downloadIssuedAttachment(attachment: DocItemAttachment) {
   downloadBlob(response.data, attachment.originalFileName || '文件')
 }
 
-async function previewIssuedAttachment(attachment: DocItemAttachment) {
+async function loadPrimaryPreview() {
+  const attachment = primaryAttachment.value
+  if (!attachment) {
+    inlinePreviewKind.value = 'MESSAGE'
+    inlinePreviewUrl.value = ''
+    inlinePreviewMessage.value = '暂无可预览文件'
+    return
+  }
   const preview = await apiGet<AttachmentPreview>(`/doc-item-attachments/${attachment.id}/preview`)
   if (preview.previewType === 'PDF' && preview.url) {
-    window.open(preview.url, '_blank')
+    inlinePreviewKind.value = 'PDF'
+    inlinePreviewUrl.value = appendAccessToken(new URL(preview.url, window.location.origin).toString())
+    inlinePreviewMessage.value = ''
     return
   }
   if (preview.previewType === 'ONLYOFFICE' && preview.documentServerUrl && preview.url) {
+    inlinePreviewKind.value = 'ONLYOFFICE'
+    inlinePreviewUrl.value = ''
+    inlinePreviewMessage.value = ''
     await openOfficePreview(preview, attachment)
     return
   }
-  ElMessage.warning(preview.message || '该格式暂不支持在线预览')
+  inlinePreviewKind.value = 'MESSAGE'
+  inlinePreviewUrl.value = ''
+  inlinePreviewMessage.value = preview.previewType === 'UNCONFIGURED'
+    ? '本地预览服务未启动，请确认 Docker 和 OnlyOffice 已运行'
+    : preview.message || '该格式暂不支持在线预览'
 }
 
 async function openOfficePreview(preview: AttachmentPreview, attachment: DocItemAttachment) {
   if (!preview.documentServerUrl || !preview.url) {
-    ElMessage.warning('预览服务未配置')
+    inlinePreviewKind.value = 'MESSAGE'
+    inlinePreviewMessage.value = '本地预览服务未启动，请确认 Docker 和 OnlyOffice 已运行'
     return
   }
   const documentServerUrl = preview.documentServerUrl
   const downloadUrl = preview.url
-  officePreviewTitle.value = preview.title || attachment.originalFileName
-  officePreviewOpen.value = true
-  await loadOnlyOfficeScript(documentServerUrl)
+  try {
+    await loadOnlyOfficeScript(documentServerUrl)
+  } catch {
+    inlinePreviewKind.value = 'MESSAGE'
+    inlinePreviewMessage.value = '本地预览服务未启动，请确认 Docker 和 OnlyOffice 已运行'
+    return
+  }
   setTimeout(() => {
     destroyOfficePreview()
     const DocsAPI = (window as any).DocsAPI
     if (!DocsAPI?.DocEditor) {
-      ElMessage.warning('预览服务未加载完成')
+      inlinePreviewKind.value = 'MESSAGE'
+      inlinePreviewMessage.value = '本地预览服务未启动，请确认 Docker 和 OnlyOffice 已运行'
       return
     }
-    const token = auth.token ? `access_token=${encodeURIComponent(auth.token)}` : ''
-    const fileUrl = new URL(downloadUrl, window.location.origin)
-    if (token) {
-      fileUrl.search = fileUrl.search ? `${fileUrl.search}&${token}` : `?${token}`
-    }
-    ;(window as any).__docEditor = new DocsAPI.DocEditor('onlyoffice-preview-host', {
+    const fileUrl = onlyOfficeFileUrl(downloadUrl)
+    ;(window as any).__docEditor = new DocsAPI.DocEditor('onlyoffice-inline-preview-host', {
       document: {
         fileType: (attachment.extension || preview.fileType || '').toLowerCase(),
         key: `${attachment.id}-${Date.now()}`,
         title: preview.title || attachment.originalFileName,
-        url: fileUrl.toString()
+        url: fileUrl
       },
       documentType: onlyOfficeDocumentType(attachment.extension || preview.fileType),
       editorConfig: { lang: 'zh-CN', mode: 'view' },
-      height: '72vh',
+      height: '100%',
       width: '100%'
     })
   }, 0)
+}
+
+function appendAccessToken(url: string) {
+  if (!auth.token) {
+    return url
+  }
+  const fileUrl = new URL(url)
+  fileUrl.searchParams.set('access_token', auth.token)
+  return fileUrl.toString()
+}
+
+function onlyOfficeFileUrl(downloadUrl: string) {
+  const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  const defaultBase = isLocalHost ? 'http://host.docker.internal:8000' : window.location.origin
+  const base = import.meta.env.VITE_ONLYOFFICE_FILE_BASE || defaultBase
+  return appendAccessToken(new URL(downloadUrl, base).toString())
 }
 
 function loadOnlyOfficeScript(documentServerUrl: string) {
@@ -573,9 +628,41 @@ watch(() => route.params.itemId, load)
   gap: 6px;
 }
 
+.inline-preview-section {
+  margin-top: 18px;
+}
+
+.preview-paper {
+  width: min(100%, 880px);
+  aspect-ratio: 210 / 297;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #d8e0ea;
+  box-shadow: 0 18px 42px rgba(31, 45, 61, 0.14);
+  overflow: hidden;
+}
+
+.pdf-preview-frame,
 .office-preview-host {
   width: 100%;
-  height: 72vh;
+  height: 100%;
+  border: 0;
+}
+
+.preview-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px;
+  color: #637083;
+  text-align: center;
+}
+
+.preview-placeholder p {
+  margin: 0;
 }
 
 @media (max-width: 900px) {

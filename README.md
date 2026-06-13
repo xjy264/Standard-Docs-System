@@ -47,9 +47,19 @@ docker compose up -d
 - 前端：`http://localhost:8000`
 - 后端接口：`http://localhost:8010/api`
 - MinIO 控制台：`http://localhost:9001`
+- OnlyOffice：`http://localhost:8082`
 - Knife4j：`http://localhost:8010/doc.html`
 
 公网部署时，修改 `deploy/.env` 中的域名、端口、MinIO 外部地址和 JWT 密钥。
+
+本地 Office 文件预览需要先启动 OnlyOffice：
+
+```bash
+cd deploy
+docker compose up -d onlyoffice
+```
+
+后端启用预览时设置 `ONLYOFFICE_ENABLED=true`、`ONLYOFFICE_URL=http://localhost:8082`。
 
 ## 第一阶段重点
 
