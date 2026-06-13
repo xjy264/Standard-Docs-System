@@ -127,6 +127,10 @@
         </el-table-column>
       </el-table>
     </el-dialog>
+
+    <el-dialog v-model="officePreviewOpen" :title="officePreviewTitle" width="92vw" top="4vh" @closed="destroyOfficePreview">
+      <div id="onlyoffice-preview-host" class="office-preview-host"></div>
+    </el-dialog>
   </div>
 </template>
 
@@ -205,6 +209,8 @@ const itemId = computed(() => Number(route.params.itemId))
 const item = ref<DocItem>()
 const recordsOpen = ref(false)
 const issuedUploadOpen = ref(false)
+const officePreviewOpen = ref(false)
+const officePreviewTitle = ref('Office 预览')
 const records = ref<DocSubmission[]>([])
 const mySubmission = ref<DocSubmission | null>(null)
 const selectedRequirementFiles = ref<Record<number, { raw: UploadRawFile; name: string }>>({})
@@ -334,11 +340,78 @@ async function previewIssuedAttachment(attachment: DocItemAttachment) {
     window.open(preview.url, '_blank')
     return
   }
-  if (preview.previewType === 'ONLYOFFICE') {
-    ElMessage.info('Office 预览服务已配置，请通过 OnlyOffice 集成页打开')
+  if (preview.previewType === 'ONLYOFFICE' && preview.documentServerUrl && preview.url) {
+    await openOfficePreview(preview, attachment)
     return
   }
   ElMessage.warning(preview.message || '该格式暂不支持在线预览')
+}
+
+async function openOfficePreview(preview: AttachmentPreview, attachment: DocItemAttachment) {
+  if (!preview.documentServerUrl || !preview.url) {
+    ElMessage.warning('预览服务未配置')
+    return
+  }
+  const documentServerUrl = preview.documentServerUrl
+  const downloadUrl = preview.url
+  officePreviewTitle.value = preview.title || attachment.originalFileName
+  officePreviewOpen.value = true
+  await loadOnlyOfficeScript(documentServerUrl)
+  setTimeout(() => {
+    destroyOfficePreview()
+    const DocsAPI = (window as any).DocsAPI
+    if (!DocsAPI?.DocEditor) {
+      ElMessage.warning('预览服务未加载完成')
+      return
+    }
+    const token = auth.token ? `access_token=${encodeURIComponent(auth.token)}` : ''
+    const fileUrl = new URL(downloadUrl, window.location.origin)
+    if (token) {
+      fileUrl.search = fileUrl.search ? `${fileUrl.search}&${token}` : `?${token}`
+    }
+    ;(window as any).__docEditor = new DocsAPI.DocEditor('onlyoffice-preview-host', {
+      document: {
+        fileType: (attachment.extension || preview.fileType || '').toLowerCase(),
+        key: `${attachment.id}-${Date.now()}`,
+        title: preview.title || attachment.originalFileName,
+        url: fileUrl.toString()
+      },
+      documentType: onlyOfficeDocumentType(attachment.extension || preview.fileType),
+      editorConfig: { lang: 'zh-CN', mode: 'view' },
+      height: '72vh',
+      width: '100%'
+    })
+  }, 0)
+}
+
+function loadOnlyOfficeScript(documentServerUrl: string) {
+  const scriptUrl = `${documentServerUrl.replace(/\/$/, '')}/web-apps/apps/api/documents/api.js`
+  const existing = Array.from(document.scripts).find((script) => script.src === scriptUrl)
+  if (existing) {
+    return Promise.resolve()
+  }
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = scriptUrl
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('OnlyOffice 预览服务加载失败'))
+    document.head.appendChild(script)
+  })
+}
+
+function onlyOfficeDocumentType(extension?: string) {
+  const normalized = (extension || '').toLowerCase()
+  if (['xls', 'xlsx'].includes(normalized)) return 'cell'
+  if (['ppt', 'pptx'].includes(normalized)) return 'slide'
+  return 'word'
+}
+
+function destroyOfficePreview() {
+  const editor = (window as any).__docEditor
+  if (editor?.destroyEditor) {
+    editor.destroyEditor()
+  }
+  ;(window as any).__docEditor = undefined
 }
 
 function downloadBlob(data: BlobPart, filename: string) {
@@ -496,6 +569,11 @@ watch(() => route.params.itemId, load)
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.office-preview-host {
+  width: 100%;
+  height: 72vh;
 }
 
 @media (max-width: 900px) {
