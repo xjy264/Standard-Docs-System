@@ -60,6 +60,7 @@ docker compose up -d onlyoffice
 ```
 
 后端启用 Office 预览时设置 `ONLYOFFICE_ENABLED=true`、`ONLYOFFICE_URL=http://localhost:8082`。
+本地开发时，前端默认把 Office 文件下载地址指向 `http://host.docker.internal:8010`，便于 OnlyOffice 容器直连后端；特殊部署可通过 `VITE_ONLYOFFICE_FILE_BASE` 覆盖。
 
 ## 第一阶段重点
 

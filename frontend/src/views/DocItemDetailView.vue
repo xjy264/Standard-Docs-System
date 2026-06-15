@@ -442,7 +442,7 @@ function appendAccessToken(url: string) {
 
 function onlyOfficeFileUrl(downloadUrl: string) {
   const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-  const defaultBase = isLocalHost ? 'http://host.docker.internal:8000' : window.location.origin
+  const defaultBase = isLocalHost ? 'http://host.docker.internal:8010' : window.location.origin
   const base = import.meta.env.VITE_ONLYOFFICE_FILE_BASE || defaultBase
   return appendAccessToken(new URL(downloadUrl, base).toString())
 }
