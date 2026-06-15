@@ -310,6 +310,28 @@ public class DocWorkspaceService {
     }
 
     @Transactional
+    public SysDocNode updateNodeWithMainFile(Long userId, Long userDeptId, boolean superAdmin,
+                                             Long id, DocNodeRequest request, MultipartFile file) {
+        SysDocNode node = updateNode(userDeptId, superAdmin, id, request);
+        if (file == null || file.isEmpty()) {
+            return node;
+        }
+        if (!"FILE".equalsIgnoreCase(node.getNodeType()) || node.getItemId() == null) {
+            throw new BusinessException("只有文件可以上传附件");
+        }
+        SysDocItem item = requireItem(node.getItemId());
+        saveItemAttachment(userId, item.getId(), file);
+        String original = file.getOriginalFilename() == null || file.getOriginalFilename().trim().isBlank()
+                ? "未命名文件"
+                : file.getOriginalFilename().trim();
+        item.setFileType(inferFileTypeFromFilename(original));
+        item.setUpdatedAt(LocalDateTime.now());
+        itemMapper.updateById(item);
+        node.setFileType(item.getFileType());
+        return node;
+    }
+
+    @Transactional
     public void deleteNode(Long userDeptId, boolean superAdmin, Long id) {
         SysDocNode node = requireNode(id);
         requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());

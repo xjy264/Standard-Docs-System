@@ -68,10 +68,33 @@ public class DocNodeController {
                 currentUser.superAdmin(), request, file));
     }
 
-    @PutMapping("/api/doc-nodes/{id}")
+    @PutMapping(value = "/api/doc-nodes/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<SysDocNode> update(@PathVariable Long id, @RequestBody DocNodeRequest request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(docWorkspaceService.updateNode(currentUser.deptId(), currentUser.superAdmin(), id, request));
+    }
+
+    @PutMapping(value = "/api/doc-nodes/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<SysDocNode> updateWithMainFile(@PathVariable Long id,
+                                                      @RequestParam Long sectionDeptId,
+                                                      @RequestParam(required = false) Long parentId,
+                                                      @RequestParam String nodeName,
+                                                      @RequestParam(required = false) Integer sortOrder,
+                                                      @RequestParam(required = false) Integer docYear,
+                                                      @RequestParam(required = false) String fileType,
+                                                      @RequestParam(required = false, defaultValue = "false") Boolean workshopUploadEnabled,
+                                                      @RequestParam(required = false)
+                                                      @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+                                                      LocalDateTime uploadDeadline,
+                                                      @RequestParam(required = false) List<Long> visibleWorkshopIds,
+                                                      @RequestParam(required = false) MultipartFile file) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        DocNodeRequest request = new DocNodeRequest(sectionDeptId, parentId, nodeName, sortOrder, null,
+                workshopUploadEnabled, "", fileType, docYear, workshopUploadEnabled ? "UPLOAD" : "ISSUED",
+                workshopUploadEnabled ? "MULTIPLE" : "SINGLE", null, uploadDeadline,
+                workshopUploadEnabled, visibleWorkshopIds);
+        return ApiResponse.success(docWorkspaceService.updateNodeWithMainFile(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), id, request, file));
     }
 
     @DeleteMapping("/api/doc-nodes/{id}")

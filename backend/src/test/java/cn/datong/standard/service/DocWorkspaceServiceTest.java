@@ -460,6 +460,30 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void updateFileNodeWithMainFileInfersTypeAndSavesAttachment() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(9L)).thenReturn(node(9L, 2L, 5L, "FILE", "旧文件", 88L, 2, 10));
+        when(fx.itemMapper.selectById(88L)).thenReturn(item(88L, null, 2L, true, "WORD", 2025));
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-items/replaced.xlsx", 100L,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        MultipartFile file = new MockMultipartFile("file", "新表格.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "demo".getBytes());
+        DocNodeRequest request = new DocNodeRequest(2L, null, "新文件", 20, null, false, "", null, 2026);
+
+        fx.service.updateNodeWithMainFile(10L, 2L, false, 9L, request, file);
+
+        ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
+        verify(fx.itemMapper, times(2)).updateById(itemCaptor.capture());
+        assertThat(itemCaptor.getAllValues().getLast().getFileType()).isEqualTo("EXCEL");
+        assertThat(itemCaptor.getAllValues().getLast().getDocYear()).isEqualTo(2026);
+        ArgumentCaptor<SysDocItemAttachment> attachmentCaptor = ArgumentCaptor.forClass(SysDocItemAttachment.class);
+        verify(fx.itemAttachmentMapper).insert(attachmentCaptor.capture());
+        assertThat(attachmentCaptor.getValue().getItemId()).isEqualTo(88L);
+        assertThat(attachmentCaptor.getValue().getOriginalFileName()).isEqualTo("新表格.xlsx");
+    }
+
+    @Test
     void createFolderRejectsDepthGreaterThanFive() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));

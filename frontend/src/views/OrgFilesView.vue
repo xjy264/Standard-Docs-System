@@ -99,7 +99,7 @@
           <el-checkbox v-model="nodeForm.showUploadProgress">显示上传进度</el-checkbox>
         </el-form-item>
         <template v-if="nodeForm.nodeType === 'FILE'">
-          <el-form-item v-if="dialogMode === 'create'" label="文件">
+          <el-form-item label="文件">
             <el-upload
               ref="issuedUploadRef"
               class="issued-upload"
@@ -289,6 +289,7 @@ const nodeDialogOpen = ref(false)
 const importDialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
+const editingFileType = ref<FileType | ''>('')
 const importingParent = ref<DocNode>()
 const repairTemplates = ref<RepairTemplate[]>([])
 const repairTemplateItems = ref<RepairTemplateItem[]>([])
@@ -365,6 +366,7 @@ async function loadTree(restore = false) {
 
 function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   editingNode.value = undefined
+  editingFileType.value = ''
   dialogMode.value = 'create'
   nodeForm.nodeType = type
   nodeForm.parentId = parent?.id
@@ -445,6 +447,7 @@ async function openEditDialog(node: DocNode) {
   nodeForm.nodeName = node.nodeName
   nodeForm.sortOrder = node.sortOrder || 0
   nodeForm.fileType = node.nodeType === 'FILE' ? node.fileType || guessFileType(node.nodeName) : ''
+  editingFileType.value = nodeForm.fileType
   nodeForm.docYear = node.docYear || selectedYear.value || currentYear
   nodeForm.businessType = node.nodeType === 'FILE' ? node.businessType || 'ISSUED' : 'ISSUED'
   nodeForm.submitterMode = node.submitterMode || 'SINGLE'
@@ -457,6 +460,7 @@ async function openEditDialog(node: DocNode) {
   if (node.nodeType === 'FILE' && node.itemId) {
     const item = await apiGet<DocItem>(`/doc-items/${node.itemId}`)
     nodeForm.fileType = item.fileType || node.fileType || guessFileType(node.nodeName)
+    editingFileType.value = nodeForm.fileType
     nodeForm.docYear = item.docYear || node.docYear || currentYear
     nodeForm.businessType = item.businessType || node.businessType || 'ISSUED'
     nodeForm.submitterMode = item.submitterMode || 'SINGLE'
@@ -521,7 +525,12 @@ async function submitNode() {
   const treeStateBeforeSave = captureTreeState([nodeForm.parentId])
   let changedNode: DocNode | undefined
   if (dialogMode.value === 'edit' && editingNode.value) {
-    changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
+    if (nodeForm.nodeType === 'FILE' && issuedFiles.value.length) {
+      const response = await http.put(`/doc-nodes/${editingNode.value.id}`, buildFileForm(issuedFiles.value[0]))
+      changedNode = response.data.data
+    } else {
+      changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
+    }
   } else if (nodeForm.nodeType === 'FOLDER') {
     changedNode = await apiPost<DocNode>('/doc-nodes/folders', body)
   } else {
@@ -529,24 +538,31 @@ async function submitNode() {
       ElMessage.warning('只能在文件夹下新建文件')
       return
     }
-    const form = new FormData()
-    form.append('sectionDeptId', String(deptId.value))
-    form.append('parentId', String(nodeForm.parentId))
-    form.append('nodeName', nodeForm.nodeName.trim())
-    form.append('sortOrder', String(nodeForm.sortOrder || 0))
-    form.append('docYear', String(nodeForm.docYear))
-    form.append('workshopUploadEnabled', String(nodeForm.workshopUploadEnabled))
-    if (nodeForm.uploadDeadline) {
-      form.append('uploadDeadline', nodeForm.uploadDeadline)
-    }
-    nodeForm.visibleWorkshopIds.forEach((id) => form.append('visibleWorkshopIds', String(id)))
-    form.append('file', issuedFiles.value[0])
-    const response = await http.post('/doc-nodes/files', form)
+    const response = await http.post('/doc-nodes/files', buildFileForm(issuedFiles.value[0]))
     changedNode = response.data.data
   }
   nodeDialogOpen.value = false
   await afterNodeChanged(changedNode, treeStateBeforeSave)
   ElMessage.success(dialogMode.value === 'edit' ? '修改成功' : '新增成功')
+}
+
+function buildFileForm(file: UploadRawFile) {
+  const form = new FormData()
+  form.append('sectionDeptId', String(deptId.value))
+  if (nodeForm.parentId) {
+    form.append('parentId', String(nodeForm.parentId))
+  }
+  form.append('nodeName', nodeForm.nodeName.trim())
+  form.append('sortOrder', String(nodeForm.sortOrder || 0))
+  form.append('docYear', String(nodeForm.docYear))
+  form.append('fileType', nodeForm.fileType || 'OTHER')
+  form.append('workshopUploadEnabled', String(nodeForm.workshopUploadEnabled))
+  if (nodeForm.uploadDeadline) {
+    form.append('uploadDeadline', nodeForm.uploadDeadline)
+  }
+  nodeForm.visibleWorkshopIds.forEach((id) => form.append('visibleWorkshopIds', String(id)))
+  form.append('file', file)
+  return form
 }
 
 async function afterNodeChanged(node?: DocNode, previousState?: SavedTreeState) {
@@ -674,7 +690,7 @@ function syncIssuedFiles(files: UploadFiles) {
   issuedFiles.value = files.map((file) => file.raw).filter((file): file is UploadRawFile => Boolean(file))
   const mainFile = issuedFiles.value[0]
   if (!mainFile) {
-    nodeForm.fileType = 'OTHER'
+    nodeForm.fileType = dialogMode.value === 'edit' ? editingFileType.value || 'OTHER' : 'OTHER'
     return
   }
   nodeForm.fileType = guessFileType(mainFile.name)
