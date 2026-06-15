@@ -75,6 +75,8 @@
 - `GET /api/doc-items/{id}/my-submission`：查询当前用户在该上传任务下的本人提交记录，未提交时返回空。
 - `POST /api/doc-items/{id}/issued-attachments`：本科室用户或超级管理员上传下达文件附件，使用 `multipart/form-data`，包含多个 `files`。
 - `GET /api/doc-item-attachments/{id}/download`：下载下达文件附件。
+- `GET /api/doc-item-attachments/{id}/preview`：查询下达文件附件预览信息；PDF 和图片返回 `inline` 预览地址，Word、Excel、PPT 返回 OnlyOffice 预览配置，未配置 OnlyOffice 时返回普通用户可读提示。
+- `GET /api/doc-item-attachments/{id}/inline`：下达文件附件内联预览文件流，支持 PDF 和图片直接在浏览器中预览。
 - `GET /api/submissions/{id}`：查看上传记录详情。
 - `GET /api/doc-attachments/{id}/download`：下载上传记录附件。
 

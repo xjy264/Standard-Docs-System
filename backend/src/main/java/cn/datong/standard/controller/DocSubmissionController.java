@@ -61,6 +61,10 @@ public class DocSubmissionController {
             return ApiResponse.success(new DocAttachmentPreview("PDF", "PDF", attachment.getOriginalFileName(),
                     "/api/doc-item-attachments/" + id + "/inline", null, null));
         }
+        if (isImageExtension(extension)) {
+            return ApiResponse.success(new DocAttachmentPreview("IMAGE", extension.toUpperCase(), attachment.getOriginalFileName(),
+                    "/api/doc-item-attachments/" + id + "/inline", null, null));
+        }
         if (extension.matches("doc|docx|xls|xlsx|ppt|pptx")) {
             if (!onlyOfficeEnabled || onlyOfficeUrl == null || onlyOfficeUrl.isBlank()) {
                 return ApiResponse.success(new DocAttachmentPreview("UNCONFIGURED", extension.toUpperCase(), attachment.getOriginalFileName(),
@@ -105,5 +109,9 @@ public class DocSubmissionController {
         try (InputStream input = storageService.download(storageBucket, storagePath)) {
             StreamUtils.copy(input, response.getOutputStream());
         }
+    }
+
+    private boolean isImageExtension(String extension) {
+        return extension.matches("png|jpg|jpeg|gif|bmp|webp|svg");
     }
 }

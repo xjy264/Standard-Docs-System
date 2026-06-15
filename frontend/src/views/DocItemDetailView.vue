@@ -38,6 +38,12 @@
             :src="inlinePreviewUrl"
             title="PDF 文件预览"
           ></iframe>
+          <img
+            v-else-if="inlinePreviewKind === 'IMAGE' && inlinePreviewUrl"
+            class="image-preview"
+            :src="inlinePreviewUrl"
+            alt="图片文件预览"
+          />
           <div v-else-if="inlinePreviewKind === 'ONLYOFFICE'" id="onlyoffice-inline-preview-host" class="office-preview-host"></div>
           <div v-else class="preview-placeholder">
             <p>{{ inlinePreviewMessage }}</p>
@@ -209,7 +215,7 @@ interface DocSubmission {
 }
 
 interface AttachmentPreview {
-  previewType: 'PDF' | 'ONLYOFFICE' | 'UNCONFIGURED' | 'UNSUPPORTED'
+  previewType: 'PDF' | 'IMAGE' | 'ONLYOFFICE' | 'UNCONFIGURED' | 'UNSUPPORTED'
   fileType: string
   title: string
   url?: string
@@ -232,7 +238,7 @@ const issuedAttachmentFiles = ref<UploadRawFile[]>([])
 const issuedUploadRef = ref<any>()
 const submitting = ref(false)
 const submittingIssued = ref(false)
-const inlinePreviewKind = ref<'PDF' | 'ONLYOFFICE' | 'MESSAGE'>('MESSAGE')
+const inlinePreviewKind = ref<'PDF' | 'IMAGE' | 'ONLYOFFICE' | 'MESSAGE'>('MESSAGE')
 const inlinePreviewUrl = ref('')
 const inlinePreviewMessage = ref('暂无可预览文件')
 
@@ -366,8 +372,8 @@ async function loadPrimaryPreview() {
     return
   }
   const preview = await apiGet<AttachmentPreview>(`/doc-item-attachments/${attachment.id}/preview`)
-  if (preview.previewType === 'PDF' && preview.url) {
-    inlinePreviewKind.value = 'PDF'
+  if ((preview.previewType === 'PDF' || preview.previewType === 'IMAGE') && preview.url) {
+    inlinePreviewKind.value = preview.previewType
     inlinePreviewUrl.value = appendAccessToken(new URL(preview.url, window.location.origin).toString())
     inlinePreviewMessage.value = ''
     return
@@ -643,10 +649,17 @@ watch(() => route.params.itemId, load)
 }
 
 .pdf-preview-frame,
+.image-preview,
 .office-preview-host {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+.image-preview {
+  display: block;
+  object-fit: contain;
+  background: #f6f8fb;
 }
 
 .preview-placeholder {
