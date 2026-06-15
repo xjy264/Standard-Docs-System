@@ -108,6 +108,32 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void unifiedDocumentTreeCalculatesUploadProgress() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        SysDocNode folder = node(1L, 2L, null, "FOLDER", "资料目录", null, 1, 10);
+        SysDocNode uploadFile = node(2L, 2L, 1L, "FILE", "车间成员信息表", 8L, 2, 10);
+        SysDocNode issuedFile = node(3L, 2L, 1L, "FILE", "公示通知", 9L, 2, 20);
+        when(fx.nodeMapper.selectList(any())).thenReturn(List.of(folder, uploadFile, issuedFile));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(
+                item(8L, null, 2L, true),
+                item(9L, null, 2L, false)
+        ));
+        when(fx.requirementMapper.selectList(any())).thenReturn(List.of(requirement(70L, 8L, "附件")));
+        when(fx.submissionMapper.selectCount(any())).thenReturn(0L);
+        when(fx.submissionMapper.selectList(any())).thenReturn(List.of(submission(1L, 8L, null, 2L, 5L, 5L)));
+
+        List<SysDocNode> tree = fx.service.documentTree(5L, 5L, false, 2L, null);
+
+        SysDocNode root = tree.getFirst();
+        assertThat(root.getChildren()).extracting(SysDocNode::getNodeName)
+                .containsExactly("车间成员信息表", "公示通知");
+        assertThat(root.getUploadTaskCount()).isEqualTo(1);
+        assertThat(root.getCompletedUploadTaskCount()).isEqualTo(1);
+        assertThat(root.getProgressPercent()).isEqualTo(100);
+    }
+
+    @Test
     void createFileRejectsRootLevelFile() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));

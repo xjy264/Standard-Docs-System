@@ -17,7 +17,7 @@
 
 ## 资料填报表
 
-- `sys_doc_node`：科室资料多级目录节点，节点类型包含文件夹和文件，最高五层，包含 `doc_year` 用于区分年度目录；文件夹节点通过 `show_upload_progress` 控制上传 tab 下是否显示上传进度，默认不显示。
+- `sys_doc_node`：科室资料多级目录节点，节点类型包含文件夹和文件，最高五层，包含 `doc_year` 用于区分年度目录；文件夹节点通过 `show_upload_progress` 控制统一目录中是否显示上传进度，默认不显示。
 - `sys_doc_category`：旧科室资料二级侧边栏，保留兼容历史数据。
 - `sys_doc_item`：文件入口，包含 `section_dept_id`、`business_type`、`submitter_mode`、`file_type`、`doc_year`、`content_html` 富文本文件内容和附件上传开关；新目录树中文件节点通过 `item_id` 关联该表。`business_type` 为 `UPLOAD` 时表示上传任务，为 `ISSUED` 时表示下达文件。
 - `sys_doc_upload_requirement`：上传任务收集项表，记录每个上传任务需要收集的文件类型或文件项，以及任务发起者填写的收集说明。

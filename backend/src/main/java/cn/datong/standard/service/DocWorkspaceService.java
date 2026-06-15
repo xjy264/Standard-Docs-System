@@ -124,7 +124,7 @@ public class DocWorkspaceService {
                 nodeMap.get(node.getParentId()).getChildren().add(node);
             }
         }
-        if ("UPLOAD".equals(normalizedBusinessType)) {
+        if (normalizedBusinessType == null || "UPLOAD".equals(normalizedBusinessType)) {
             Set<Long> completedItemIds = completedUploadItemIds(userId, userDeptId, superAdmin, sectionDeptId);
             roots.forEach(root -> fillUploadProgress(root, completedItemIds));
         }
@@ -1207,6 +1207,9 @@ public class DocWorkspaceService {
     }
 
     private Set<Long> completedUploadItemIds(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId) {
+        if (userId == null && userDeptId == null && !superAdmin) {
+            return Set.of();
+        }
         List<SysDocItem> uploadItems = itemMapper.selectList(new LambdaQueryWrapper<SysDocItem>()
                 .eq(SysDocItem::getSectionDeptId, sectionDeptId)
                 .eq(SysDocItem::getBusinessType, "UPLOAD")

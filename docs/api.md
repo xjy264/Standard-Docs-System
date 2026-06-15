@@ -56,7 +56,7 @@
 
 ## 科室资料与车间填报
 
-- `GET /api/doc-tree?sectionDeptId=1&businessType=UPLOAD`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；文件夹和文件节点返回 `docYear`，文件节点额外返回 `fileType`、`workshopUploadEnabled`、`uploadDeadline`、`visibilityScope`、`visibleWorkshopIds`；`businessType` 可选 `UPLOAD` 或 `ISSUED`；上传任务树的文件夹节点返回 `showUploadProgress`、`uploadTaskCount`、`completedUploadTaskCount`、`progressPercent`，`showUploadProgress` 表示是否显示上传进度，进度只统计已配置收集项的上传任务文件。
+- `GET /api/doc-tree?sectionDeptId=1`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；文件夹和文件节点返回 `docYear`，文件节点额外返回 `fileType`、`businessType`、`workshopUploadEnabled`、`uploadDeadline`、`visibilityScope`、`visibleWorkshopIds`；前端默认不传 `businessType`，统一返回上传任务和下达文件；`businessType` 仍可选传 `UPLOAD` 或 `ISSUED` 用于兼容筛选；统一目录和上传任务目录的文件夹节点返回 `showUploadProgress`、`uploadTaskCount`、`completedUploadTaskCount`、`progressPercent`，`showUploadProgress` 表示是否显示上传进度，进度只统计已配置收集项的上传任务文件。
 - `POST /api/doc-nodes/folders`：新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`docYear`、`sortOrder`、`showUploadProgress`；`showUploadProgress` 未传时默认不显示上传进度；`parentId` 为空时仅本科室管理员或超级管理员可新增最高级文件夹。
 - `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`businessType`、`fileType`、`docYear`、`contentHtml`、`submitterMode`、`requirements`、`uploadDeadline`、`workshopUploadEnabled`、`visibleWorkshopIds`、`sortOrder`；上传任务的 `requirements` 元素包含 `requirementName`、`description`、`sortOrder`。
 - `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、年份、排序；文件夹节点可同步修改是否显示上传进度，未传时默认不显示；文件节点可同步修改文件类型、富文本内容、业务类型、提交模式、上传截止时间、车间上传开关、可见车间范围和收集项名称及说明。

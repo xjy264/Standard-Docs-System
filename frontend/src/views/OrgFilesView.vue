@@ -7,10 +7,6 @@
     </div>
 
     <section class="doc-tree-panel">
-      <el-tabs v-model="activeTab" class="business-tabs" @tab-change="handleTabChange">
-        <el-tab-pane label="上传" name="UPLOAD" />
-        <el-tab-pane label="下达" name="ISSUED" />
-      </el-tabs>
       <div v-if="canManageSection" class="tree-toolbar">
         <el-button type="primary" plain @click="openFolderDialog()">新增文件夹</el-button>
       </div>
@@ -77,7 +73,7 @@
             <div v-if="canManageSection" class="doc-tree-actions">
               <el-button v-if="data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
               <el-button v-if="data.nodeType === 'FOLDER' && isRepairChildFolder(data)" link type="primary" @click.stop="openImportDialog(data)">从项目模板导入</el-button>
-              <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">{{ activeTab === 'UPLOAD' ? '新增上传任务' : '新增下达文件' }}</el-button>
+              <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">新增文件</el-button>
               <el-button link type="primary" @click.stop="openEditDialog(data)">编辑</el-button>
               <el-button link type="danger" @click.stop="deleteNode(data)">删除</el-button>
             </div>
@@ -273,7 +269,6 @@ interface DocItem {
 }
 
 interface SavedTreeState {
-  tab?: BusinessType
   expandedKeys: number[]
   scrollTop: number
 }
@@ -300,7 +295,6 @@ const importingParent = ref<DocNode>()
 const repairTemplates = ref<RepairTemplate[]>([])
 const repairTemplateItems = ref<RepairTemplateItem[]>([])
 const currentYear = new Date().getFullYear()
-const activeTab = ref<BusinessType>('UPLOAD')
 const selectedYear = ref(currentYear)
 const searchKeyword = ref('')
 const activeKeyword = ref('')
@@ -344,8 +338,8 @@ const searchResultFiles = computed(() => {
 })
 const emptyDescription = computed(() => {
   if (searchMode.value) return '暂无匹配文件'
-  if (!yearTreeData.value.length) return activeTab.value === 'UPLOAD' ? '暂无上传任务' : '暂无下达文件'
-  return activeTab.value === 'UPLOAD' ? '暂无上传任务' : '暂无下达文件'
+  if (!yearTreeData.value.length) return '暂无文件'
+  return '暂无文件'
 })
 const dialogTitle = computed(() => {
   if (dialogMode.value === 'edit') {
@@ -353,35 +347,22 @@ const dialogTitle = computed(() => {
     return '编辑文件'
   }
   if (nodeForm.nodeType === 'FOLDER') return '新增文件夹'
-  return activeTab.value === 'UPLOAD' ? '新增上传任务' : '新增下达文件'
+  return '新增文件'
 })
 const treeStateKey = computed(() => `org-tree-state:${deptId.value}`)
 
 async function load(restore = route.query.restore === '1') {
-  if (restore) {
-    const saved = readSavedTreeState()
-    if (saved?.tab) {
-      activeTab.value = saved.tab
-    }
-  }
   sections.value = await apiGet<SectionItem[]>('/sections/navigation')
   depts.value = await apiGet<DeptItem[]>('/depts/tree')
   await loadTree(restore)
 }
 
 async function loadTree(restore = false) {
-  treeData.value = await apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value, businessType: activeTab.value })
+  treeData.value = await apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value })
   await nextTick()
   if (restore) {
     restoreTreeState()
   }
-}
-
-async function handleTabChange() {
-  activeKeyword.value = ''
-  searchKeyword.value = ''
-  await loadTree(false)
-  window.scrollTo({ top: 0 })
 }
 
 function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
@@ -393,9 +374,9 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.sortOrder = 0
   nodeForm.docYear = parent?.docYear || selectedYear.value || currentYear
   nodeForm.fileType = type === 'FILE' ? 'OTHER' : ''
-  nodeForm.businessType = activeTab.value
+  nodeForm.businessType = 'ISSUED'
   nodeForm.submitterMode = 'SINGLE'
-  nodeForm.workshopUploadEnabled = activeTab.value === 'UPLOAD'
+  nodeForm.workshopUploadEnabled = false
   nodeForm.uploadDeadline = ''
   nodeForm.visibleWorkshopIds = []
   nodeForm.showUploadProgress = false
@@ -736,7 +717,6 @@ function captureTreeState(extraExpandedKeys: Array<number | undefined> = []): Sa
     ...extraExpandedKeys.filter((id): id is number => Boolean(id))
   ]
   return {
-    tab: activeTab.value,
     expandedKeys: Array.from(new Set(expandedKeys)),
     scrollTop: window.scrollY || document.documentElement.scrollTop || 0
   }
@@ -833,10 +813,6 @@ watch(selectedYear, () => {
 
 .compact-title {
   margin-bottom: 12px;
-}
-
-.business-tabs {
-  margin-bottom: 10px;
 }
 
 .tree-toolbar {
