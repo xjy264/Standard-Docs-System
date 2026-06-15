@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 class AuthControllerTest {
 
     @Test
-    void captchaReturnsStandardFailureWhenGeneratorThrows() {
+    void captchaReturnsUserFriendlyFailureWhenGeneratorThrows() {
         CaptchaService captchaService = mock(CaptchaService.class);
         when(captchaService.create()).thenThrow(new IllegalStateException("resource missing"));
         AuthController controller = new AuthController(
@@ -34,7 +34,7 @@ class AuthControllerTest {
         ApiResponse<?> response = controller.captcha();
 
         assertThat(response.getCode()).isEqualTo(500);
-        assertThat(response.getMessage()).isEqualTo("验证码服务异常，请稍后重试");
+        assertThat(response.getMessage()).isEqualTo("人机验证暂时不可用，请稍后重试或联系管理员。");
         assertThat(response.getData()).isNull();
     }
 

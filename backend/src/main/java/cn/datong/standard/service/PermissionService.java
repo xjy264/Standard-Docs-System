@@ -86,7 +86,7 @@ public class PermissionService {
 
     public void require(Long userId, boolean superAdmin, String permissionCode) {
         if (!hasPermission(userId, superAdmin, permissionCode) && !superAdmin) {
-            throw new cn.datong.standard.common.BusinessException(403, "没有权限：" + permissionCode);
+            throw new cn.datong.standard.common.BusinessException(403, "当前账号没有该功能权限，请联系管理员开通。");
         }
     }
 }

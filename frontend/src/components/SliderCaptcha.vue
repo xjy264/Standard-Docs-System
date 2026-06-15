@@ -60,6 +60,7 @@ const buttonText = computed(() => {
   return props.verified ? '验证已通过' : '点击完成滑块验证'
 })
 let captchaInstance: InstanceType<NonNullable<typeof window.TAC>> | undefined
+const captchaUnavailableMessage = '人机验证暂时不可用，请稍后重试或联系管理员。'
 
 async function preflightCaptcha() {
   const response = await fetch('/api/auth/captcha', {
@@ -70,7 +71,7 @@ async function preflightCaptcha() {
   const payload = await response.json().catch(() => undefined)
   const data = payload?.data
   if (!response.ok || payload?.code !== 200 || data?.type !== 'SLIDER' || !data?.backgroundImage || !data?.templateImage) {
-    throw new Error(payload?.message || '验证码图片加载失败，请检查后端服务。')
+    throw new Error(captchaUnavailableMessage)
   }
 }
 
@@ -86,10 +87,10 @@ function wrapTacRequests(instance: InstanceType<NonNullable<typeof window.TAC>>)
       if (request.url === '/api/auth/captcha') {
         const data = response?.data
         if (!response || typeof response.code !== 'number') {
-          return { code: 500, msg: '验证码接口返回格式错误' }
+          return { code: 500, msg: captchaUnavailableMessage }
         }
         if (response.code === 200 && (!data?.type || !data?.backgroundImage || !data?.templateImage)) {
-          return { code: 500, msg: '验证码图片数据不完整' }
+          return { code: 500, msg: captchaUnavailableMessage }
         }
       }
       return response
