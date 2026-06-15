@@ -390,6 +390,7 @@ async function submitNode() {
           }))
       : []
   }
+  const treeStateBeforeSave = captureTreeState([nodeForm.parentId])
   let changedNode: DocNode | undefined
   if (dialogMode.value === 'edit' && editingNode.value) {
     changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
@@ -405,20 +406,26 @@ async function submitNode() {
   }
   nodeDialogOpen.value = false
   await loadTree(false)
-  await expandChangedNode(changedNode)
+  await expandChangedNode(changedNode, treeStateBeforeSave)
   ElMessage.success(dialogMode.value === 'edit' ? '修改成功' : '新增成功')
 }
 
-async function expandChangedNode(node?: DocNode) {
+async function expandChangedNode(node?: DocNode, previousState?: SavedTreeState) {
   await nextTick()
-  if (!node) {
+  if (!node && !previousState) {
     return
   }
-  if (node.parentId) {
-    treeRef.value?.getNode?.(node.parentId)?.expand?.()
+  const expandedKeys = [...(previousState?.expandedKeys || [])]
+  if (node?.parentId) {
+    expandedKeys.push(node.parentId)
   }
-  if (node.nodeType === 'FOLDER') {
-    treeRef.value?.getNode?.(node.id)?.expand?.()
+  if (node?.nodeType === 'FOLDER') {
+    expandedKeys.push(node.id)
+  }
+  Array.from(new Set(expandedKeys)).forEach((id) => treeRef.value?.getNode?.(id)?.expand?.())
+  if (previousState) {
+    await nextTick()
+    window.scrollTo({ top: previousState.scrollTop || 0 })
   }
 }
 
@@ -450,12 +457,7 @@ function syncIssuedFiles(files: UploadFiles) {
 }
 
 function saveTreeState() {
-  const expandedKeys = collectExpandedNodeIds()
-  const state: SavedTreeState = {
-    tab: activeTab.value,
-    expandedKeys,
-    scrollTop: window.scrollY || document.documentElement.scrollTop || 0
-  }
+  const state = captureTreeState()
   sessionStorage.setItem(treeStateKey.value, JSON.stringify(state))
 }
 
@@ -476,13 +478,24 @@ function collectExpandedNodeIds() {
     .map((node: any) => Number(node.data.id))
 }
 
+function captureTreeState(extraExpandedKeys: Array<number | undefined> = []): SavedTreeState {
+  const expandedKeys = [
+    ...collectExpandedNodeIds(),
+    ...extraExpandedKeys.filter((id): id is number => Boolean(id))
+  ]
+  return {
+    tab: activeTab.value,
+    expandedKeys: Array.from(new Set(expandedKeys)),
+    scrollTop: window.scrollY || document.documentElement.scrollTop || 0
+  }
+}
+
 function restoreTreeState() {
   const saved = readSavedTreeState()
   if (!saved) {
     return
   }
-  saved.expandedKeys.forEach((id) => treeRef.value?.getNode?.(id)?.expand?.())
-  nextTick(() => window.scrollTo({ top: saved.scrollTop || 0 }))
+  expandChangedNode(undefined, saved)
 }
 
 function guessFileType(name: string): FileType {
