@@ -35,14 +35,12 @@
                 <span v-if="data.nodeType === 'FILE'" class="doc-file-icon" :class="fileTypeClass(data)">
                   {{ fileTypeLabel(data) }}
                 </span>
-                <span>{{ node.label }}</span>
-              </div>
-              <div
-                v-if="activeTab === 'UPLOAD' && data.nodeType === 'FOLDER' && data.uploadTaskCount"
-                class="folder-progress"
-              >
-                <el-progress :percentage="data.progressPercent || 0" :show-text="false" />
-                <span>已完成 {{ data.completedUploadTaskCount || 0 }}/{{ data.uploadTaskCount || 0 }}</span>
+                <span class="doc-node-name">{{ node.label }}</span>
+                <el-tag v-if="isUploadNode(data)" class="upload-tag" size="small" type="success">上传</el-tag>
+                <div v-if="shouldShowFolderProgress(data)" class="folder-progress">
+                  <el-progress :percentage="data.progressPercent || 0" :show-text="false" />
+                  <span>已完成 {{ data.completedUploadTaskCount || 0 }}/{{ data.uploadTaskCount || 0 }}</span>
+                </div>
               </div>
             </div>
             <div v-if="canManageSection" class="doc-tree-actions">
@@ -69,6 +67,9 @@
           <el-input v-model="nodeForm.nodeName" maxlength="128" />
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="nodeForm.sortOrder" :min="0" /></el-form-item>
+        <el-form-item v-if="nodeForm.nodeType === 'FOLDER'" label="上传进度">
+          <el-switch v-model="nodeForm.showUploadProgress" active-text="展示进度条" inactive-text="不展示" />
+        </el-form-item>
         <template v-if="nodeForm.nodeType === 'FILE' && nodeForm.businessType === 'UPLOAD'">
           <el-form-item label="提交方式">
             <el-radio-group v-model="nodeForm.submitterMode">
@@ -183,6 +184,7 @@ interface DocNode {
   fileType?: FileType
   businessType?: BusinessType
   submitterMode?: SubmitterMode
+  showUploadProgress?: number
   uploadTaskCount?: number
   completedUploadTaskCount?: number
   progressPercent?: number
@@ -244,6 +246,7 @@ const nodeForm = reactive({
   fileType: '' as FileType | '',
   businessType: 'UPLOAD' as BusinessType,
   submitterMode: 'SINGLE' as SubmitterMode,
+  showUploadProgress: true,
   requirements: [{ requirementName: '附件', description: '', sortOrder: 0 }] as DocUploadRequirement[]
 })
 
@@ -294,6 +297,7 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.fileType = type === 'FILE' && activeTab.value === 'ISSUED' ? 'WORD' : ''
   nodeForm.businessType = activeTab.value
   nodeForm.submitterMode = 'SINGLE'
+  nodeForm.showUploadProgress = true
   nodeForm.requirements = [{ requirementName: '附件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
 }
@@ -319,6 +323,7 @@ async function openEditDialog(node: DocNode) {
   nodeForm.fileType = node.nodeType === 'FILE' ? node.fileType || guessFileType(node.nodeName) : ''
   nodeForm.businessType = node.nodeType === 'FILE' ? node.businessType || activeTab.value : activeTab.value
   nodeForm.submitterMode = node.submitterMode || 'SINGLE'
+  nodeForm.showUploadProgress = node.showUploadProgress !== 0
   nodeForm.requirements = [{ requirementName: '附件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
   if (node.nodeType === 'FILE' && node.itemId) {
@@ -373,6 +378,7 @@ async function submitNode() {
     fileType: nodeForm.businessType === 'ISSUED' ? nodeForm.fileType : 'OTHER',
     businessType: nodeForm.businessType,
     submitterMode: nodeForm.businessType === 'UPLOAD' ? nodeForm.submitterMode : 'SINGLE',
+    showUploadProgress: nodeForm.nodeType === 'FOLDER' ? nodeForm.showUploadProgress : undefined,
     requirements: nodeForm.businessType === 'UPLOAD'
       ? nodeForm.requirements
           .filter((item) => item.requirementName.trim())
@@ -520,6 +526,17 @@ function fileTypeLabel(node: DocNode) {
   return labels[resolveFileType(node)]
 }
 
+function isUploadNode(node: DocNode) {
+  return node.nodeType === 'FILE' && node.businessType === 'UPLOAD'
+}
+
+function shouldShowFolderProgress(node: DocNode) {
+  return activeTab.value === 'UPLOAD'
+    && node.nodeType === 'FOLDER'
+    && node.showUploadProgress !== 0
+    && Boolean(node.uploadTaskCount)
+}
+
 function handleEditorCreated(editor: IDomEditor) {
   editorRef.value = editor
 }
@@ -620,8 +637,8 @@ watch(() => [route.params.deptId, route.query.restore], () => load(route.query.r
 .doc-tree-main {
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  align-items: center;
+  gap: 8px;
 }
 
 .doc-tree-title {
@@ -629,8 +646,14 @@ watch(() => [route.params.deptId, route.query.restore], () => load(route.query.r
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   color: #1f2d3d;
   line-height: 1.5;
+}
+
+.doc-node-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .doc-tree-row.is-file .doc-tree-title {
@@ -661,13 +684,17 @@ watch(() => [route.params.deptId, route.query.restore], () => load(route.query.r
 }
 
 .folder-progress {
-  width: min(360px, 52vw);
+  width: min(260px, 30vw);
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto;
+  grid-template-columns: minmax(90px, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: #637083;
   font-size: 12px;
+}
+
+.upload-tag {
+  flex: 0 0 auto;
 }
 
 .doc-file-icon {
@@ -760,7 +787,7 @@ watch(() => [route.params.deptId, route.query.restore], () => load(route.query.r
   }
 
   .folder-progress {
-    width: 100%;
+    width: min(100%, 320px);
   }
 
   .doc-tree-actions {

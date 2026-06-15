@@ -56,10 +56,10 @@
 
 ## 科室资料与车间填报
 
-- `GET /api/doc-tree?sectionDeptId=1&businessType=UPLOAD`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；`businessType` 可选 `UPLOAD` 或 `ISSUED`；上传任务树的文件夹节点返回 `uploadTaskCount`、`completedUploadTaskCount`、`progressPercent`。
-- `POST /api/doc-nodes/folders`：本科室用户或超级管理员新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`sortOrder`。
+- `GET /api/doc-tree?sectionDeptId=1&businessType=UPLOAD`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；`businessType` 可选 `UPLOAD` 或 `ISSUED`；上传任务树的文件夹节点返回 `showUploadProgress`、`uploadTaskCount`、`completedUploadTaskCount`、`progressPercent`，进度只统计已配置收集项的上传任务文件。
+- `POST /api/doc-nodes/folders`：本科室用户或超级管理员新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`sortOrder`、`showUploadProgress`。
 - `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`businessType`、`fileType`、`contentHtml`、`submitterMode`、`requirements`、`sortOrder`；上传任务的 `requirements` 元素包含 `requirementName`、`description`、`sortOrder`。
-- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件节点可同步修改文件类型、富文本内容、业务类型、提交模式和收集项名称及说明。
+- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件夹节点可同步修改是否展示上传进度；文件节点可同步修改文件类型、富文本内容、业务类型、提交模式和收集项名称及说明。
 - `DELETE /api/doc-nodes/{id}`：本科室用户或超级管理员删除目录节点；文件夹存在子节点时禁止删除。
 - `GET /api/doc-categories?sectionDeptId=1`：查询科室下旧二级侧边栏，保留兼容历史页面和旧数据。
 - `POST /api/doc-categories`：本科室用户或超级管理员新增二级侧边栏。

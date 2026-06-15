@@ -1,5 +1,6 @@
 package cn.datong.standard.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -23,6 +24,7 @@ public class SysDocNode {
     private Long itemId;
     private Integer sortOrder;
     private Integer level;
+    private Integer showUploadProgress;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -45,6 +47,9 @@ public class SysDocNode {
     private Integer completedUploadTaskCount;
     @TableField(exist = false)
     private Integer progressPercent;
+    @JsonIgnore
+    @TableField(exist = false)
+    private Boolean hasUploadRequirement;
     @TableField(exist = false)
     private List<SysDocNode> children = new ArrayList<>();
 }
