@@ -141,7 +141,7 @@ public class DocWorkspaceService {
         node.setDocYear(resolveFolderDocYear(request.parentId(), request.docYear()));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         node.setLevel(placement.level());
-        node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 1));
+        node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 0));
         node.setCreatedBy(userId);
         node.setCreatedAt(LocalDateTime.now());
         node.setUpdatedAt(LocalDateTime.now());
@@ -271,7 +271,7 @@ public class DocWorkspaceService {
             node.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
         } else {
             node.setDocYear(request.docYear() == null ? node.getDocYear() : requiredDocYear(request.docYear(), "请选择资料年份"));
-            node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 1));
+            node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 0));
         }
         node.setUpdatedAt(LocalDateTime.now());
         nodeMapper.updateById(node);
