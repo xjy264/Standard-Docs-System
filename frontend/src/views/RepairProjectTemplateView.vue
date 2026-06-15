@@ -235,6 +235,7 @@ function guessFileType(name: string) {
   if (/\.(ppt|pptx)$/.test(lower)) return 'PPT'
   if (/\.pdf$/.test(lower)) return 'PDF'
   if (/\.zip$/.test(lower)) return 'ZIP'
+  if (/\.(png|jpg|jpeg|gif|bmp|webp|svg)$/.test(lower)) return 'IMAGE'
   return 'OTHER'
 }
 
@@ -244,6 +245,7 @@ function fileTypeText(type: string) {
     EXCEL: 'Excel',
     PPT: 'PPT',
     PDF: 'PDF',
+    IMAGE: '图片',
     ZIP: 'ZIP',
     OTHER: '其他'
   }

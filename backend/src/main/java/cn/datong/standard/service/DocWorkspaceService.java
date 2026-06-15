@@ -1580,6 +1580,7 @@ public class DocWorkspaceService {
             case "ppt", "pptx" -> "PPT";
             case "pdf" -> "PDF";
             case "zip" -> "ZIP";
+            case "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg" -> "IMAGE";
             default -> "OTHER";
         };
     }

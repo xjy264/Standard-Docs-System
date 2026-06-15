@@ -172,6 +172,27 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void createFileWithMainFileInfersImageType() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-items/test.png", 100L, "image/png"));
+        when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
+            SysDocItem item = invocation.getArgument(0);
+            item.setId(88L);
+            return 1;
+        });
+        MultipartFile file = new MockMultipartFile("file", "现场照片.png", "image/png", "demo".getBytes());
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "现场照片", 30, null, false, "", null, 2026);
+
+        fx.service.createFileNodeWithMainFile(10L, 2L, false, request, file);
+
+        ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
+        verify(fx.itemMapper).insert(itemCaptor.capture());
+        assertThat(itemCaptor.getValue().getFileType()).isEqualTo("IMAGE");
+    }
+
+    @Test
     void createFileWithMainFileInheritsParentFolderYearWhenDocYearMissing() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));

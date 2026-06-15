@@ -751,7 +751,7 @@ function guessFileType(name: string): FileType {
   if (/\.(ppt|pptx)$/.test(lower)) return 'PPT'
   if (/\.pdf$/.test(lower)) return 'PDF'
   if (/\.zip$/.test(lower)) return 'ZIP'
-  if (/\.(png|jpg|jpeg)$/.test(lower) || /照片|影像|图纸|平面示意图/.test(name)) return 'IMAGE'
+  if (/\.(png|jpg|jpeg|gif|bmp|webp|svg)$/.test(lower) || /照片|影像|图纸|平面示意图/.test(name)) return 'IMAGE'
   return 'OTHER'
 }
 
@@ -778,7 +778,7 @@ function fileTypeLabel(node: DocNode) {
     EXCEL: 'X',
     PPT: 'T',
     PDF: 'P',
-    IMAGE: 'I',
+    IMAGE: '图',
     ZIP: 'Z',
     OTHER: 'F'
   }
