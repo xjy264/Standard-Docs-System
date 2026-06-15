@@ -172,6 +172,29 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void createFileWithMainFileInheritsParentFolderYearWhenDocYearMissing() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        SysDocNode parent = node(5L, 2L, null, "FOLDER", "2028年度资料", null, 1, 10);
+        parent.setDocYear(2028);
+        when(fx.nodeMapper.selectById(5L)).thenReturn(parent);
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-items/test.pdf", 100L, "application/pdf"));
+        when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
+            SysDocItem item = invocation.getArgument(0);
+            item.setId(88L);
+            return 1;
+        });
+        MultipartFile file = new MockMultipartFile("file", "通知.pdf", "application/pdf", "demo".getBytes());
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "通知", 30, null, false, "", null, null);
+
+        fx.service.createFileNodeWithMainFile(10L, 2L, false, request, file);
+
+        ArgumentCaptor<SysDocItem> itemCaptor = ArgumentCaptor.forClass(SysDocItem.class);
+        verify(fx.itemMapper).insert(itemCaptor.capture());
+        assertThat(itemCaptor.getValue().getDocYear()).isEqualTo(2028);
+    }
+
+    @Test
     void createFileWithMainFileDoesNotInsertRowsWhenStorageFails() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
@@ -189,10 +212,12 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void createFileRejectsMissingDocYear() {
+    void createFileRejectsMissingDocYearWhenParentFolderHasNoYear() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
-        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
+        SysDocNode parent = node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10);
+        parent.setDocYear(null);
+        when(fx.nodeMapper.selectById(5L)).thenReturn(parent);
         DocNodeRequest request = new DocNodeRequest(2L, 5L, "新建资料", 30, null, true, "<p>内容</p>", "WORD", null);
 
         assertThatThrownBy(() -> fx.service.createFileNode(10L, 2L, false, request))

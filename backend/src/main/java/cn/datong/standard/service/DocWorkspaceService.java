@@ -164,7 +164,7 @@ public class DocWorkspaceService {
         item.setBusinessType(businessType);
         item.setSubmitterMode("UPLOAD".equals(businessType) ? "MULTIPLE" : "SINGLE");
         item.setFileType(normalizeFileType(request.fileType()));
-        item.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
+        item.setDocYear(resolveFileDocYear(request.parentId(), request.docYear()));
         item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
         item.setAttachmentEnabled(workshopUploadEnabled ? 1 : 0);
         item.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
@@ -212,7 +212,7 @@ public class DocWorkspaceService {
                 : file.getOriginalFilename().trim();
         NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), false);
         String itemName = requiredText(request.nodeName(), "请输入文件名称");
-        Integer docYear = requiredDocYear(request.docYear(), "请选择文件年份");
+        Integer docYear = resolveFileDocYear(request.parentId(), request.docYear());
         String businessType = resolveUnifiedBusinessType(request);
         boolean workshopUploadEnabled = Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType);
         String extension = extension(original);
@@ -1568,6 +1568,14 @@ public class DocWorkspaceService {
         }
         SysDocNode parent = requireNode(parentId);
         return parent.getDocYear() == null ? requiredDocYear(docYear, "请选择资料年份") : parent.getDocYear();
+    }
+
+    private Integer resolveFileDocYear(Long parentId, Integer docYear) {
+        if (docYear != null) {
+            return requiredDocYear(docYear, "请选择文件年份");
+        }
+        SysDocNode parent = requireNode(parentId);
+        return requiredDocYear(parent.getDocYear(), "请选择文件年份");
     }
 
     private Integer requiredDocYear(Integer docYear, String emptyMessage) {

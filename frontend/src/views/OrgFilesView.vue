@@ -98,11 +98,6 @@
         <el-form-item v-if="nodeForm.nodeType === 'FOLDER'">
           <el-checkbox v-model="nodeForm.showUploadProgress">显示上传进度</el-checkbox>
         </el-form-item>
-        <el-form-item v-if="nodeForm.nodeType === 'FILE'" label="文件年份">
-          <el-select v-model="nodeForm.docYear" placeholder="请选择文件年份" style="width: 220px">
-            <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
-          </el-select>
-        </el-form-item>
         <template v-if="nodeForm.nodeType === 'FILE'">
           <el-form-item v-if="dialogMode === 'create'" label="文件">
             <el-upload
@@ -138,7 +133,10 @@
             </el-select>
           </el-form-item>
           <el-form-item label="车间上传">
-            <el-switch v-model="nodeForm.workshopUploadEnabled" active-text="需要车间上传" inactive-text="不需要" />
+            <el-radio-group v-model="nodeForm.workshopUploadEnabled" class="workshop-upload-options">
+              <el-radio :value="false">不需要车间上传</el-radio>
+              <el-radio :value="true">需要车间上传</el-radio>
+            </el-radio-group>
           </el-form-item>
           <el-form-item v-if="nodeForm.workshopUploadEnabled" label="上传截止时间">
             <el-date-picker
@@ -841,6 +839,12 @@ watch(selectedYear, () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.workshop-upload-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
 }
 
 .year-select {
