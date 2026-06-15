@@ -41,9 +41,11 @@ services:
       - minio-data:/data
 
   onlyoffice:
-    image: onlyoffice/documentserver:latest
+    image: ${ONLYOFFICE_IMAGE:-onlyoffice/documentserver:latest}
     container_name: dt-standard-onlyoffice
     restart: unless-stopped
+    environment:
+      JWT_ENABLED: ${ONLYOFFICE_JWT_ENABLED:-false}
     ports:
       - "${ONLYOFFICE_PORT:-8082}:80"
 
