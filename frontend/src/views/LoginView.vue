@@ -16,7 +16,7 @@
           ref="captchaRef"
           host-id="login-captcha"
           :verified="Boolean(form.captchaKey)"
-          unavailable-message="人机验证服务未连接，请先启动本项目后端服务后再登录。"
+          unavailable-message="人机验证暂时不可用，请稍后重试或联系管理员。"
           @verified="handleCaptchaVerified"
           @reset="resetCaptchaState"
         />
@@ -56,7 +56,7 @@ function handleCaptchaVerified(payload: { captchaKey: string; captchaCode: strin
 
 async function login() {
   if (!form.captchaKey) {
-    captchaRef.value?.setError('请先完成滑块验证。若一直失败，请检查后端服务是否已启动。')
+    captchaRef.value?.setError('请先完成滑块验证。若一直失败，请稍后重试或联系管理员。')
     return
   }
   loading.value = true

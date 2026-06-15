@@ -8,7 +8,14 @@ import 'dayjs/locale/zh-cn'
 import './styles/main.css'
 import App from './App.vue'
 import router from './router'
+import { setAuthInvalidNavigator } from './api/http'
 
 dayjs.locale('zh-cn')
+
+setAuthInvalidNavigator(() => {
+  if (router.currentRoute.value.path !== '/login') {
+    router.replace('/login').catch(() => undefined)
+  }
+})
 
 createApp(App).use(createPinia()).use(router).use(ElementPlus, { locale: zhCn }).mount('#app')

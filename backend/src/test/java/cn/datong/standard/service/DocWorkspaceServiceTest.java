@@ -84,6 +84,30 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void uploadProgressCountsOnlyUploadItemsWithRequirements() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        SysDocNode folder = node(1L, 2L, null, "FOLDER", "资料收集", null, 1, 10);
+        SysDocNode fileWithRequirement = node(2L, 2L, 1L, "FILE", "车间成员信息表", 8L, 2, 10);
+        SysDocNode fileWithoutRequirement = node(3L, 2L, 1L, "FILE", "普通说明", 9L, 2, 20);
+        when(fx.nodeMapper.selectList(any())).thenReturn(List.of(folder, fileWithRequirement, fileWithoutRequirement));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(
+                item(8L, null, 2L, true),
+                item(9L, null, 2L, true)
+        ));
+        when(fx.requirementMapper.selectList(any())).thenReturn(List.of(requirement(70L, 8L, "附件")));
+        when(fx.submissionMapper.selectCount(any())).thenReturn(0L);
+        when(fx.submissionMapper.selectList(any())).thenReturn(List.of(submission(1L, 8L, null, 2L, 5L, 5L)));
+
+        List<SysDocNode> tree = fx.service.documentTree(5L, 5L, false, 2L, "UPLOAD");
+
+        SysDocNode root = tree.getFirst();
+        assertThat(root.getUploadTaskCount()).isEqualTo(1);
+        assertThat(root.getCompletedUploadTaskCount()).isEqualTo(1);
+        assertThat(root.getProgressPercent()).isEqualTo(100);
+    }
+
+    @Test
     void createFileRejectsRootLevelFile() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
@@ -160,6 +184,34 @@ class DocWorkspaceServiceTest {
         assertThatThrownBy(() -> fx.service.createFileNode(10L, 2L, false, request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("文件年份必须为四位年份");
+    }
+
+    @Test
+    void createFolderPersistsProgressVisibility() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(10L));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "资料收集", 10, null, false, "", null, 2026, null, null, false);
+
+        fx.service.createFolderNode(10L, 2L, false, request);
+
+        ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
+        verify(fx.nodeMapper).insert(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(0);
+    }
+
+    @Test
+    void updateFolderPersistsProgressVisibility() {
+        Fixtures fx = fixtures();
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料收集", null, 1, 10));
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "资料收集", 10, null, false, "", null, null, null, null, false);
+
+        fx.service.updateNode(2L, false, 5L, request);
+
+        ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
+        verify(fx.nodeMapper).updateById(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(0);
     }
 
     @Test

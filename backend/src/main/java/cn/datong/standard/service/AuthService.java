@@ -92,7 +92,7 @@ public class AuthService {
         }
         SysUser user = userMapper.selectById(userId);
         if (user == null) {
-            throw new BusinessException("本地开发用户不存在：id=" + userId);
+            throw new BusinessException("本地开发用户不存在");
         }
         String token = jwtTokenProvider.createToken(user.getId(), user.getDeptId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
         Set<String> permissions = permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));

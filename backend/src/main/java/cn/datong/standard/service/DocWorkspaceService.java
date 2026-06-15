@@ -43,6 +43,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -140,6 +141,7 @@ public class DocWorkspaceService {
         node.setDocYear(resolveFolderDocYear(request.parentId(), request.docYear()));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         node.setLevel(placement.level());
+        node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 1));
         node.setCreatedBy(userId);
         node.setCreatedAt(LocalDateTime.now());
         node.setUpdatedAt(LocalDateTime.now());
@@ -269,6 +271,7 @@ public class DocWorkspaceService {
             node.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
         } else {
             node.setDocYear(request.docYear() == null ? node.getDocYear() : requiredDocYear(request.docYear(), "请选择资料年份"));
+            node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 1));
         }
         node.setUpdatedAt(LocalDateTime.now());
         nodeMapper.updateById(node);
@@ -934,6 +937,7 @@ public class DocWorkspaceService {
                 .stream()
                 .collect(Collectors.groupingBy(SysDocItemWorkshopScope::getItemId,
                         Collectors.mapping(SysDocItemWorkshopScope::getWorkshopDeptId, Collectors.toList())));
+        Set<Long> uploadItemIdsWithRequirements = uploadItemIdsWithRequirements(itemMap.values());
         for (SysDocNode node : nodes) {
             SysDocItem item = itemMap.get(node.getItemId());
             if (item == null) {
@@ -948,9 +952,29 @@ public class DocWorkspaceService {
             node.setUploadDeadline(item.getUploadDeadline());
             node.setVisibilityScope(normalizeVisibilityScope(item.getVisibilityScope()));
             node.setVisibleWorkshopIds(scopeMap.getOrDefault(item.getId(), List.of()));
+            node.setHasUploadRequirement(uploadItemIdsWithRequirements.contains(item.getId()));
             node.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
                     .eq(SysDocSubmission::getItemId, item.getId()))));
         }
+    }
+
+    private Set<Long> uploadItemIdsWithRequirements(Iterable<SysDocItem> items) {
+        Set<Long> uploadItemIds = new HashSet<>();
+        for (SysDocItem item : items) {
+            if ("UPLOAD".equalsIgnoreCase(normalizeBusinessType(item))) {
+                uploadItemIds.add(item.getId());
+            }
+        }
+        if (uploadItemIds.isEmpty()) {
+            return Set.of();
+        }
+        List<SysDocUploadRequirement> requirements = Objects.requireNonNullElse(requirementMapper.selectList(new LambdaQueryWrapper<SysDocUploadRequirement>()
+                        .in(SysDocUploadRequirement::getItemId, uploadItemIds)
+                        .eq(SysDocUploadRequirement::getDeleted, 0)), List.of());
+        return requirements
+                .stream()
+                .map(SysDocUploadRequirement::getItemId)
+                .collect(Collectors.toSet());
     }
 
     private void fillItemCounts(List<SysDocItem> items) {
@@ -1209,7 +1233,7 @@ public class DocWorkspaceService {
 
     private int[] fillUploadProgress(SysDocNode node, Set<Long> completedItemIds) {
         if ("FILE".equalsIgnoreCase(node.getNodeType())) {
-            int taskCount = "UPLOAD".equalsIgnoreCase(node.getBusinessType()) ? 1 : 0;
+            int taskCount = "UPLOAD".equalsIgnoreCase(node.getBusinessType()) && Boolean.TRUE.equals(node.getHasUploadRequirement()) ? 1 : 0;
             int completedCount = taskCount == 1 && completedItemIds.contains(node.getItemId()) ? 1 : 0;
             node.setUploadTaskCount(taskCount);
             node.setCompletedUploadTaskCount(completedCount);
@@ -1602,6 +1626,13 @@ public class DocWorkspaceService {
 
     private boolean isUploadItem(SysDocItem item) {
         return "UPLOAD".equals(normalizeBusinessType(item));
+    }
+
+    private Integer booleanFlag(Boolean value, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        return Boolean.TRUE.equals(value) ? 1 : 0;
     }
 
     private String extension(String filename) {

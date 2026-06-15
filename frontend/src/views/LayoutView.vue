@@ -64,24 +64,33 @@ function logout() {
 }
 
 async function loadNavigation() {
-  navigation.value = await apiGet('/sections/navigation')
+  try {
+    navigation.value = await apiGet('/sections/navigation')
+  } catch {
+    navigation.value = []
+  }
 }
 
 async function refreshCurrentUser() {
   if (!auth.token) {
-    return
+    return true
   }
   try {
     const user = await apiGetSilent('/auth/me')
     auth.updateUser(user)
+    return true
   } catch {
     auth.logout()
     router.push('/login')
+    return false
   }
 }
 
 onMounted(async () => {
-  await refreshCurrentUser()
+  const signedIn = await refreshCurrentUser()
+  if (!signedIn) {
+    return
+  }
   await loadNavigation()
 })
 </script>

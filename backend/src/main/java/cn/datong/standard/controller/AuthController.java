@@ -32,6 +32,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthController {
+    private static final String CAPTCHA_UNAVAILABLE_MESSAGE = "人机验证暂时不可用，请稍后重试或联系管理员。";
+    private static final String CAPTCHA_CHECK_FAILED_MESSAGE = "滑块验证未通过，请重新验证。";
     private final CaptchaService captchaService;
     private final AuthService authService;
     private final ObjectMapper objectMapper;
@@ -41,12 +43,12 @@ public class AuthController {
         try {
             cloud.tianai.captcha.common.response.ApiResponse<?> response = captchaService.create();
             if (!response.isSuccess()) {
-                return ApiResponse.fail(response.getCode(), response.getMsg());
+                return ApiResponse.fail(response.getCode(), CAPTCHA_UNAVAILABLE_MESSAGE);
             }
             return ApiResponse.success(response.getData());
         } catch (Exception ex) {
             log.error("生成滑块验证码失败", ex);
-            return ApiResponse.fail(500, "验证码服务异常，请稍后重试");
+            return ApiResponse.fail(500, CAPTCHA_UNAVAILABLE_MESSAGE);
         }
     }
 
@@ -54,7 +56,7 @@ public class AuthController {
     public ApiResponse<Map<String, String>> checkCaptcha(@Valid @RequestBody CaptchaCheckRequest request) {
         cloud.tianai.captcha.common.response.ApiResponse<?> response = captchaService.matching(request.id(), request.data());
         if (!response.isSuccess()) {
-            return ApiResponse.fail(response.getCode(), response.getMsg());
+            return ApiResponse.fail(response.getCode(), CAPTCHA_CHECK_FAILED_MESSAGE);
         }
         return ApiResponse.success(Map.of(
                 "captchaKey", request.id(),

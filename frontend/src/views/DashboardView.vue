@@ -133,14 +133,21 @@ function openDept(node: SectionFileTreeItem) {
   }
 }
 
-onMounted(async () => {
-  const [statsData, treeData] = await Promise.all([
-    apiGet<DashboardStats>('/dashboard/stats'),
-    apiGet<SectionFileTreeItem[]>('/dashboard/section-file-tree')
-  ])
-  stats.value = statsData
-  sectionFileTree.value = treeData
-})
+async function loadDashboard() {
+  try {
+    const [statsData, treeData] = await Promise.all([
+      apiGet<DashboardStats>('/dashboard/stats'),
+      apiGet<SectionFileTreeItem[]>('/dashboard/section-file-tree')
+    ])
+    stats.value = statsData
+    sectionFileTree.value = treeData
+  } catch {
+    stats.value = {}
+    sectionFileTree.value = []
+  }
+}
+
+onMounted(loadDashboard)
 </script>
 
 <style scoped>

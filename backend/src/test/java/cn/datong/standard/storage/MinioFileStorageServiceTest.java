@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 class MinioFileStorageServiceTest {
 
     @Test
-    void uploadReportsClearMessageWhenMinioIsUnavailable() throws Exception {
+    void uploadReportsUserFriendlyMessageWhenStorageIsUnavailable() throws Exception {
         MinioClient minioClient = mock(MinioClient.class);
         when(minioClient.bucketExists(any(BucketExistsArgs.class)))
                 .thenThrow(new ConnectException("Connection refused"));
@@ -27,6 +27,6 @@ class MinioFileStorageServiceTest {
 
         assertThatThrownBy(() -> service.upload(file, "docs/a.txt"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("文件上传失败：无法连接 MinIO 存储服务，请检查 9000 端口");
+                .hasMessage("文件存储服务暂时不可用，请稍后重试或联系管理员。");
     }
 }

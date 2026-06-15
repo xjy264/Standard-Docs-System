@@ -62,14 +62,12 @@
                 <span v-if="data.nodeType === 'FILE'" class="doc-file-icon" :class="fileTypeClass(data)">
                   {{ fileTypeLabel(data) }}
                 </span>
-                <span>{{ node.label }}</span>
-              </div>
-              <div
-                v-if="data.nodeType === 'FOLDER' && data.uploadTaskCount"
-                class="folder-progress"
-              >
-                <el-progress :percentage="data.progressPercent || 0" :show-text="false" />
-                <span>已完成 {{ data.completedUploadTaskCount || 0 }}/{{ data.uploadTaskCount || 0 }}</span>
+                <span class="doc-node-name">{{ node.label }}</span>
+                <el-tag v-if="isUploadNode(data)" class="upload-tag" size="small" type="success">上传</el-tag>
+                <div v-if="shouldShowFolderProgress(data)" class="folder-progress">
+                  <el-progress :percentage="data.progressPercent || 0" :show-text="false" />
+                  <span>已完成 {{ data.completedUploadTaskCount || 0 }}/{{ data.uploadTaskCount || 0 }}</span>
+                </div>
               </div>
             </div>
             <div v-if="canManageSection" class="doc-tree-actions">
@@ -97,6 +95,9 @@
           <el-input v-model="nodeForm.nodeName" maxlength="128" />
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="nodeForm.sortOrder" :min="0" /></el-form-item>
+        <el-form-item v-if="nodeForm.nodeType === 'FOLDER'" label="上传进度">
+          <el-switch v-model="nodeForm.showUploadProgress" active-text="展示进度条" inactive-text="不展示" />
+        </el-form-item>
         <el-form-item v-if="nodeForm.nodeType === 'FILE'" label="文件年份">
           <el-select v-model="nodeForm.docYear" placeholder="请选择文件年份" style="width: 220px">
             <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
@@ -243,6 +244,7 @@ interface DocNode {
   uploadDeadline?: string
   visibilityScope?: string
   visibleWorkshopIds?: number[]
+  showUploadProgress?: number
   uploadTaskCount?: number
   completedUploadTaskCount?: number
   progressPercent?: number
@@ -310,6 +312,7 @@ const nodeForm = reactive({
   workshopUploadEnabled: false,
   uploadDeadline: '' as string | '',
   visibleWorkshopIds: [] as number[],
+  showUploadProgress: true,
   requirements: [{ requirementName: '文件', description: '', sortOrder: 0 }] as DocUploadRequirement[]
 })
 const importForm = reactive({
@@ -376,6 +379,7 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.workshopUploadEnabled = false
   nodeForm.uploadDeadline = ''
   nodeForm.visibleWorkshopIds = []
+  nodeForm.showUploadProgress = true
   nodeForm.requirements = [{ requirementName: '文件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
 }
@@ -449,6 +453,7 @@ async function openEditDialog(node: DocNode) {
   nodeForm.workshopUploadEnabled = Boolean(node.workshopUploadEnabled)
   nodeForm.uploadDeadline = node.uploadDeadline || ''
   nodeForm.visibleWorkshopIds = node.visibleWorkshopIds || []
+  nodeForm.showUploadProgress = node.showUploadProgress !== 0
   nodeForm.requirements = [{ requirementName: '文件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
   if (node.nodeType === 'FILE' && node.itemId) {
@@ -507,6 +512,7 @@ async function submitNode() {
     fileType: nodeForm.fileType,
     businessType: nodeForm.workshopUploadEnabled ? 'UPLOAD' : 'ISSUED',
     submitterMode: 'MULTIPLE',
+    showUploadProgress: nodeForm.nodeType === 'FOLDER' ? nodeForm.showUploadProgress : undefined,
     uploadDeadline: nodeForm.workshopUploadEnabled ? nodeForm.uploadDeadline || null : null,
     workshopUploadEnabled: nodeForm.workshopUploadEnabled,
     visibleWorkshopIds: nodeForm.visibleWorkshopIds,
@@ -514,6 +520,7 @@ async function submitNode() {
       ? [{ requirementName: '文件', description: '', sortOrder: 0 }]
       : []
   }
+  const treeStateBeforeSave = captureTreeState([nodeForm.parentId])
   let changedNode: DocNode | undefined
   if (dialogMode.value === 'edit' && editingNode.value) {
     changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
@@ -540,28 +547,34 @@ async function submitNode() {
     changedNode = response.data.data
   }
   nodeDialogOpen.value = false
-  await afterNodeChanged(changedNode)
+  await afterNodeChanged(changedNode, treeStateBeforeSave)
   ElMessage.success(dialogMode.value === 'edit' ? '修改成功' : '新增成功')
 }
 
-async function afterNodeChanged(node?: DocNode) {
-  await loadTree()
+async function afterNodeChanged(node?: DocNode, previousState?: SavedTreeState) {
+  await loadTree(false)
   if (node?.docYear) {
     selectedYear.value = node.docYear
   }
-  await expandChangedNode(node)
+  await expandChangedNode(node, previousState)
 }
 
-async function expandChangedNode(node?: DocNode) {
+async function expandChangedNode(node?: DocNode, previousState?: SavedTreeState) {
   await nextTick()
-  if (!node || searchMode.value) {
+  if (!node && !previousState) {
     return
   }
-  if (node.parentId) {
-    treeRef.value?.getNode?.(node.parentId)?.expand?.()
+  const expandedKeys = [...(previousState?.expandedKeys || [])]
+  if (node?.parentId) {
+    expandedKeys.push(node.parentId)
   }
-  if (node.nodeType === 'FOLDER') {
-    treeRef.value?.getNode?.(node.id)?.expand?.()
+  if (node?.nodeType === 'FOLDER') {
+    expandedKeys.push(node.id)
+  }
+  Array.from(new Set(expandedKeys)).forEach((id) => treeRef.value?.getNode?.(id)?.expand?.())
+  if (previousState) {
+    await nextTick()
+    window.scrollTo({ top: previousState.scrollTop || 0 })
   }
 }
 
@@ -677,11 +690,7 @@ function onIssuedFileExceed() {
 }
 
 function saveTreeState() {
-  const expandedKeys = collectExpandedNodeIds()
-  const state: SavedTreeState = {
-    expandedKeys,
-    scrollTop: window.scrollY || document.documentElement.scrollTop || 0
-  }
+  const state = captureTreeState()
   sessionStorage.setItem(treeStateKey.value, JSON.stringify(state))
 }
 
@@ -702,13 +711,23 @@ function collectExpandedNodeIds() {
     .map((node: any) => Number(node.data.id))
 }
 
+function captureTreeState(extraExpandedKeys: Array<number | undefined> = []): SavedTreeState {
+  const expandedKeys = [
+    ...collectExpandedNodeIds(),
+    ...extraExpandedKeys.filter((id): id is number => Boolean(id))
+  ]
+  return {
+    expandedKeys: Array.from(new Set(expandedKeys)),
+    scrollTop: window.scrollY || document.documentElement.scrollTop || 0
+  }
+}
+
 function restoreTreeState() {
   const saved = readSavedTreeState()
   if (!saved) {
     return
   }
-  saved.expandedKeys.forEach((id) => treeRef.value?.getNode?.(id)?.expand?.())
-  nextTick(() => window.scrollTo({ top: saved.scrollTop || 0 }))
+  expandChangedNode(undefined, saved)
 }
 
 function guessFileType(name: string): FileType {
@@ -763,6 +782,16 @@ function fileTypeText(node: DocNode) {
     OTHER: '其他'
   }
   return labels[resolveFileType(node)]
+}
+
+function isUploadNode(node: DocNode) {
+  return node.nodeType === 'FILE' && node.businessType === 'UPLOAD'
+}
+
+function shouldShowFolderProgress(node: DocNode) {
+  return node.nodeType === 'FOLDER'
+    && node.showUploadProgress !== 0
+    && Boolean(node.uploadTaskCount)
 }
 
 function handleDialogClosed() {
@@ -899,8 +928,8 @@ watch(selectedYear, () => {
 .doc-tree-main {
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  align-items: center;
+  gap: 8px;
 }
 
 .doc-tree-title {
@@ -908,8 +937,14 @@ watch(selectedYear, () => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   color: #1f2d3d;
   line-height: 1.5;
+}
+
+.doc-node-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .doc-tree-row.is-file .doc-tree-title {
@@ -940,13 +975,17 @@ watch(selectedYear, () => {
 }
 
 .folder-progress {
-  width: min(360px, 52vw);
+  width: min(260px, 30vw);
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto;
+  grid-template-columns: minmax(90px, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: #637083;
   font-size: 12px;
+}
+
+.upload-tag {
+  flex: 0 0 auto;
 }
 
 .doc-file-icon {
@@ -1047,7 +1086,7 @@ watch(selectedYear, () => {
   }
 
   .folder-progress {
-    width: 100%;
+    width: min(100%, 320px);
   }
 
   .doc-tree-actions {
