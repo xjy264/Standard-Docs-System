@@ -55,6 +55,53 @@ public class RepairProjectTemplateController {
         return ApiResponse.success();
     }
 
+    @GetMapping("/items")
+    public ApiResponse<List<SysRepairProjectTemplateItem>> libraryItems() {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.repairProjectTemplateItems(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin()));
+    }
+
+    @PostMapping(value = "/items", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<SysRepairProjectTemplateItem> createLibraryItemWithFile(@RequestParam String itemName,
+                                                                               @RequestParam(required = false) Integer sortOrder,
+                                                                               @RequestParam MultipartFile file) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        SysRepairProjectTemplateItem request = new SysRepairProjectTemplateItem();
+        request.setItemName(itemName);
+        request.setSortOrder(sortOrder);
+        return ApiResponse.success(docWorkspaceService.saveRepairProjectTemplateItemWithFile(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), request, file));
+    }
+
+    @PutMapping(value = "/items/{itemId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse<SysRepairProjectTemplateItem> updateLibraryItem(@PathVariable Long itemId,
+                                                                       @RequestBody SysRepairProjectTemplateItem request) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        request.setId(itemId);
+        return ApiResponse.success(docWorkspaceService.saveRepairProjectTemplateItem(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), request));
+    }
+
+    @PutMapping(value = "/items/{itemId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<SysRepairProjectTemplateItem> updateLibraryItemWithFile(@PathVariable Long itemId,
+                                                                               @RequestParam String itemName,
+                                                                               @RequestParam(required = false) Integer sortOrder,
+                                                                               @RequestParam MultipartFile file) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        SysRepairProjectTemplateItem request = new SysRepairProjectTemplateItem();
+        request.setId(itemId);
+        request.setItemName(itemName);
+        request.setSortOrder(sortOrder);
+        return ApiResponse.success(docWorkspaceService.saveRepairProjectTemplateItemWithFile(currentUser.userId(), currentUser.deptId(),
+                currentUser.superAdmin(), request, file));
+    }
+
+    @DeleteMapping("/items/{itemId}")
+    public ApiResponse<Void> deleteLibraryItem(@PathVariable Long itemId) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        docWorkspaceService.deleteRepairProjectTemplateItem(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), itemId);
+        return ApiResponse.success();
+    }
+
     @GetMapping("/{id}/items")
     public ApiResponse<List<SysRepairProjectTemplateItem>> items(@PathVariable Long id) {
         CurrentUser currentUser = SecurityUtils.currentUser();

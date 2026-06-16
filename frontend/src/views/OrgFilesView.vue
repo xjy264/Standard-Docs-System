@@ -72,7 +72,7 @@
             </div>
             <div v-if="canManageSection" class="doc-tree-actions">
               <el-button v-if="data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
-              <el-button v-if="data.nodeType === 'FOLDER' && isRepairChildFolder(data)" link type="primary" @click.stop="openImportDialog(data)">从项目模板导入</el-button>
+              <el-button v-if="data.nodeType === 'FOLDER' && isRepairChildFolder(data)" link type="primary" @click.stop="openImportDialog(data)">从模板库导入</el-button>
               <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">新增文件</el-button>
               <el-button link type="primary" @click.stop="openEditDialog(data)">编辑</el-button>
               <el-button link type="danger" @click.stop="deleteNode(data)">删除</el-button>
@@ -156,25 +156,20 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="importDialogOpen" title="从项目模板导入" width="560px">
+    <el-dialog v-model="importDialogOpen" title="从模板库导入" width="560px">
       <el-form label-position="top">
         <el-form-item label="文件年份">
           <el-select v-model="importForm.docYear" style="width: 220px">
             <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
           </el-select>
         </el-form-item>
-        <el-form-item label="项目模板">
-          <el-select v-model="importForm.templateId" style="width: 100%" @change="loadRepairTemplateItems">
-            <el-option v-for="template in repairTemplates" :key="template.id" :label="template.templateName" :value="template.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="模板文件">
+        <el-form-item label="模板库文件">
           <el-checkbox-group v-model="importForm.templateItemIds" class="template-file-list">
             <el-checkbox v-for="item in repairTemplateItems" :key="item.id" :label="item.id">
               {{ item.itemName }}（{{ fileTypeText({ nodeName: item.itemName, nodeType: 'FILE', fileType: item.fileType || 'OTHER' } as DocNode) }}）
             </el-checkbox>
           </el-checkbox-group>
-          <el-empty v-if="!repairTemplateItems.length" description="暂无模板文件" />
+          <el-empty v-if="!repairTemplateItems.length" description="暂无模板库文件" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -202,11 +197,6 @@ interface DeptItem {
   id: number
   deptName: string
   deptType?: string
-}
-
-interface RepairTemplate {
-  id: number
-  templateName: string
 }
 
 interface RepairTemplateItem {
@@ -291,7 +281,6 @@ const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
 const editingFileType = ref<FileType | ''>('')
 const importingParent = ref<DocNode>()
-const repairTemplates = ref<RepairTemplate[]>([])
 const repairTemplateItems = ref<RepairTemplateItem[]>([])
 const currentYear = new Date().getFullYear()
 const selectedYear = ref(currentYear)
@@ -315,9 +304,7 @@ const nodeForm = reactive({
   requirements: [{ requirementName: '文件', description: '', sortOrder: 0 }] as DocUploadRequirement[]
 })
 const importForm = reactive({
-  projectFolderName: '',
   docYear: currentYear,
-  templateId: undefined as number | undefined,
   templateItemIds: [] as number[]
 })
 
@@ -400,37 +387,20 @@ function openFileDialog(parent?: DocNode) {
 
 async function openImportDialog(parent: DocNode) {
   importingParent.value = parent
-  importForm.projectFolderName = ''
   importForm.docYear = parent.docYear || selectedYear.value || currentYear
   importForm.templateItemIds = []
-  repairTemplates.value = await apiGet<RepairTemplate[]>('/repair-project-templates')
-  importForm.templateId = repairTemplates.value[0]?.id
-  await loadRepairTemplateItems()
-  importDialogOpen.value = true
-}
-
-async function loadRepairTemplateItems() {
-  importForm.templateItemIds = []
-  if (!importForm.templateId) {
-    repairTemplateItems.value = []
-    return
-  }
-  repairTemplateItems.value = await apiGet<RepairTemplateItem[]>(`/repair-project-templates/${importForm.templateId}/items`)
+  repairTemplateItems.value = await apiGet<RepairTemplateItem[]>('/repair-project-templates/items')
   importForm.templateItemIds = repairTemplateItems.value.map((item) => item.id)
+  importDialogOpen.value = true
 }
 
 async function submitImportTemplate() {
   if (!importingParent.value) return
-  if (!importForm.templateId) {
-    ElMessage.warning('请选择项目模板')
-    return
-  }
   if (!importForm.templateItemIds.length) {
     ElMessage.warning('请选择模板文件')
     return
   }
   await apiPost<DocNode[]>(`/repair-project-templates/import/${importingParent.value.id}`, {
-    templateId: importForm.templateId,
     templateItemIds: importForm.templateItemIds,
     docYear: importForm.docYear
   })

@@ -1,56 +1,27 @@
 <template>
   <div class="template-page">
     <div class="page-title compact-title">
-      <h2>房建大修项目模板</h2>
+      <h2>房建大修项目模板库</h2>
     </div>
-    <section class="template-layout">
-      <div class="template-main">
-        <div class="toolbar">
-          <el-button type="primary" @click="openTemplateDialog()">新增模板</el-button>
-        </div>
-        <el-table :data="templates" stripe>
-          <el-table-column prop="templateName" label="模板名称" min-width="220" />
-          <el-table-column prop="sortOrder" label="排序" width="100" />
-          <el-table-column label="操作" width="220">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="selectTemplate(row)">资料项</el-button>
-              <el-button link type="primary" @click="openTemplateDialog(row)">编辑</el-button>
-              <el-button link type="danger" @click="deleteTemplate(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+    <section class="template-panel">
+      <div class="toolbar">
+        <el-button type="primary" @click="openItemDialog()">新增模板文件</el-button>
       </div>
-      <div class="template-side">
-        <div class="side-header">
-          <h3>{{ selectedTemplate?.templateName || '模板资料项' }}</h3>
-          <el-button :disabled="!selectedTemplate" type="primary" plain @click="openItemDialog()">新增模板文件</el-button>
-        </div>
-        <el-table v-if="selectedTemplate" :data="templateItems" border>
-          <el-table-column prop="itemName" label="模板文件" min-width="180" />
-          <el-table-column prop="originalFileName" label="文件" min-width="180" />
-          <el-table-column prop="fileType" label="类型" width="100" />
-          <el-table-column prop="sortOrder" label="排序" width="90" />
-          <el-table-column label="操作" width="130">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openItemDialog(row)">编辑</el-button>
-              <el-button link type="danger" @click="deleteItem(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-empty v-else description="请选择模板" />
-      </div>
+      <el-table :data="templateItems" stripe>
+        <el-table-column prop="itemName" label="模板文件" min-width="200" />
+        <el-table-column prop="originalFileName" label="文件" min-width="220" />
+        <el-table-column label="类型" width="100">
+          <template #default="{ row }">{{ fileTypeText(row.fileType) }}</template>
+        </el-table-column>
+        <el-table-column prop="sortOrder" label="排序" width="90" />
+        <el-table-column label="操作" width="140">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openItemDialog(row)">编辑</el-button>
+            <el-button link type="danger" @click="deleteItem(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </section>
-
-    <el-dialog v-model="templateDialogOpen" :title="editingTemplate ? '编辑模板' : '新增模板'" width="520px">
-      <el-form label-position="top">
-        <el-form-item label="模板名称"><el-input v-model="templateForm.templateName" maxlength="128" /></el-form-item>
-        <el-form-item label="排序"><el-input-number v-model="templateForm.sortOrder" :min="0" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="templateDialogOpen = false">取消</el-button>
-        <el-button type="primary" @click="submitTemplate">保存</el-button>
-      </template>
-    </el-dialog>
 
     <el-dialog v-model="itemDialogOpen" :title="editingItem ? '编辑模板文件' : '新增模板文件'" width="560px" @closed="resetItemUpload">
       <el-form label-position="top">
@@ -85,13 +56,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
-import { apiDelete, apiGet, apiPost, apiPut, http } from '../api/http'
-
-interface Template {
-  id: number
-  templateName: string
-  sortOrder: number
-}
+import { apiDelete, apiGet, apiPut, http } from '../api/http'
 
 interface TemplateItem {
   id: number
@@ -102,66 +67,18 @@ interface TemplateItem {
   sortOrder: number
 }
 
-const templates = ref<Template[]>([])
 const templateItems = ref<TemplateItem[]>([])
-const selectedTemplate = ref<Template>()
-const editingTemplate = ref<Template>()
 const editingItem = ref<TemplateItem>()
-const templateDialogOpen = ref(false)
 const itemDialogOpen = ref(false)
-const templateForm = reactive({ templateName: '', sortOrder: 0 })
 const itemForm = reactive({ itemName: '', fileType: 'OTHER', sortOrder: 0 })
 const itemFile = ref<UploadRawFile>()
 const itemUploadRef = ref<any>()
 
-async function loadTemplates() {
-  templates.value = await apiGet<Template[]>('/repair-project-templates')
-  if (selectedTemplate.value) {
-    selectedTemplate.value = templates.value.find((item) => item.id === selectedTemplate.value?.id)
-  }
-}
-
-async function selectTemplate(template: Template) {
-  selectedTemplate.value = template
-  templateItems.value = await apiGet<TemplateItem[]>(`/repair-project-templates/${template.id}/items`)
-}
-
-function openTemplateDialog(template?: Template) {
-  editingTemplate.value = template
-  templateForm.templateName = template?.templateName || ''
-  templateForm.sortOrder = template?.sortOrder || 0
-  templateDialogOpen.value = true
-}
-
-async function submitTemplate() {
-  if (!templateForm.templateName.trim()) {
-    ElMessage.warning('请输入模板名称')
-    return
-  }
-  const body = { templateName: templateForm.templateName.trim(), sortOrder: templateForm.sortOrder }
-  if (editingTemplate.value) {
-    await apiPut(`/repair-project-templates/${editingTemplate.value.id}`, body)
-  } else {
-    await apiPost('/repair-project-templates', body)
-  }
-  templateDialogOpen.value = false
-  ElMessage.success('保存成功')
-  await loadTemplates()
-}
-
-async function deleteTemplate(template: Template) {
-  await ElMessageBox.confirm(`确定删除“${template.templateName}”吗？`, '删除模板', { type: 'warning' })
-  await apiDelete(`/repair-project-templates/${template.id}`)
-  if (selectedTemplate.value?.id === template.id) {
-    selectedTemplate.value = undefined
-    templateItems.value = []
-  }
-  ElMessage.success('删除成功')
-  await loadTemplates()
+async function loadTemplateItems() {
+  templateItems.value = await apiGet<TemplateItem[]>('/repair-project-templates/items')
 }
 
 function openItemDialog(item?: TemplateItem) {
-  if (!selectedTemplate.value) return
   editingItem.value = item
   itemForm.itemName = item?.itemName || ''
   itemForm.fileType = item?.fileType || 'OTHER'
@@ -171,9 +88,8 @@ function openItemDialog(item?: TemplateItem) {
 }
 
 async function submitItem() {
-  if (!selectedTemplate.value) return
   if (!itemForm.itemName.trim()) {
-    ElMessage.warning('请输入资料项名称')
+    ElMessage.warning('请输入模板文件名称')
     return
   }
   if (!editingItem.value && !itemFile.value) {
@@ -186,17 +102,17 @@ async function submitItem() {
     form.append('sortOrder', String(itemForm.sortOrder || 0))
     form.append('file', itemFile.value)
     if (editingItem.value) {
-      await http.put(`/repair-project-templates/${selectedTemplate.value.id}/items/${editingItem.value.id}`, form)
+      await http.put(`/repair-project-templates/items/${editingItem.value.id}`, form)
     } else {
-      await http.post(`/repair-project-templates/${selectedTemplate.value.id}/items`, form)
+      await http.post('/repair-project-templates/items', form)
     }
   } else if (editingItem.value) {
     const body = { itemName: itemForm.itemName.trim(), fileType: itemForm.fileType, sortOrder: itemForm.sortOrder }
-    await apiPut(`/repair-project-templates/${selectedTemplate.value.id}/items/${editingItem.value.id}`, body)
+    await apiPut(`/repair-project-templates/items/${editingItem.value.id}`, body)
   }
   itemDialogOpen.value = false
   ElMessage.success('保存成功')
-  await selectTemplate(selectedTemplate.value)
+  await loadTemplateItems()
 }
 
 function onItemFileChange(_file: UploadFile, files: UploadFiles) {
@@ -253,14 +169,13 @@ function fileTypeText(type: string) {
 }
 
 async function deleteItem(item: TemplateItem) {
-  if (!selectedTemplate.value) return
-  await ElMessageBox.confirm(`确定删除“${item.itemName}”吗？`, '删除资料项', { type: 'warning' })
-  await apiDelete(`/repair-project-templates/${selectedTemplate.value.id}/items/${item.id}`)
+  await ElMessageBox.confirm(`确定删除“${item.itemName}”吗？`, '删除模板文件', { type: 'warning' })
+  await apiDelete(`/repair-project-templates/items/${item.id}`)
   ElMessage.success('删除成功')
-  await selectTemplate(selectedTemplate.value)
+  await loadTemplateItems()
 }
 
-onMounted(loadTemplates)
+onMounted(loadTemplateItems)
 </script>
 
 <style scoped>
@@ -268,43 +183,24 @@ onMounted(loadTemplates)
   margin-bottom: 12px;
 }
 
-.template-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
-  gap: 14px;
-}
-
-.template-main,
-.template-side {
+.template-panel {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 14px;
 }
 
-.toolbar,
-.side-header {
+.toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   margin-bottom: 12px;
-}
-
-.side-header h3 {
-  margin: 0;
-  font-size: 16px;
 }
 
 .current-file {
   margin-top: 8px;
   color: var(--text-secondary);
   font-size: 13px;
-}
-
-@media (max-width: 1000px) {
-  .template-layout {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

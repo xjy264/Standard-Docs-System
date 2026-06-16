@@ -417,6 +417,52 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void repairTemplateLibraryItemsMergeFilesFromAllLegacyTemplates() {
+        Fixtures fx = fixtures();
+        SysRepairProjectTemplateItem contract = templateItem(100L, "施工合同", 20);
+        contract.setId(1000L);
+        SysRepairProjectTemplateItem report = templateItem(101L, "开工报告", 10);
+        report.setId(1001L);
+        when(fx.repairTemplateItemMapper.selectList(any())).thenReturn(List.of(report, contract));
+
+        List<SysRepairProjectTemplateItem> items = fx.service.repairProjectTemplateItems(1L, 26L, true);
+
+        assertThat(items).extracting(SysRepairProjectTemplateItem::getItemName)
+                .containsExactly("开工报告", "施工合同");
+    }
+
+    @Test
+    void repairTemplateLibraryItemCreateUsesHiddenDefaultTemplate() {
+        Fixtures fx = fixtures();
+        when(fx.repairTemplateMapper.selectList(any())).thenReturn(List.of());
+        when(fx.repairTemplateMapper.insert(any(SysRepairProjectTemplate.class))).thenAnswer(invocation -> {
+            SysRepairProjectTemplate template = invocation.getArgument(0);
+            template.setId(200L);
+            return 1;
+        });
+        SysRepairProjectTemplate defaultTemplate = new SysRepairProjectTemplate();
+        defaultTemplate.setId(200L);
+        defaultTemplate.setTemplateName("房建大修模板库");
+        defaultTemplate.setDeleted(0);
+        when(fx.repairTemplateMapper.selectById(200L)).thenReturn(defaultTemplate);
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "repair-templates/default.docx", 100L, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+        MultipartFile file = new MockMultipartFile("file", "施工方案.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "demo".getBytes());
+        SysRepairProjectTemplateItem request = new SysRepairProjectTemplateItem();
+        request.setItemName("施工方案");
+        request.setSortOrder(30);
+
+        fx.service.saveRepairProjectTemplateItemWithFile(1L, 26L, true, request, file);
+
+        ArgumentCaptor<SysRepairProjectTemplate> templateCaptor = ArgumentCaptor.forClass(SysRepairProjectTemplate.class);
+        verify(fx.repairTemplateMapper).insert(templateCaptor.capture());
+        assertThat(templateCaptor.getValue().getTemplateName()).isEqualTo("房建大修模板库");
+        ArgumentCaptor<SysRepairProjectTemplateItem> itemCaptor = ArgumentCaptor.forClass(SysRepairProjectTemplateItem.class);
+        verify(fx.repairTemplateItemMapper).insert(itemCaptor.capture());
+        assertThat(itemCaptor.getValue().getTemplateId()).isEqualTo(200L);
+        assertThat(itemCaptor.getValue().getFileType()).isEqualTo("WORD");
+    }
+
+    @Test
     void repairTemplateImportCopiesSelectedTemplateFilesIntoExistingFolder() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(3L)).thenReturn(dept(3L, 1L, "技术科", "SECTION"));

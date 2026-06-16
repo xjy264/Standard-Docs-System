@@ -56,6 +56,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class DocWorkspaceService {
+    private static final String DEFAULT_REPAIR_TEMPLATE_LIBRARY_NAME = "房建大修模板库";
+
     private final SysDeptMapper deptMapper;
     private final SysUserMapper userMapper;
     private final SysDocCategoryMapper categoryMapper;
@@ -647,6 +649,14 @@ public class DocWorkspaceService {
                 .orderByAsc(SysRepairProjectTemplateItem::getId));
     }
 
+    public List<SysRepairProjectTemplateItem> repairProjectTemplateItems(Long userId, Long userDeptId, boolean superAdmin) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        return repairTemplateItemMapper.selectList(new LambdaQueryWrapper<SysRepairProjectTemplateItem>()
+                .eq(SysRepairProjectTemplateItem::getDeleted, 0)
+                .orderByAsc(SysRepairProjectTemplateItem::getSortOrder)
+                .orderByAsc(SysRepairProjectTemplateItem::getId));
+    }
+
     @Transactional
     public SysRepairProjectTemplateItem saveRepairProjectTemplateItem(Long userId, Long userDeptId, boolean superAdmin, Long templateId,
                                                                       SysRepairProjectTemplateItem request) {
@@ -666,6 +676,14 @@ public class DocWorkspaceService {
             repairTemplateItemMapper.updateById(item);
         }
         return item;
+    }
+
+    @Transactional
+    public SysRepairProjectTemplateItem saveRepairProjectTemplateItem(Long userId, Long userDeptId, boolean superAdmin,
+                                                                      SysRepairProjectTemplateItem request) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        Long templateId = resolveRepairTemplateLibraryId(userId, userDeptId, request);
+        return saveRepairProjectTemplateItem(userId, userDeptId, superAdmin, templateId, request);
     }
 
     @Transactional
@@ -705,6 +723,15 @@ public class DocWorkspaceService {
             repairTemplateItemMapper.updateById(item);
         }
         return item;
+    }
+
+    @Transactional
+    public SysRepairProjectTemplateItem saveRepairProjectTemplateItemWithFile(Long userId, Long userDeptId, boolean superAdmin,
+                                                                               SysRepairProjectTemplateItem request,
+                                                                               MultipartFile file) {
+        requireRepairTemplateManage(userId, userDeptId, superAdmin);
+        Long templateId = resolveRepairTemplateLibraryId(userId, userDeptId, request);
+        return saveRepairProjectTemplateItemWithFile(userId, userDeptId, superAdmin, templateId, request, file);
     }
 
     @Transactional
@@ -1459,6 +1486,32 @@ public class DocWorkspaceService {
             throw new BusinessException("大修项目模板不存在");
         }
         return template;
+    }
+
+    private Long resolveRepairTemplateLibraryId(Long userId, Long userDeptId, SysRepairProjectTemplateItem request) {
+        if (request.getId() != null) {
+            SysRepairProjectTemplateItem item = requireRepairTemplateItem(request.getId());
+            if (item.getTemplateId() != null) {
+                return item.getTemplateId();
+            }
+        }
+        List<SysRepairProjectTemplate> templates = repairTemplateMapper.selectList(new LambdaQueryWrapper<SysRepairProjectTemplate>()
+                .eq(SysRepairProjectTemplate::getTemplateName, DEFAULT_REPAIR_TEMPLATE_LIBRARY_NAME)
+                .eq(SysRepairProjectTemplate::getDeleted, 0)
+                .orderByAsc(SysRepairProjectTemplate::getId));
+        if (!templates.isEmpty()) {
+            return templates.getFirst().getId();
+        }
+        SysRepairProjectTemplate template = new SysRepairProjectTemplate();
+        template.setTemplateName(DEFAULT_REPAIR_TEMPLATE_LIBRARY_NAME);
+        template.setSectionDeptId(userDeptId);
+        template.setSortOrder(0);
+        template.setCreatedBy(userId);
+        template.setCreatedAt(LocalDateTime.now());
+        template.setUpdatedAt(LocalDateTime.now());
+        template.setDeleted(0);
+        repairTemplateMapper.insert(template);
+        return template.getId();
     }
 
     private SysRepairProjectTemplateItem requireRepairTemplateItem(Long id) {
