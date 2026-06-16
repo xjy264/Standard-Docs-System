@@ -2,7 +2,9 @@ package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
 import cn.datong.standard.dto.CurrentUser;
+import cn.datong.standard.dto.DocNodeRestoreRequest;
 import cn.datong.standard.dto.DocNodeRequest;
+import cn.datong.standard.dto.DocRecycleBinItem;
 import cn.datong.standard.entity.SysDocNode;
 import cn.datong.standard.security.SecurityUtils;
 import cn.datong.standard.service.DocWorkspaceService;
@@ -33,6 +35,12 @@ public class DocNodeController {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(docWorkspaceService.documentTree(currentUser.userId(), currentUser.deptId(),
                 currentUser.superAdmin(), sectionDeptId, businessType));
+    }
+
+    @GetMapping("/api/doc-nodes/recycle-bin")
+    public ApiResponse<List<DocRecycleBinItem>> recycleBin(@RequestParam Long sectionDeptId) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        return ApiResponse.success(docWorkspaceService.recycleBinItems(currentUser.deptId(), currentUser.superAdmin(), sectionDeptId));
     }
 
     @PostMapping("/api/doc-nodes/folders")
@@ -100,7 +108,14 @@ public class DocNodeController {
     @DeleteMapping("/api/doc-nodes/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         CurrentUser currentUser = SecurityUtils.currentUser();
-        docWorkspaceService.deleteNode(currentUser.deptId(), currentUser.superAdmin(), id);
+        docWorkspaceService.deleteNode(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/api/doc-nodes/{id}/restore")
+    public ApiResponse<Void> restore(@PathVariable Long id, @RequestBody DocNodeRestoreRequest request) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        docWorkspaceService.restoreNode(currentUser.deptId(), currentUser.superAdmin(), id, request.targetParentId());
         return ApiResponse.success();
     }
 }

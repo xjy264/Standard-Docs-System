@@ -176,7 +176,12 @@ CREATE TABLE IF NOT EXISTS sys_doc_item_attachment (
   storage_path VARCHAR(500) NOT NULL,
   uploaded_by BIGINT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_doc_item_attachment_item (item_id, created_at)
+  deleted TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT NULL,
+  INDEX idx_doc_item_attachment_item (item_id, created_at),
+  INDEX idx_doc_item_attachment_deleted (item_id, deleted, created_at),
+  INDEX idx_doc_item_attachment_cleanup (deleted, deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_repair_project_template (

@@ -28,6 +28,8 @@ public class SysDocNode {
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime deletedAt;
+    private Long deletedBy;
     @TableLogic
     private Integer deleted;
 

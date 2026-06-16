@@ -8,6 +8,7 @@
 
     <section class="doc-tree-panel">
       <div v-if="canManageSection" class="tree-toolbar">
+        <el-button plain @click="openRecycleBin">回收站</el-button>
         <el-button type="primary" plain @click="openFolderDialog()">新增文件夹</el-button>
       </div>
 
@@ -100,11 +101,20 @@
         </el-form-item>
         <template v-if="nodeForm.nodeType === 'FILE'">
           <el-form-item label="文件">
+            <el-alert
+              v-if="dialogMode === 'edit' && editingHasBodyAttachment"
+              title="当前文件已有文件，请先在文件详情页删除原有文件后再上传。"
+              type="warning"
+              show-icon
+              :closable="false"
+              class="body-attachment-alert"
+            />
             <el-upload
               ref="issuedUploadRef"
               class="issued-upload"
               drag
               :auto-upload="false"
+              :disabled="dialogMode === 'edit' && editingHasBodyAttachment"
               :limit="1"
               :on-change="onIssuedFileChange"
               :on-remove="onIssuedFileRemove"
@@ -213,6 +223,11 @@ interface DocUploadRequirement {
   sortOrder: number
 }
 
+interface DocItemAttachment {
+  id: number
+  originalFileName: string
+}
+
 interface DocNode {
   id: number
   sectionDeptId: number
@@ -254,6 +269,7 @@ interface DocItem {
   visibilityScope?: string
   visibleWorkshopIds?: number[]
   requirements?: DocUploadRequirement[]
+  issuedAttachments?: DocItemAttachment[]
 }
 
 interface SavedTreeState {
@@ -280,6 +296,7 @@ const importDialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
 const editingFileType = ref<FileType | ''>('')
+const editingHasBodyAttachment = ref(false)
 const importingParent = ref<DocNode>()
 const repairTemplateItems = ref<RepairTemplateItem[]>([])
 const currentYear = new Date().getFullYear()
@@ -351,6 +368,10 @@ async function loadTree(restore = false) {
   }
 }
 
+function openRecycleBin() {
+  router.push(`/org/${deptId.value}/recycle-bin`)
+}
+
 function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   editingNode.value = undefined
   editingFileType.value = ''
@@ -412,6 +433,7 @@ async function submitImportTemplate() {
 async function openEditDialog(node: DocNode) {
   editingNode.value = node
   dialogMode.value = 'edit'
+  editingHasBodyAttachment.value = false
   nodeForm.nodeType = node.nodeType
   nodeForm.parentId = node.parentId
   nodeForm.nodeName = node.nodeName
@@ -437,6 +459,7 @@ async function openEditDialog(node: DocNode) {
     nodeForm.workshopUploadEnabled = Boolean(item.workshopUploadEnabled)
     nodeForm.uploadDeadline = item.uploadDeadline || ''
     nodeForm.visibleWorkshopIds = item.visibleWorkshopIds || []
+    editingHasBodyAttachment.value = Boolean(item.issuedAttachments?.length)
     nodeForm.requirements = item.requirements?.length
       ? item.requirements.map((requirement, index) => ({
           id: requirement.id,
@@ -563,9 +586,12 @@ async function expandChangedNode(node?: DocNode, previousState?: SavedTreeState)
 }
 
 async function deleteNode(node: DocNode) {
-  await ElMessageBox.confirm(`确定删除“${node.nodeName}”吗？`, '删除资料节点', { type: 'warning' })
+  const message = node.nodeType === 'FILE'
+    ? `确定删除“${node.nodeName}”吗？删除后可在回收站恢复，超过 30 天将自动清理。`
+    : `确定删除“${node.nodeName}”吗？`
+  await ElMessageBox.confirm(message, '删除资料节点', { type: 'warning' })
   await apiDelete(`/doc-nodes/${node.id}`)
-  ElMessage.success('删除成功')
+  ElMessage.success(node.nodeType === 'FILE' ? '已移入回收站' : '删除成功')
   await loadTree(false)
 }
 
@@ -780,6 +806,7 @@ function shouldShowFolderProgress(node: DocNode) {
 
 function handleDialogClosed() {
   issuedFiles.value = []
+  editingHasBodyAttachment.value = false
   issuedUploadRef.value?.clearFiles()
 }
 
@@ -831,6 +858,10 @@ watch(selectedYear, () => {
   display: flex;
   flex-wrap: wrap;
   gap: 18px;
+}
+
+.body-attachment-alert {
+  margin-bottom: 10px;
 }
 
 .year-select {

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,6 +51,13 @@ public class DocSubmissionController {
         CurrentUser currentUser = SecurityUtils.currentUser();
         SysDocItemAttachment attachment = docWorkspaceService.requireItemAttachment(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id);
         downloadObject(response, attachment.getMimeType(), attachment.getOriginalFileName(), attachment.getStorageBucket(), attachment.getStoragePath());
+    }
+
+    @DeleteMapping("/api/doc-item-attachments/{id}")
+    public ApiResponse<Void> deleteItemAttachment(@PathVariable Long id) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        docWorkspaceService.deleteItemAttachment(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id);
+        return ApiResponse.success();
     }
 
     @GetMapping("/api/doc-item-attachments/{id}/preview")

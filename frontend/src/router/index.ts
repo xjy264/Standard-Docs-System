@@ -6,6 +6,7 @@ import LayoutView from '../views/LayoutView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import OrgHomeRedirectView from '../views/OrgHomeRedirectView.vue'
 import OrgFilesView from '../views/OrgFilesView.vue'
+import DocRecycleBinView from '../views/DocRecycleBinView.vue'
 import DocItemDetailView from '../views/DocItemDetailView.vue'
 import DocCategorySettingsView from '../views/DocCategorySettingsView.vue'
 import DocRootFolderSettingsView from '../views/DocRootFolderSettingsView.vue'
@@ -35,6 +36,7 @@ const router = createRouter({
         { path: 'files', redirect: '/org' },
         { path: 'org', name: 'org-home', component: OrgHomeRedirectView },
         { path: 'org/:deptId', name: 'org-root', component: OrgFilesView },
+        { path: 'org/:deptId/recycle-bin', name: 'doc-recycle-bin', component: DocRecycleBinView },
         { path: 'org/:deptId/items/:itemId', name: 'doc-item-detail', component: DocItemDetailView },
         { path: 'console', redirect: '/console/personal' },
         { path: 'console/personal', component: PersonalSpaceView },

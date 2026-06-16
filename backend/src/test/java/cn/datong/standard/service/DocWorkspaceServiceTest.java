@@ -4,6 +4,7 @@ import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.DocNodeRequest;
 import cn.datong.standard.dto.DocUploadRequirementRequest;
 import cn.datong.standard.entity.SysDept;
+import cn.datong.standard.entity.SysDocAttachment;
 import cn.datong.standard.entity.SysDocCategory;
 import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocItemAttachment;
@@ -13,6 +14,7 @@ import cn.datong.standard.entity.SysDocUploadRequirement;
 import cn.datong.standard.entity.SysDocItemWorkshopScope;
 import cn.datong.standard.entity.SysRepairProjectTemplate;
 import cn.datong.standard.entity.SysRepairProjectTemplateItem;
+import cn.datong.standard.dto.DocRecycleBinItem;
 import cn.datong.standard.mapper.SysDeptMapper;
 import cn.datong.standard.mapper.SysDocAttachmentMapper;
 import cn.datong.standard.mapper.SysDocCategoryMapper;
@@ -889,6 +891,144 @@ class DocWorkspaceServiceTest {
         verify(fx.itemAttachmentMapper).insert(any(cn.datong.standard.entity.SysDocItemAttachment.class));
     }
 
+    @Test
+    void sectionUserCannotUploadSecondBodyAttachmentBeforeDeletingExisting() {
+        Fixtures fx = fixtures();
+        when(fx.itemMapper.selectById(9L)).thenReturn(item(9L, null, 2L, false));
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.itemAttachmentMapper.selectList(any())).thenReturn(List.of(itemAttachment(12L, 9L, "旧通知.pdf", "doc-items/old.pdf")));
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("新通知.docx");
+
+        assertThatThrownBy(() -> fx.service.addItemAttachments(20L, 2L, false, 9L, List.of(file)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请先删除原有文件后再上传");
+        verify(fx.storageService, never()).upload(any(), any());
+        verify(fx.itemAttachmentMapper, never()).insert(any(SysDocItemAttachment.class));
+    }
+
+    @Test
+    void sectionUserCanSoftDeleteBodyAttachmentBeforeUploadingAgain() {
+        Fixtures fx = fixtures();
+        SysDocItemAttachment attachment = itemAttachment(12L, 9L, "旧通知.pdf", "doc-items/old.pdf");
+        when(fx.itemAttachmentMapper.selectById(12L)).thenReturn(attachment);
+        when(fx.itemMapper.selectById(9L)).thenReturn(item(9L, null, 2L, false));
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+
+        fx.service.deleteItemAttachment(20L, 2L, false, 12L);
+
+        verify(fx.itemAttachmentMapper).softDeleteById(eqLong(12L), eqLong(20L), any(LocalDateTime.class));
+        verify(fx.storageService, never()).remove(any(), any());
+    }
+
+    @Test
+    void deleteFileMovesNodeAndItemToRecycleBin() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(9L)).thenReturn(node(9L, 2L, 5L, "FILE", "通知", 88L, 2, 10));
+        when(fx.itemMapper.selectById(88L)).thenReturn(item(88L, null, 2L, false));
+
+        fx.service.deleteNode(20L, 2L, false, 9L);
+
+        verify(fx.nodeMapper).softDeleteFileNode(eqLong(9L), eqLong(20L), any(LocalDateTime.class));
+        verify(fx.itemMapper).deleteById(88L);
+        verify(fx.nodeMapper, never()).deleteById(9L);
+        verify(fx.storageService, never()).remove(any(), any());
+    }
+
+    @Test
+    void sectionRecycleBinReturnsOnlyOwnDeletedFiles() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocRecycleBinItem deleted = new DocRecycleBinItem();
+        deleted.setId(9L);
+        deleted.setItemId(88L);
+        deleted.setNodeName("通知");
+        when(fx.nodeMapper.selectRecycleBinItems(2L)).thenReturn(List.of(deleted));
+
+        List<DocRecycleBinItem> items = fx.service.recycleBinItems(2L, false, 2L);
+
+        assertThat(items).extracting(DocRecycleBinItem::getNodeName).containsExactly("通知");
+        verify(fx.nodeMapper).selectRecycleBinItems(2L);
+    }
+
+    @Test
+    void restoreFileRequiresActiveSameSectionTargetFolderAndRejectsNameConflict() {
+        Fixtures fx = fixtures();
+        SysDocNode deleted = node(9L, 2L, 5L, "FILE", "通知", 88L, 2, 10);
+        deleted.setDeleted(1);
+        SysDocNode target = node(11L, 2L, null, "FOLDER", "目标目录", null, 1, 10);
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectIncludingDeleted(9L)).thenReturn(deleted);
+        when(fx.nodeMapper.selectById(11L)).thenReturn(target);
+        when(fx.nodeMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> fx.service.restoreNode(2L, false, 9L, 11L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("目标目录下已存在同名文件");
+        verify(fx.nodeMapper, never()).restoreFileNode(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void restoreFileMovesNodeToSelectedFolderAndRestoresItem() {
+        Fixtures fx = fixtures();
+        SysDocNode deleted = node(9L, 2L, 5L, "FILE", "通知", 88L, 2, 10);
+        deleted.setDeleted(1);
+        SysDocNode target = node(11L, 2L, null, "FOLDER", "目标目录", null, 1, 10);
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectIncludingDeleted(9L)).thenReturn(deleted);
+        when(fx.nodeMapper.selectById(11L)).thenReturn(target);
+        when(fx.nodeMapper.selectCount(any())).thenReturn(0L);
+
+        fx.service.restoreNode(2L, false, 9L, 11L);
+
+        verify(fx.nodeMapper).restoreFileNode(9L, 11L, 2);
+        verify(fx.itemMapper).restoreById(88L);
+    }
+
+    @Test
+    void purgeExpiredRecycleBinRemovesStorageObjectsAndRelatedRowsAfterRetention() {
+        Fixtures fx = fixtures();
+        SysDocNode expired = node(9L, 2L, 5L, "FILE", "通知", 88L, 2, 10);
+        expired.setDeleted(1);
+        expired.setDeletedAt(LocalDateTime.now().minusDays(31));
+        SysDocItemAttachment body = itemAttachment(12L, 88L, "正文.pdf", "doc-items/body.pdf");
+        SysDocAttachment submissionAttachment = docAttachment(33L, 44L, "车间.pdf", "doc-submissions/upload.pdf");
+        when(fx.nodeMapper.selectExpiredDeletedFileNodes(any(LocalDateTime.class))).thenReturn(List.of(expired));
+        when(fx.itemAttachmentMapper.selectAllByItemIdIncludingDeleted(88L)).thenReturn(List.of(body));
+        when(fx.attachmentMapper.selectAllByItemId(88L)).thenReturn(List.of(submissionAttachment));
+
+        int count = fx.service.purgeExpiredRecycleBin(LocalDateTime.now().minusDays(30));
+
+        assertThat(count).isEqualTo(1);
+        verify(fx.storageService).remove("standard-docs", "doc-items/body.pdf");
+        verify(fx.storageService).remove("standard-docs", "doc-submissions/upload.pdf");
+        verify(fx.itemAttachmentMapper).deletePhysicalByItemId(88L);
+        verify(fx.attachmentMapper).deletePhysicalByItemId(88L);
+        verify(fx.submissionMapper).deletePhysicalByItemId(88L);
+        verify(fx.requirementMapper).deletePhysicalByItemId(88L);
+        verify(fx.itemWorkshopScopeMapper).deletePhysicalByItemId(88L);
+        verify(fx.itemMapper).hardDeleteById(88L);
+        verify(fx.nodeMapper).hardDeleteById(9L);
+    }
+
+    @Test
+    void purgeExpiredRecycleBinRemovesStandaloneDeletedBodyAttachmentsAfterRetention() {
+        Fixtures fx = fixtures();
+        SysDocItemAttachment expired = itemAttachment(12L, 88L, "旧正文.pdf", "doc-items/old-body.pdf");
+        expired.setDeleted(1);
+        expired.setDeletedAt(LocalDateTime.now().minusDays(31));
+        when(fx.itemAttachmentMapper.selectExpiredDeletedAttachments(any(LocalDateTime.class))).thenReturn(List.of(expired));
+        when(fx.nodeMapper.selectExpiredDeletedFileNodes(any(LocalDateTime.class))).thenReturn(List.of());
+
+        int count = fx.service.purgeExpiredRecycleBin(LocalDateTime.now().minusDays(30));
+
+        assertThat(count).isEqualTo(1);
+        verify(fx.storageService).remove("standard-docs", "doc-items/old-body.pdf");
+        verify(fx.itemAttachmentMapper).hardDeleteById(12L);
+    }
+
     private Fixtures fixtures() {
         SysDeptMapper deptMapper = mock(SysDeptMapper.class);
         SysUserMapper userMapper = mock(SysUserMapper.class);
@@ -1026,6 +1166,35 @@ class DocWorkspaceServiceTest {
         submission.setSubmitterDeptId(submitterDeptId);
         submission.setUploadUserId(20L);
         return submission;
+    }
+
+    private SysDocItemAttachment itemAttachment(Long id, Long itemId, String originalFileName, String storagePath) {
+        SysDocItemAttachment attachment = new SysDocItemAttachment();
+        attachment.setId(id);
+        attachment.setItemId(itemId);
+        attachment.setOriginalFileName(originalFileName);
+        attachment.setStorageBucket("standard-docs");
+        attachment.setStoragePath(storagePath);
+        attachment.setUploadedBy(20L);
+        attachment.setCreatedAt(LocalDateTime.now());
+        attachment.setDeleted(0);
+        return attachment;
+    }
+
+    private SysDocAttachment docAttachment(Long id, Long submissionId, String originalFileName, String storagePath) {
+        SysDocAttachment attachment = new SysDocAttachment();
+        attachment.setId(id);
+        attachment.setSubmissionId(submissionId);
+        attachment.setOriginalFileName(originalFileName);
+        attachment.setStorageBucket("standard-docs");
+        attachment.setStoragePath(storagePath);
+        attachment.setUploadedBy(20L);
+        attachment.setCreatedAt(LocalDateTime.now());
+        return attachment;
+    }
+
+    private Long eqLong(Long value) {
+        return org.mockito.ArgumentMatchers.eq(value);
     }
 
     private record Fixtures(

@@ -54,3 +54,6 @@ app:
     document-server-url: ${ONLYOFFICE_URL:}
   cad:
     preview-enabled: ${CAD_PREVIEW_ENABLED:false}
+  recycle-bin:
+    retention-days: ${RECYCLE_BIN_RETENTION_DAYS:30}
+    cleanup-cron: ${RECYCLE_BIN_CLEANUP_CRON:0 30 2 * * *}

@@ -3,6 +3,7 @@ package cn.datong.standard.service;
 import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.DeptNavigationItem;
 import cn.datong.standard.dto.DocNodeRequest;
+import cn.datong.standard.dto.DocRecycleBinItem;
 import cn.datong.standard.dto.DocUploadRequirementRequest;
 import cn.datong.standard.entity.SysDept;
 import cn.datong.standard.entity.SysDocAttachment;
@@ -32,6 +33,8 @@ import cn.datong.standard.storage.FileStorageService;
 import cn.datong.standard.storage.StoredObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -57,6 +60,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DocWorkspaceService {
     private static final String DEFAULT_REPAIR_TEMPLATE_LIBRARY_NAME = "房建大修模板库";
+    private static final String BODY_ATTACHMENT_EXISTS_MESSAGE = "请先删除原有文件后再上传";
 
     private final SysDeptMapper deptMapper;
     private final SysUserMapper userMapper;
@@ -72,6 +76,8 @@ public class DocWorkspaceService {
     private final SysRepairProjectTemplateItemMapper repairTemplateItemMapper;
     private final FileStorageService storageService;
     private final OrgAssignmentService orgAssignmentService;
+    @Value("${app.recycle-bin.retention-days:30}")
+    private int recycleBinRetentionDays;
 
     public List<DeptNavigationItem> sections() {
         return sectionDepts().stream()
@@ -322,6 +328,7 @@ public class DocWorkspaceService {
             throw new BusinessException("只有文件可以上传附件");
         }
         SysDocItem item = requireItem(node.getItemId());
+        ensureCanUploadBodyAttachment(item.getId(), 1);
         saveItemAttachment(userId, item.getId(), file);
         String original = file.getOriginalFilename() == null || file.getOriginalFilename().trim().isBlank()
                 ? "未命名文件"
@@ -335,6 +342,11 @@ public class DocWorkspaceService {
 
     @Transactional
     public void deleteNode(Long userDeptId, boolean superAdmin, Long id) {
+        deleteNode(null, userDeptId, superAdmin, id);
+    }
+
+    @Transactional
+    public void deleteNode(Long userId, Long userDeptId, boolean superAdmin, Long id) {
         SysDocNode node = requireNode(id);
         requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
         if ("FOLDER".equalsIgnoreCase(node.getNodeType()) && hasUndeletedDescendant(node)) {
@@ -342,8 +354,51 @@ public class DocWorkspaceService {
         }
         if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
             itemMapper.deleteById(node.getItemId());
+            nodeMapper.softDeleteFileNode(id, userId, LocalDateTime.now());
+            return;
         }
         nodeMapper.deleteById(id);
+    }
+
+    public List<DocRecycleBinItem> recycleBinItems(Long userDeptId, boolean superAdmin, Long sectionDeptId) {
+        requireManageSection(userDeptId, superAdmin, sectionDeptId);
+        return nodeMapper.selectRecycleBinItems(sectionDeptId);
+    }
+
+    @Transactional
+    public void restoreNode(Long userDeptId, boolean superAdmin, Long id, Long targetParentId) {
+        if (targetParentId == null) {
+            throw new BusinessException("请选择恢复目录");
+        }
+        SysDocNode node = nodeMapper.selectIncludingDeleted(id);
+        if (node == null || !"FILE".equalsIgnoreCase(node.getNodeType()) || !Objects.equals(node.getDeleted(), 1)) {
+            throw new BusinessException("文件不在回收站");
+        }
+        requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
+        SysDocNode target = requireNode(targetParentId);
+        if (!"FOLDER".equalsIgnoreCase(target.getNodeType())) {
+            throw new BusinessException("请选择文件夹作为恢复目录");
+        }
+        if (!Objects.equals(target.getSectionDeptId(), node.getSectionDeptId())) {
+            throw new BusinessException("恢复目录不属于原科室");
+        }
+        Long sameNameCount = Objects.requireNonNullElse(nodeMapper.selectCount(new LambdaQueryWrapper<SysDocNode>()
+                .eq(SysDocNode::getSectionDeptId, node.getSectionDeptId())
+                .eq(SysDocNode::getParentId, targetParentId)
+                .eq(SysDocNode::getNodeName, node.getNodeName())
+                .eq(SysDocNode::getNodeType, "FILE")
+                .eq(SysDocNode::getDeleted, 0)), 0L);
+        if (sameNameCount > 0) {
+            throw new BusinessException("目标目录下已存在同名文件，请选择其他目录或先处理同名文件");
+        }
+        int level = target.getLevel() == null ? 2 : target.getLevel() + 1;
+        if (level > 5) {
+            throw new BusinessException("目录层级最多支持五层");
+        }
+        nodeMapper.restoreFileNode(id, targetParentId, level);
+        if (node.getItemId() != null) {
+            itemMapper.restoreById(node.getItemId());
+        }
     }
 
     public SysDocCategory createCategory(Long userId, Long userDeptId, boolean superAdmin, SysDocCategory request) {
@@ -581,10 +636,22 @@ public class DocWorkspaceService {
         if (uploadFiles.isEmpty()) {
             throw new BusinessException("请上传附件");
         }
+        ensureCanUploadBodyAttachment(item.getId(), uploadFiles.size());
         for (MultipartFile file : uploadFiles) {
             saveItemAttachment(userId, item.getId(), file);
         }
         return itemAttachments(item.getId());
+    }
+
+    @Transactional
+    public void deleteItemAttachment(Long userId, Long userDeptId, boolean superAdmin, Long attachmentId) {
+        SysDocItemAttachment attachment = itemAttachmentMapper.selectById(attachmentId);
+        if (attachment == null || Objects.equals(attachment.getDeleted(), 1)) {
+            throw new BusinessException("附件不存在");
+        }
+        SysDocItem item = requireItem(attachment.getItemId());
+        requireManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
+        itemAttachmentMapper.softDeleteById(attachmentId, userId, LocalDateTime.now());
     }
 
     public SysDocItemAttachment requireItemAttachment(Long attachmentId) {
@@ -943,7 +1010,32 @@ public class DocWorkspaceService {
         attachment.setStoragePath(stored.objectName());
         attachment.setUploadedBy(userId);
         attachment.setCreatedAt(LocalDateTime.now());
+        attachment.setDeleted(0);
         itemAttachmentMapper.insert(attachment);
+    }
+
+    @Scheduled(cron = "${app.recycle-bin.cleanup-cron:0 30 2 * * *}")
+    @Transactional
+    public void purgeExpiredRecycleBin() {
+        int retentionDays = recycleBinRetentionDays <= 0 ? 30 : recycleBinRetentionDays;
+        purgeExpiredRecycleBin(LocalDateTime.now().minusDays(retentionDays));
+    }
+
+    @Transactional
+    public int purgeExpiredRecycleBin(LocalDateTime cutoff) {
+        List<SysDocNode> expiredNodes = nodeMapper.selectExpiredDeletedFileNodes(cutoff);
+        for (SysDocNode node : expiredNodes) {
+            if (node.getItemId() != null) {
+                purgeItemStorageAndRows(node.getItemId());
+            }
+            nodeMapper.hardDeleteById(node.getId());
+        }
+        List<SysDocItemAttachment> expiredAttachments = itemAttachmentMapper.selectExpiredDeletedAttachments(cutoff);
+        for (SysDocItemAttachment attachment : expiredAttachments) {
+            removeStoredObject(attachment.getStorageBucket(), attachment.getStoragePath());
+            itemAttachmentMapper.hardDeleteById(attachment.getId());
+        }
+        return expiredNodes.size() + expiredAttachments.size();
     }
 
     private byte[] readTemplateFile(SysRepairProjectTemplateItem templateItem) {
@@ -965,8 +1057,40 @@ public class DocWorkspaceService {
     private List<SysDocItemAttachment> itemAttachments(Long itemId) {
         return itemAttachmentMapper.selectList(new LambdaQueryWrapper<SysDocItemAttachment>()
                 .eq(SysDocItemAttachment::getItemId, itemId)
+                .eq(SysDocItemAttachment::getDeleted, 0)
                 .orderByAsc(SysDocItemAttachment::getCreatedAt)
                 .orderByAsc(SysDocItemAttachment::getId));
+    }
+
+    private void ensureCanUploadBodyAttachment(Long itemId, int uploadFileCount) {
+        if (uploadFileCount != 1) {
+            throw new BusinessException("一次只能上传一个文件");
+        }
+        if (!itemAttachments(itemId).isEmpty()) {
+            throw new BusinessException(BODY_ATTACHMENT_EXISTS_MESSAGE);
+        }
+    }
+
+    private void purgeItemStorageAndRows(Long itemId) {
+        for (SysDocItemAttachment attachment : itemAttachmentMapper.selectAllByItemIdIncludingDeleted(itemId)) {
+            removeStoredObject(attachment.getStorageBucket(), attachment.getStoragePath());
+        }
+        for (SysDocAttachment attachment : attachmentMapper.selectAllByItemId(itemId)) {
+            removeStoredObject(attachment.getStorageBucket(), attachment.getStoragePath());
+        }
+        itemAttachmentMapper.deletePhysicalByItemId(itemId);
+        attachmentMapper.deletePhysicalByItemId(itemId);
+        submissionMapper.deletePhysicalByItemId(itemId);
+        requirementMapper.deletePhysicalByItemId(itemId);
+        itemWorkshopScopeMapper.deletePhysicalByItemId(itemId);
+        itemMapper.hardDeleteById(itemId);
+    }
+
+    private void removeStoredObject(String bucket, String storagePath) {
+        if (bucket == null || bucket.isBlank() || storagePath == null || storagePath.isBlank()) {
+            return;
+        }
+        storageService.remove(bucket, storagePath);
     }
 
     private void fillNodeItemInfo(List<SysDocNode> nodes) {

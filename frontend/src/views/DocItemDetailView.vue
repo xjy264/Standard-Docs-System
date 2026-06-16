@@ -9,6 +9,7 @@
         </p>
       </div>
       <div class="header-actions">
+        <el-button v-if="canManageSection && !primaryAttachment" type="primary" @click="openIssuedUpload">上传文件</el-button>
         <el-button v-if="canManageSection && workshopUploadEnabled" @click="openRecords">车间提交记录</el-button>
       </div>
     </div>
@@ -20,13 +21,15 @@
       <el-table v-if="item?.issuedAttachments?.length" :data="item.issuedAttachments" border>
         <el-table-column prop="originalFileName" label="文件" />
         <el-table-column prop="createdAt" label="上传时间" width="180" />
-        <el-table-column label="操作" width="100">
+        <el-table-column label="操作" width="160">
           <template #default="{ row }">
             <el-button link type="primary" @click="downloadIssuedAttachment(row)">下载</el-button>
+            <el-button v-if="canManageSection" link type="danger" @click="deleteIssuedAttachment(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
       <el-empty v-else description="暂无文件" />
+      <p v-if="canManageSection && primaryAttachment" class="body-attachment-hint">请先删除原有文件后再上传。</p>
       <div v-if="item?.issuedAttachments?.length" class="inline-preview-section">
         <div class="section-heading">
           <h3>文件预览</h3>
@@ -118,10 +121,11 @@
         ref="issuedUploadRef"
         class="attachment-upload"
         drag
-        multiple
         :auto-upload="false"
+        :limit="1"
         :on-change="onIssuedFileChange"
         :on-remove="onIssuedFileRemove"
+        :on-exceed="onIssuedFileExceed"
       >
         <div>拖拽文件到此处，或点击选择文件</div>
       </el-upload>
@@ -157,10 +161,10 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { apiGet, http } from '../api/http'
+import { apiDelete, apiGet, http } from '../api/http'
 import { useAuthStore } from '../stores/auth'
 
 interface DocUploadRequirement {
@@ -322,12 +326,32 @@ function onIssuedFileRemove(_file: UploadFile, files: UploadFiles) {
 }
 
 function syncIssuedFiles(files: UploadFiles) {
-  issuedAttachmentFiles.value = files.map((file) => file.raw).filter((file): file is UploadRawFile => Boolean(file))
+  issuedAttachmentFiles.value = files.slice(0, 1).map((file) => file.raw).filter((file): file is UploadRawFile => Boolean(file))
+}
+
+function onIssuedFileExceed() {
+  ElMessage.warning('一次只能上传一个文件')
+}
+
+function openIssuedUpload() {
+  if (primaryAttachment.value) {
+    ElMessage.warning('请先删除原有文件后再上传')
+    return
+  }
+  issuedUploadOpen.value = true
 }
 
 async function submitIssuedAttachments() {
+  if (primaryAttachment.value) {
+    ElMessage.warning('请先删除原有文件后再上传')
+    return
+  }
   if (!issuedAttachmentFiles.value.length) {
     ElMessage.warning('请选择文件')
+    return
+  }
+  if (issuedAttachmentFiles.value.length !== 1) {
+    ElMessage.warning('一次只能上传一个文件')
     return
   }
   submittingIssued.value = true
@@ -346,6 +370,13 @@ async function submitIssuedAttachments() {
 function resetIssuedUpload() {
   issuedAttachmentFiles.value = []
   issuedUploadRef.value?.clearFiles()
+}
+
+async function deleteIssuedAttachment(attachment: DocItemAttachment) {
+  await ElMessageBox.confirm(`确定删除“${attachment.originalFileName}”吗？删除后可重新上传文件。`, '删除文件', { type: 'warning' })
+  await apiDelete(`/doc-item-attachments/${attachment.id}`)
+  ElMessage.success('删除成功')
+  await load()
 }
 
 async function openRecords() {
@@ -560,6 +591,12 @@ watch(() => route.params.itemId, load)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.body-attachment-hint {
+  margin: 10px 0 0;
+  color: #8a6d3b;
+  font-size: 13px;
 }
 
 .rich-content {

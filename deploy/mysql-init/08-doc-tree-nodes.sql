@@ -72,10 +72,13 @@ CREATE TABLE IF NOT EXISTS sys_doc_node (
   created_by BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT NULL,
   deleted TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_doc_node_section (section_dept_id, deleted, sort_order),
   INDEX idx_doc_node_parent (parent_id, deleted, sort_order),
-  INDEX idx_doc_node_item (item_id, deleted)
+  INDEX idx_doc_node_item (item_id, deleted),
+  INDEX idx_doc_node_recycle (section_dept_id, node_type, deleted, deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO sys_doc_node (
