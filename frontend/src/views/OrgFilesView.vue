@@ -101,20 +101,38 @@
         </el-form-item>
         <template v-if="nodeForm.nodeType === 'FILE'">
           <el-form-item label="文件">
+            <div v-if="showExistingBodyAttachment" class="body-attachment-card">
+              <div class="body-attachment-info">
+                <span class="body-attachment-name">{{ editingBodyAttachment?.originalFileName || '文件' }}</span>
+                <span v-if="editingBodyAttachmentTime" class="body-attachment-meta">上传时间：{{ editingBodyAttachmentTime }}</span>
+              </div>
+              <div class="body-attachment-actions">
+                <el-button link type="primary" @click="downloadBodyAttachment(editingBodyAttachment)">下载</el-button>
+                <el-button link type="danger" @click="markBodyAttachmentDeletePending">删除</el-button>
+              </div>
+            </div>
             <el-alert
-              v-if="dialogMode === 'edit' && editingHasBodyAttachment"
-              title="当前文件已有文件，请先在文件详情页删除原有文件后再上传。"
+              v-if="bodyAttachmentDeletePending"
+              title="已选择删除，保存后生效。"
               type="warning"
               show-icon
               :closable="false"
               class="body-attachment-alert"
             />
+            <div v-if="selectedBodyAttachmentFile" class="body-attachment-card">
+              <div class="body-attachment-info">
+                <span class="body-attachment-name">待上传：{{ selectedBodyAttachmentFile.name }}</span>
+              </div>
+              <div class="body-attachment-actions">
+                <el-button link type="danger" @click="removePendingBodyAttachmentFile">移除</el-button>
+              </div>
+            </div>
             <el-upload
+              v-if="showBodyAttachmentDropzone"
               ref="issuedUploadRef"
               class="issued-upload"
               drag
               :auto-upload="false"
-              :disabled="dialogMode === 'edit' && editingHasBodyAttachment"
               :limit="1"
               :on-change="onIssuedFileChange"
               :on-remove="onIssuedFileRemove"
@@ -226,6 +244,8 @@ interface DocUploadRequirement {
 interface DocItemAttachment {
   id: number
   originalFileName: string
+  createdAt?: string
+  uploadTime?: string
 }
 
 interface DocNode {
@@ -296,7 +316,8 @@ const importDialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const editingNode = ref<DocNode>()
 const editingFileType = ref<FileType | ''>('')
-const editingHasBodyAttachment = ref(false)
+const editingBodyAttachment = ref<DocItemAttachment>()
+const bodyAttachmentDeletePending = ref(false)
 const importingParent = ref<DocNode>()
 const repairTemplateItems = ref<RepairTemplateItem[]>([])
 const currentYear = new Date().getFullYear()
@@ -339,6 +360,20 @@ const searchResultFiles = computed(() => {
     return matchesYear && matchesKeyword
   })
 })
+const selectedBodyAttachmentFile = computed(() => issuedFiles.value[0])
+const showExistingBodyAttachment = computed(() =>
+  nodeForm.nodeType === 'FILE'
+  && dialogMode.value === 'edit'
+  && Boolean(editingBodyAttachment.value)
+  && !bodyAttachmentDeletePending.value
+  && !selectedBodyAttachmentFile.value
+)
+const showBodyAttachmentDropzone = computed(() =>
+  nodeForm.nodeType === 'FILE'
+  && !showExistingBodyAttachment.value
+  && !selectedBodyAttachmentFile.value
+)
+const editingBodyAttachmentTime = computed(() => formatBodyAttachmentTime(editingBodyAttachment.value))
 const emptyDescription = computed(() => {
   if (searchMode.value) return '暂无匹配文件'
   if (!yearTreeData.value.length) return '暂无文件'
@@ -375,6 +410,8 @@ function openRecycleBin() {
 function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   editingNode.value = undefined
   editingFileType.value = ''
+  editingBodyAttachment.value = undefined
+  bodyAttachmentDeletePending.value = false
   dialogMode.value = 'create'
   nodeForm.nodeType = type
   nodeForm.parentId = parent?.id
@@ -433,7 +470,8 @@ async function submitImportTemplate() {
 async function openEditDialog(node: DocNode) {
   editingNode.value = node
   dialogMode.value = 'edit'
-  editingHasBodyAttachment.value = false
+  editingBodyAttachment.value = undefined
+  bodyAttachmentDeletePending.value = false
   nodeForm.nodeType = node.nodeType
   nodeForm.parentId = node.parentId
   nodeForm.nodeName = node.nodeName
@@ -459,7 +497,7 @@ async function openEditDialog(node: DocNode) {
     nodeForm.workshopUploadEnabled = Boolean(item.workshopUploadEnabled)
     nodeForm.uploadDeadline = item.uploadDeadline || ''
     nodeForm.visibleWorkshopIds = item.visibleWorkshopIds || []
-    editingHasBodyAttachment.value = Boolean(item.issuedAttachments?.length)
+    editingBodyAttachment.value = item.issuedAttachments?.[0]
     nodeForm.requirements = item.requirements?.length
       ? item.requirements.map((requirement, index) => ({
           id: requirement.id,
@@ -518,11 +556,22 @@ async function submitNode() {
   const treeStateBeforeSave = captureTreeState([nodeForm.parentId])
   let changedNode: DocNode | undefined
   if (dialogMode.value === 'edit' && editingNode.value) {
-    if (nodeForm.nodeType === 'FILE' && issuedFiles.value.length) {
-      const response = await http.put(`/doc-nodes/${editingNode.value.id}`, buildFileForm(issuedFiles.value[0]))
+    const pendingBodyFile = selectedBodyAttachmentFile.value
+    const shouldDeleteBodyAttachment = nodeForm.nodeType === 'FILE'
+      && bodyAttachmentDeletePending.value
+      && Boolean(editingBodyAttachment.value)
+    if (nodeForm.nodeType === 'FILE' && pendingBodyFile && shouldDeleteBodyAttachment) {
+      await deleteEditingBodyAttachment()
+      const response = await http.put(`/doc-nodes/${editingNode.value.id}`, buildFileForm(pendingBodyFile))
+      changedNode = response.data.data
+    } else if (nodeForm.nodeType === 'FILE' && pendingBodyFile) {
+      const response = await http.put(`/doc-nodes/${editingNode.value.id}`, buildFileForm(pendingBodyFile))
       changedNode = response.data.data
     } else {
       changedNode = await apiPut<DocNode>(`/doc-nodes/${editingNode.value.id}`, body)
+      if (shouldDeleteBodyAttachment) {
+        await deleteEditingBodyAttachment()
+      }
     }
   } else if (nodeForm.nodeType === 'FOLDER') {
     changedNode = await apiPost<DocNode>('/doc-nodes/folders', body)
@@ -699,6 +748,54 @@ function onIssuedFileExceed() {
   ElMessage.warning('只能上传一个文件')
 }
 
+function markBodyAttachmentDeletePending() {
+  if (!editingBodyAttachment.value) {
+    return
+  }
+  bodyAttachmentDeletePending.value = true
+  issuedFiles.value = []
+  issuedUploadRef.value?.clearFiles()
+}
+
+function removePendingBodyAttachmentFile() {
+  issuedFiles.value = []
+  issuedUploadRef.value?.clearFiles()
+  nodeForm.fileType = dialogMode.value === 'edit' ? editingFileType.value || 'OTHER' : 'OTHER'
+}
+
+async function downloadBodyAttachment(attachment?: DocItemAttachment) {
+  if (!attachment) {
+    return
+  }
+  const response = await http.get(`/doc-item-attachments/${attachment.id}/download`, { responseType: 'blob' })
+  downloadBlob(response.data, attachment.originalFileName || '文件')
+}
+
+async function deleteEditingBodyAttachment() {
+  if (!editingBodyAttachment.value) {
+    return
+  }
+  await apiDelete(`/doc-item-attachments/${editingBodyAttachment.value.id}`)
+  editingBodyAttachment.value = undefined
+  bodyAttachmentDeletePending.value = false
+}
+
+function formatBodyAttachmentTime(attachment?: DocItemAttachment) {
+  return attachment?.createdAt || attachment?.uploadTime || ''
+}
+
+function downloadBlob(data: BlobPart, filename: string) {
+  const blob = new Blob([data])
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 function saveTreeState() {
   const state = captureTreeState()
   sessionStorage.setItem(treeStateKey.value, JSON.stringify(state))
@@ -806,7 +903,8 @@ function shouldShowFolderProgress(node: DocNode) {
 
 function handleDialogClosed() {
   issuedFiles.value = []
-  editingHasBodyAttachment.value = false
+  editingBodyAttachment.value = undefined
+  bodyAttachmentDeletePending.value = false
   issuedUploadRef.value?.clearFiles()
 }
 
@@ -862,6 +960,46 @@ watch(selectedYear, () => {
 
 .body-attachment-alert {
   margin-bottom: 10px;
+}
+
+.body-attachment-card {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.body-attachment-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.body-attachment-name {
+  overflow: hidden;
+  color: #1f2d3d;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body-attachment-meta {
+  color: #637083;
+  font-size: 13px;
+}
+
+.body-attachment-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .year-select {
