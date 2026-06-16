@@ -78,7 +78,7 @@
 - `POST /api/doc-items/{id}/issued-attachments`：本科室用户或超级管理员上传下达文件附件，使用 `multipart/form-data`。
 - `POST /api/doc-items/{id}/body-attachments`：本科室用户或超级管理员上传文件正文附件，使用 `multipart/form-data`；同一文件同一时间只允许一个当前有效正文附件，已有附件时必须先删除原有文件后再上传。
 - `GET /api/doc-item-attachments/{id}/download`：下载下达文件附件。
-- `GET /api/doc-item-attachments/{id}/preview`：查询下达文件附件预览信息；PDF 和图片返回 `inline` 预览地址，Word、Excel、PPT 返回 OnlyOffice 预览配置，未配置 OnlyOffice 时返回普通用户可读提示。前端本地开发时默认将 Office 文件下载地址指向 `http://host.docker.internal:8010`，特殊部署可通过 `VITE_ONLYOFFICE_FILE_BASE` 覆盖。
+- `GET /api/doc-item-attachments/{id}/preview`：查询下达文件附件预览信息；PDF 和图片返回 `inline` 预览地址，Word、Excel、PPT 返回 OnlyOffice 预览配置，未配置 OnlyOffice 时返回普通用户可读提示。前端本地开发时默认将 Office 文件下载地址指向 `http://host.docker.internal:8010`，OnlyOffice 容器需配置 `ONLYOFFICE_ALLOW_PRIVATE_IP_ADDRESS=true` 才能拉取本机后端文件；特殊部署可通过 `VITE_ONLYOFFICE_FILE_BASE` 覆盖。
 - `GET /api/doc-item-attachments/{id}/inline`：下达文件附件内联预览文件流，支持 PDF 和图片直接在浏览器中预览。
 - `DELETE /api/doc-item-attachments/{id}`：本科室用户或超级管理员软删除文件正文附件，真实文件暂不删除；被删除附件不再展示、下载或预览。
 - `GET /api/submissions/{id}`：查看上传记录详情。
