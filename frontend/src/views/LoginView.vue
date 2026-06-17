@@ -38,7 +38,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const captchaRef = ref<InstanceType<typeof SliderCaptcha> | null>(null)
-const form = reactive({ phone: '00000000000', password: 'Admin12345@@', captchaKey: '', captchaCode: '' })
+const form = reactive({ phone: '', password: '', captchaKey: '', captchaCode: '' })
 
 function resetCaptchaState() {
   form.captchaKey = ''
