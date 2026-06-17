@@ -58,7 +58,7 @@
           <el-button type="primary" plain @click="router.push('/org')">资料目录</el-button>
           <el-button plain @click="router.push('/console/personal')">个人提醒</el-button>
           <el-button v-if="auth.hasPermission('user:view')" plain @click="router.push('/console/users')">用户管理</el-button>
-          <el-button v-if="auth.hasPermission('user:approve')" plain @click="router.push('/approvals')">注册审核</el-button>
+          <el-button v-if="auth.hasPermission('user:approve')" plain @click="router.push('/console/approvals')">注册审核</el-button>
         </div>
       </section>
     </div>

@@ -21,6 +21,9 @@ public class SysDocSubmission {
     private Long submitterDeptId;
     private Long uploadUserId;
     private LocalDateTime submittedAt;
+    private Integer deleted;
+    private LocalDateTime deletedAt;
+    private Long deletedBy;
 
     @TableField(exist = false)
     private String sectionDeptName;
@@ -38,4 +41,10 @@ public class SysDocSubmission {
     private Integer attachmentCount;
     @TableField(exist = false)
     private List<SysDocAttachment> attachments;
+    @TableField(exist = false)
+    private Boolean ownSubmission;
+    @TableField(exist = false)
+    private Boolean downloadAllowed;
+    @TableField(exist = false)
+    private Boolean deleteAllowed;
 }

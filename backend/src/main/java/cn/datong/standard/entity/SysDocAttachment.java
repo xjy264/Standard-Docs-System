@@ -23,6 +23,9 @@ public class SysDocAttachment {
     private String storagePath;
     private Long uploadedBy;
     private LocalDateTime createdAt;
+    private Integer deleted;
+    private LocalDateTime deletedAt;
+    private Long deletedBy;
 
     @TableField(exist = false)
     private String uploadedByName;

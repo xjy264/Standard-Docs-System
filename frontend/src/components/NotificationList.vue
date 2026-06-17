@@ -3,7 +3,9 @@
     <el-table-column prop="title" label="标题" />
     <el-table-column prop="content" label="内容" />
     <el-table-column prop="readStatus" label="状态" width="100" />
-    <el-table-column prop="createdAt" label="时间" width="180" />
+    <el-table-column label="时间" width="180">
+      <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+    </el-table-column>
     <el-table-column label="操作" width="100">
       <template #default="{ row }">
         <el-button link type="primary" @click="read(row)">已读</el-button>
@@ -15,6 +17,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { apiGet, apiPost } from '../api/http'
+import { formatDateTime } from '../utils/dateTime'
 
 const rows = ref<any[]>([])
 

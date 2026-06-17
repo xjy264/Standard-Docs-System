@@ -132,7 +132,7 @@ async function loadDepts() {
 }
 
 function openApprovals() {
-  router.push('/approvals')
+  router.push('/console/approvals')
 }
 
 function edit(row: any) {

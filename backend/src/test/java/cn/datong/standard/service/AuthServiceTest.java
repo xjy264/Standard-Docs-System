@@ -224,6 +224,64 @@ class AuthServiceTest {
     }
 
     @Test
+    void registerRejectsInvalidRealNameBeforeCreatingUser() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                mock(PasswordEncoder.class),
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest(
+                "Password123!",
+                "Password123!",
+                "ZhangSan",
+                "13800000000",
+                25L,
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("真实姓名需为2-10位中文或中间点");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
+    void registerRejectsInvalidPhoneBeforeCreatingUser() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                mock(PasswordEncoder.class),
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest(
+                "Password123!",
+                "Password123!",
+                "张三",
+                "12800000000",
+                25L,
+                "captcha-id",
+                CaptchaService.SLIDER_PASSED_CODE
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("请输入正确的手机号");
+
+        verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
     void registerRejectsDuplicatedPhone() {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         when(userMapper.selectCount(any())).thenReturn(1L);
@@ -281,7 +339,7 @@ class AuthServiceTest {
         service.register(new RegisterRequest(
                 "Password123!",
                 "Password123!",
-                "权限测试_注册用户",
+                "张三",
                 "13800000000",
                 25L,
                 "captcha-id",
@@ -342,7 +400,79 @@ class AuthServiceTest {
                 null
         ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("用户未审批或已禁用");
+                .hasMessage("管理员审核中");
+    }
+
+    @Test
+    void rejectedRegisteredUserSeesRejectedMessage() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        SysUser user = new SysUser();
+        user.setId(100L);
+        user.setPhone("13800000000");
+        user.setPassword("encoded-password");
+        user.setStatus("DISABLED");
+        user.setApprovalStatus("REJECTED");
+        when(userMapper.selectOne(any())).thenReturn(user);
+        when(passwordEncoder.matches("Password123", "encoded-password")).thenReturn(true);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                passwordEncoder,
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.login(
+                new LoginRequest(
+                        "13800000000",
+                        "Password123",
+                        "captcha-id",
+                        CaptchaService.SLIDER_PASSED_CODE
+                ),
+                null
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("注册申请已被拒绝，请联系管理员");
+    }
+
+    @Test
+    void disabledApprovedUserSeesDisabledMessage() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        SysUser user = new SysUser();
+        user.setId(100L);
+        user.setPhone("13800000000");
+        user.setPassword("encoded-password");
+        user.setStatus("DISABLED");
+        user.setApprovalStatus("APPROVED");
+        when(userMapper.selectOne(any())).thenReturn(user);
+        when(passwordEncoder.matches("Password123", "encoded-password")).thenReturn(true);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                passwordEncoder,
+                mock(CaptchaService.class),
+                mock(JwtTokenProvider.class),
+                mock(PermissionService.class),
+                mock(OperationLogService.class),
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.login(
+                new LoginRequest(
+                        "13800000000",
+                        "Password123",
+                        "captcha-id",
+                        CaptchaService.SLIDER_PASSED_CODE
+                ),
+                null
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("账号已禁用，请联系管理员");
     }
 
     @Test

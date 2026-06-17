@@ -189,7 +189,11 @@ class UserAdminServiceTest {
         SysUser otherDept = user(5L, 26L, false);
         otherDept.setRealName("张六");
         otherDept.setPhone("13900000004");
-        when(userMapper.selectList(any())).thenReturn(List.of(target, otherName, otherPhone, otherDept));
+        SysUser rejected = user(6L, 25L, false);
+        rejected.setRealName("张七");
+        rejected.setPhone("13900000005");
+        rejected.setApprovalStatus("REJECTED");
+        when(userMapper.selectList(any())).thenReturn(List.of(target, otherName, otherPhone, otherDept, rejected));
         when(orgAssignmentService.adminUserIds()).thenReturn(Set.of());
         when(orgAssignmentService.deptNames()).thenReturn(Map.of(25L, "计财科", 26L, "技术科"));
         UserAdminService service = new UserAdminService(
@@ -249,6 +253,9 @@ class UserAdminServiceTest {
         user.setDeptId(deptId);
         user.setIsSuperAdmin(superAdmin);
         user.setRealName("用户" + id);
+        user.setPhone("13900000000");
+        user.setApprovalStatus("APPROVED");
+        user.setDeleted(0);
         return user;
     }
 

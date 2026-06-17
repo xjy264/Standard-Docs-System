@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -99,6 +100,8 @@ public class UserAdminService {
         Long filterDeptId = effectiveDeptId;
         String nameFilter = hasText(realName) ? realName : keyword;
         List<SysUser> users = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getDeleted, 0)
+                .eq(SysUser::getApprovalStatus, "APPROVED")
                 .eq(filterDeptId != null, SysUser::getDeptId, filterDeptId)
                 .like(hasText(nameFilter), SysUser::getRealName, nameFilter)
                 .like(hasText(phone), SysUser::getPhone, phone));
@@ -106,6 +109,8 @@ public class UserAdminService {
         Map<Long, String> deptNames = orgAssignmentService.deptNames();
         return users.stream()
                 .filter(user -> filterDeptId == null || filterDeptId.equals(user.getDeptId()))
+                .filter(user -> Objects.equals(user.getDeleted(), 0))
+                .filter(user -> "APPROVED".equals(user.getApprovalStatus()))
                 .filter(user -> !hasText(nameFilter) || contains(user.getRealName(), nameFilter))
                 .filter(user -> !hasText(phone) || contains(user.getPhone(), phone))
                 .map(user -> toUserView(user, adminUserIds.contains(user.getId()), deptNames.get(user.getDeptId())))

@@ -9,7 +9,9 @@
             <el-table-column prop="operationType" label="操作类型" width="160" />
             <el-table-column prop="objectType" label="对象类型" width="120" />
             <el-table-column prop="result" label="结果" width="100" />
-            <el-table-column prop="createdAt" label="操作时间" />
+            <el-table-column label="操作时间">
+              <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="登录日志" name="logins">
@@ -17,7 +19,9 @@
             <el-table-column prop="username" label="手机号" />
             <el-table-column prop="result" label="结果" width="100" />
             <el-table-column prop="failReason" label="失败原因" />
-            <el-table-column prop="createdAt" label="时间" />
+            <el-table-column label="时间">
+              <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
       </el-tabs>
@@ -28,6 +32,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { apiGet } from '../api/http'
+import { formatDateTime } from '../utils/dateTime'
 
 const active = ref('operations')
 const operations = ref<any[]>([])

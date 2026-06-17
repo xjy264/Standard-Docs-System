@@ -14,8 +14,8 @@
 
 - `GET /api/auth/captcha`：获取滑块验证码。
 - `POST /api/auth/captcha/check`：校验滑块轨迹，返回登录和注册使用的一次性验证码凭证。
-- `POST /api/auth/register`：注册，请求体包含 `phone`、`realName`、`deptId`、`password`、`confirmPassword`，不再填写用户名；密码需满足 8-20 位且包含大小写字母、数字、常见英文特殊符号。
-- `POST /api/auth/login`：手机号登录，请求体包含 `phone`、`password`；返回用户信息包含 `admin`，用于标识是否为管理员。
+- `POST /api/auth/register`：注册，请求体包含 `phone`、`realName`、`deptId`、`password`、`confirmPassword`，不再填写用户名；`realName` 仅允许 2-10 位中文和中间点，`phone` 必须为中国大陆 11 位手机号；密码需满足 8-20 位且包含大小写字母、数字、常见英文特殊符号。
+- `POST /api/auth/login`：手机号登录，请求体包含 `phone`、`password`；返回用户信息包含 `admin`，用于标识是否为管理员；密码正确但账号待审核时提示管理员审核中。
 - `POST /api/auth/logout`：登出。
 - `GET /api/auth/me`：当前用户信息，返回用户信息包含 `admin`。
 
@@ -34,7 +34,7 @@
 - `POST /api/depts`：新建组织节点。
 - `PUT /api/depts/{id}`：修改组织节点。
 - `DELETE /api/depts/{id}`：删除组织节点。
-- `GET /api/users`：用户列表。
+- `GET /api/users`：用户列表，仅返回审核通过的用户。
 - `POST /api/users`：创建用户。
 - `PUT /api/users/{id}`：修改用户。
 - `POST /api/users/{id}/reset-password`：管理员重置密码，请求体包含 `password` 和 `confirmPassword`，需满足强密码规则且两次一致。
@@ -72,9 +72,9 @@
 - `POST /api/doc-items`：本科室用户或超级管理员新增资料入口，请求体包含 `categoryId`、`itemName`、`businessType`、`submitterMode`、`requirements`、`contentHtml`、`sortOrder`；上传任务的 `requirements` 元素包含 `requirementName`、`description`、`sortOrder`。
 - `PUT /api/doc-items/{id}`：本科室用户或超级管理员修改资料入口名称、业务类型、提交模式、收集项名称及说明、富文本内容和排序。
 - `DELETE /api/doc-items/{id}`：本科室用户或超级管理员删除资料入口。
-- `POST /api/doc-items/{id}/submissions`：车间用户和科室用户按上传任务提交附件，使用 `multipart/form-data`，包含多个 `files` 和与文件一一对应的 `requirementIds`；所有收集项都必须上传附件。
-- `GET /api/doc-items/{id}/submissions`：查询当前上传任务全部上传记录；仅任务所属科室用户和超级管理员可查看，返回 `submitterDeptName`、`uploadUserName`、`submittedAt` 和附件信息。
-- `GET /api/doc-items/{id}/my-submission`：查询当前用户在该上传任务下的本人提交记录，未提交时返回空。
+- `POST /api/doc-items/{id}/submissions`：车间用户和科室用户按上传任务提交附件，使用 `multipart/form-data`，包含多个 `files` 和与文件一一对应的 `requirementIds`；所有收集项都必须上传附件。`submitterMode=SINGLE` 时同一提交组织只能保留一条当前有效提交，`MULTIPLE` 时同一用户可多次提交。
+- `GET /api/doc-items/{id}/submissions`：查询当前上传任务上传记录；科室用户和超级管理员可查看全部，本车间管理员可查看本车间全部，普通用户查看自己或本车间单份提交状态；返回 `submitterDeptName`、`uploadUserName`、`submittedAt`、权限标识和可下载附件信息。
+- `GET /api/doc-items/{id}/my-submission`：查询当前用户在该上传任务下的提交状态；单份模式返回本组织当前有效提交，多份模式返回本人最新有效提交，未提交时返回空。
 - `POST /api/doc-items/{id}/issued-attachments`：本科室用户或超级管理员上传下达文件附件，使用 `multipart/form-data`。
 - `POST /api/doc-items/{id}/body-attachments`：本科室用户或超级管理员上传文件正文附件，使用 `multipart/form-data`；同一文件同一时间只允许一个当前有效正文附件，已有附件时必须先删除原有文件后再上传。
 - `GET /api/doc-item-attachments/{id}/download`：下载下达文件附件。
@@ -82,6 +82,7 @@
 - `GET /api/doc-item-attachments/{id}/inline`：下达文件附件内联预览文件流，支持 PDF 和图片直接在浏览器中预览。
 - `DELETE /api/doc-item-attachments/{id}`：本科室用户或超级管理员软删除文件正文附件，真实文件暂不删除；被删除附件不再展示、下载或预览。
 - `GET /api/submissions/{id}`：查看上传记录详情。
+- `DELETE /api/submissions/{id}`：软删除上传记录。多份模式下本人可删除自己的提交，本车间管理员可删除本车间提交；单份模式下车间侧不可删除，科室用户和超级管理员可删除用于纠错。
 - `GET /api/doc-attachments/{id}/download`：下载上传记录附件。
 
 ## 通知

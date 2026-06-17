@@ -60,6 +60,7 @@ services:
       - redis
       - minio
     environment:
+      TZ: Asia/Shanghai
       SERVER_PORT: 8010
       MYSQL_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-dt_standard_system}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       MYSQL_USER: ${MYSQL_USER:-standard}

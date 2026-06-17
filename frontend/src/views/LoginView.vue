@@ -5,13 +5,14 @@
     </section>
     <section class="auth-panel">
       <h2>用户登录</h2>
-      <el-form label-position="top" @submit.prevent>
-        <el-form-item label="手机号">
-          <el-input v-model="form.phone" />
+        <el-form label-position="top" @submit.prevent>
+          <el-form-item label="手机号">
+          <el-input v-model="form.phone" autocomplete="username" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" show-password />
+          <el-input v-model="form.password" type="password" show-password autocomplete="current-password" />
         </el-form-item>
+        <el-checkbox v-model="rememberPhone" class="remember-phone">记住手机号</el-checkbox>
         <SliderCaptcha
           ref="captchaRef"
           host-id="login-captcha"
@@ -38,7 +39,10 @@ const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const captchaRef = ref<InstanceType<typeof SliderCaptcha> | null>(null)
-const form = reactive({ phone: '', password: '', captchaKey: '', captchaCode: '' })
+const REMEMBER_PHONE_KEY = 'standard-docs:remember-phone'
+const rememberedPhone = localStorage.getItem(REMEMBER_PHONE_KEY) || ''
+const rememberPhone = ref(Boolean(rememberedPhone))
+const form = reactive({ phone: rememberedPhone, password: '', captchaKey: '', captchaCode: '' })
 
 function resetCaptchaState() {
   form.captchaKey = ''
@@ -62,6 +66,11 @@ async function login() {
   loading.value = true
   try {
     const result = await apiPost<{ token: string; user: any; permissions: string[] }>('/auth/login', form)
+    if (rememberPhone.value) {
+      localStorage.setItem(REMEMBER_PHONE_KEY, form.phone.trim())
+    } else {
+      localStorage.removeItem(REMEMBER_PHONE_KEY)
+    }
     auth.setSession(result.token, result.user, result.permissions)
     router.push('/dashboard')
   } catch {
@@ -71,3 +80,9 @@ async function login() {
   }
 }
 </script>
+
+<style scoped>
+.remember-phone {
+  margin-bottom: 14px;
+}
+</style>

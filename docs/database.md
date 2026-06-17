@@ -21,8 +21,8 @@
 - `sys_doc_category`：旧科室资料二级侧边栏，保留兼容历史数据。
 - `sys_doc_item`：文件入口，包含 `section_dept_id`、`business_type`、`submitter_mode`、`file_type`、`doc_year`、`content_html` 富文本文件内容和附件上传开关；新目录树中文件节点通过 `item_id` 关联该表。`business_type` 为 `UPLOAD` 时表示上传任务，为 `ISSUED` 时表示下达文件。
 - `sys_doc_upload_requirement`：上传任务收集项表，记录每个上传任务需要收集的文件类型或文件项，以及任务发起者填写的收集说明。
-- `sys_doc_submission`：附件上传记录，`submitter_dept_id` 记录实际上传人所属组织；无所属组织用户上传时允许为空。
-- `sys_doc_attachment`：上传记录附件元数据，`requirement_id` 标记附件对应的上传任务收集项，真实文件保存在 MinIO。
+- `sys_doc_submission`：附件上传记录，`submitter_dept_id` 记录实际上传人所属组织；无所属组织用户上传时允许为空；支持软删除字段 `deleted`、`deleted_at`、`deleted_by`，用于隐藏已删除提交。
+- `sys_doc_attachment`：上传记录附件元数据，`requirement_id` 标记附件对应的上传任务收集项，真实文件保存在 MinIO；支持随提交记录软删除隐藏。
 - `sys_doc_item_attachment`：下达文件自身附件元数据，真实文件保存在 MinIO，不与上传记录附件混用；正文附件支持软删除，`deleted`、`deleted_at`、`deleted_by` 用于隐藏当前附件并保留 30 天内恢复文件所需数据；单独软删除超过 30 天的正文附件会被定时清理。
 - 回收站清理：后端默认每天执行一次清理任务，永久清理删除超过 30 天的文件节点、资料入口、正文附件、车间上传附件、上传记录和收集项等相关元数据，并删除对应 MinIO 对象；同时清理超过 30 天的独立软删除正文附件。
 
@@ -42,3 +42,4 @@
 - `11-doc-node-upload-progress-visibility.sql`：为目录文件夹追加上传进度展示字段。
 - `12-doc-node-upload-progress-default-hidden.sql`：将目录文件夹上传进度字段默认值调整为不显示，并把已有文件夹统一更新为不显示。
 - `13-doc-recycle-bin.sql`：为文件回收站、正文附件软删除和 30 天自动清理追加必要字段和索引。
+- `14-doc-submission-soft-delete.sql`：为车间提交记录和提交附件追加软删除字段和索引。

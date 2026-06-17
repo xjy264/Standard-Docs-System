@@ -62,6 +62,7 @@ public class DocNodeController {
                                                           @RequestParam(required = false) Integer sortOrder,
                                                           @RequestParam Integer docYear,
                                                           @RequestParam(required = false, defaultValue = "false") Boolean workshopUploadEnabled,
+                                                          @RequestParam(required = false) String submitterMode,
                                                           @RequestParam(required = false)
                                                           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
                                                           LocalDateTime uploadDeadline,
@@ -70,7 +71,7 @@ public class DocNodeController {
         CurrentUser currentUser = SecurityUtils.currentUser();
         DocNodeRequest request = new DocNodeRequest(sectionDeptId, parentId, nodeName, sortOrder, null,
                 workshopUploadEnabled, "", null, docYear, workshopUploadEnabled ? "UPLOAD" : "ISSUED",
-                workshopUploadEnabled ? "MULTIPLE" : "SINGLE", null, uploadDeadline,
+                workshopUploadEnabled ? submitterMode : "SINGLE", null, uploadDeadline,
                 workshopUploadEnabled, visibleWorkshopIds);
         return ApiResponse.success(docWorkspaceService.createFileNodeWithMainFile(currentUser.userId(), currentUser.deptId(),
                 currentUser.superAdmin(), request, file));
@@ -91,6 +92,7 @@ public class DocNodeController {
                                                       @RequestParam(required = false) Integer docYear,
                                                       @RequestParam(required = false) String fileType,
                                                       @RequestParam(required = false, defaultValue = "false") Boolean workshopUploadEnabled,
+                                                      @RequestParam(required = false) String submitterMode,
                                                       @RequestParam(required = false)
                                                       @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
                                                       LocalDateTime uploadDeadline,
@@ -99,7 +101,7 @@ public class DocNodeController {
         CurrentUser currentUser = SecurityUtils.currentUser();
         DocNodeRequest request = new DocNodeRequest(sectionDeptId, parentId, nodeName, sortOrder, null,
                 workshopUploadEnabled, "", fileType, docYear, workshopUploadEnabled ? "UPLOAD" : "ISSUED",
-                workshopUploadEnabled ? "MULTIPLE" : "SINGLE", null, uploadDeadline,
+                workshopUploadEnabled ? submitterMode : "SINGLE", null, uploadDeadline,
                 workshopUploadEnabled, visibleWorkshopIds);
         return ApiResponse.success(docWorkspaceService.updateNodeWithMainFile(currentUser.userId(), currentUser.deptId(),
                 currentUser.superAdmin(), id, request, file));

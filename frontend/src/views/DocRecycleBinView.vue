@@ -59,6 +59,7 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiGet, apiPost } from '../api/http'
+import { formatDateTime } from '../utils/dateTime'
 
 interface RecycleItem {
   id: number
@@ -140,7 +141,7 @@ function fileTypeText(type?: string) {
     EXCEL: 'Excel',
     PPT: 'PPT',
     PDF: 'PDF',
-    IMAGE: '图片',
+    IMAGE: 'IMG',
     ZIP: 'ZIP',
     OTHER: '其他'
   }
@@ -148,7 +149,7 @@ function fileTypeText(type?: string) {
 }
 
 function formatDate(value?: string) {
-  return value ? value.replace('T', ' ').slice(0, 19) : '未记录'
+  return formatDateTime(value, '未记录')
 }
 
 onMounted(load)
@@ -183,4 +184,3 @@ watch(() => route.params.deptId, () => load())
   font-weight: 600;
 }
 </style>
-

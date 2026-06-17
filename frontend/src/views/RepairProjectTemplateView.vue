@@ -11,7 +11,7 @@
         <el-table-column prop="itemName" label="模板文件" min-width="200" />
         <el-table-column prop="originalFileName" label="文件" min-width="220" />
         <el-table-column label="类型" width="100">
-          <template #default="{ row }">{{ fileTypeText(row.fileType) }}</template>
+          <template #default="{ row }">{{ fileTypeText(row) }}</template>
         </el-table-column>
         <el-table-column prop="sortOrder" label="排序" width="90" />
         <el-table-column label="操作" width="140">
@@ -27,10 +27,29 @@
       <el-form label-position="top">
         <el-form-item label="模板文件名称"><el-input v-model="itemForm.itemName" maxlength="128" /></el-form-item>
         <el-form-item label="文件类型">
-          <el-tag>{{ fileTypeText(itemForm.fileType) }}</el-tag>
+          <el-tag>{{ fileTypeText({ fileType: itemForm.fileType, originalFileName: itemFile?.name || editingItem?.originalFileName || itemForm.itemName }) }}</el-tag>
         </el-form-item>
         <el-form-item label="文件">
+          <div v-if="itemFile" class="current-file file-card">
+            <span>待上传：{{ itemFile.name }}</span>
+            <el-button link type="danger" @click="removeItemFile">移除</el-button>
+          </div>
+          <div v-else-if="editingItem?.originalFileName" class="current-file file-card">
+            <span>当前文件：{{ editingItem.originalFileName }}</span>
+            <el-upload
+              ref="itemUploadRef"
+              :auto-upload="false"
+              :limit="1"
+              :show-file-list="false"
+              :on-change="onItemFileChange"
+              :on-remove="onItemFileRemove"
+              :on-exceed="onItemFileExceed"
+            >
+              <el-button link type="primary">重新选择</el-button>
+            </el-upload>
+          </div>
           <el-upload
+            v-else
             ref="itemUploadRef"
             drag
             :auto-upload="false"
@@ -41,7 +60,6 @@
           >
             <div>拖拽文件到此处，或点击选择文件</div>
           </el-upload>
-          <div v-if="editingItem?.originalFileName && !itemFile" class="current-file">当前文件：{{ editingItem.originalFileName }}</div>
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="itemForm.sortOrder" :min="0" /></el-form-item>
       </el-form>
@@ -139,6 +157,12 @@ function onItemFileExceed() {
   ElMessage.warning('只能上传一个文件')
 }
 
+function removeItemFile() {
+  itemFile.value = undefined
+  itemForm.fileType = editingItem.value?.fileType || 'OTHER'
+  itemUploadRef.value?.clearFiles()
+}
+
 function resetItemUpload() {
   itemFile.value = undefined
   itemUploadRef.value?.clearFiles()
@@ -155,17 +179,27 @@ function guessFileType(name: string) {
   return 'OTHER'
 }
 
-function fileTypeText(type: string) {
+function fileTypeText(input: string | { fileType?: string; originalFileName?: string; itemName?: string }) {
+  const type = typeof input === 'string' ? input : input.fileType || 'OTHER'
+  if (type === 'IMAGE') {
+    const extension = typeof input === 'string' ? '' : fileExtension(input.originalFileName || input.itemName)
+    return ['JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'WEBP', 'SVG'].includes(extension) ? extension : 'IMG'
+  }
   const labels: Record<string, string> = {
     WORD: 'Word',
     EXCEL: 'Excel',
     PPT: 'PPT',
     PDF: 'PDF',
-    IMAGE: '图片',
+    IMAGE: 'IMG',
     ZIP: 'ZIP',
     OTHER: '其他'
   }
   return labels[type] || '其他'
+}
+
+function fileExtension(name?: string) {
+  const match = (name || '').match(/\.([^.]+)$/)
+  return match?.[1]?.toUpperCase() || ''
 }
 
 async function deleteItem(item: TemplateItem) {
@@ -199,8 +233,20 @@ onMounted(loadTemplateItems)
 }
 
 .current-file {
-  margin-top: 8px;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.file-card {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #f8fafc;
 }
 </style>

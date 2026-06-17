@@ -25,7 +25,8 @@ public class StorageController {
     public ApiResponse<Map<String, Object>> stats() {
         CurrentUser currentUser = SecurityUtils.currentUser();
         permissionService.require(currentUser.userId(), currentUser.superAdmin(), "storage:view");
-        var attachments = attachmentMapper.selectList(new LambdaQueryWrapper<SysDocAttachment>());
+        var attachments = attachmentMapper.selectList(new LambdaQueryWrapper<SysDocAttachment>()
+                .eq(SysDocAttachment::getDeleted, 0));
         long totalSize = attachments.stream().map(SysDocAttachment::getFileSize).filter(size -> size != null).mapToLong(Long::longValue).sum();
         return ApiResponse.success(Map.of("fileCount", attachments.size(), "totalSize", totalSize));
     }

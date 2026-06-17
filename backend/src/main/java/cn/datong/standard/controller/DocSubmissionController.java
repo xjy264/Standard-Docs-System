@@ -39,6 +39,13 @@ public class DocSubmissionController {
         return ApiResponse.success(docWorkspaceService.detail(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id));
     }
 
+    @DeleteMapping("/api/submissions/{id}")
+    public ApiResponse<Void> deleteSubmission(@PathVariable Long id) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        docWorkspaceService.deleteSubmission(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id);
+        return ApiResponse.success();
+    }
+
     @GetMapping("/api/doc-attachments/{id}/download")
     public void download(@PathVariable Long id, HttpServletResponse response) throws Exception {
         CurrentUser currentUser = SecurityUtils.currentUser();

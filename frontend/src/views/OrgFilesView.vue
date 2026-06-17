@@ -176,6 +176,12 @@
               style="width: 260px"
             />
           </el-form-item>
+          <el-form-item v-if="nodeForm.workshopUploadEnabled" label="提交方式">
+            <el-radio-group v-model="nodeForm.submitterMode" class="workshop-upload-options">
+              <el-radio value="SINGLE">单份提交</el-radio>
+              <el-radio value="MULTIPLE">多份提交</el-radio>
+            </el-radio-group>
+          </el-form-item>
         </template>
       </el-form>
       <template #footer>
@@ -194,7 +200,7 @@
         <el-form-item label="模板库文件">
           <el-checkbox-group v-model="importForm.templateItemIds" class="template-file-list">
             <el-checkbox v-for="item in repairTemplateItems" :key="item.id" :label="item.id">
-              {{ item.itemName }}（{{ fileTypeText({ nodeName: item.itemName, nodeType: 'FILE', fileType: item.fileType || 'OTHER' } as DocNode) }}）
+              {{ item.itemName }}（{{ fileTypeText({ nodeName: item.originalFileName || item.itemName, nodeType: 'FILE', fileType: item.fileType || 'OTHER' } as DocNode) }}）
             </el-checkbox>
           </el-checkbox-group>
           <el-empty v-if="!repairTemplateItems.length" description="暂无模板库文件" />
@@ -215,6 +221,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiDelete, apiGet, apiPost, apiPut, http } from '../api/http'
 import { useAuthStore } from '../stores/auth'
+import { formatDateTime } from '../utils/dateTime'
 
 interface SectionItem {
   id: number
@@ -544,7 +551,7 @@ async function submitNode() {
     contentHtml: '',
     fileType: nodeForm.fileType,
     businessType: nodeForm.workshopUploadEnabled ? 'UPLOAD' : 'ISSUED',
-    submitterMode: 'MULTIPLE',
+    submitterMode: nodeForm.workshopUploadEnabled ? nodeForm.submitterMode : 'SINGLE',
     showUploadProgress: nodeForm.nodeType === 'FOLDER' ? nodeForm.showUploadProgress : undefined,
     uploadDeadline: nodeForm.workshopUploadEnabled ? nodeForm.uploadDeadline || null : null,
     workshopUploadEnabled: nodeForm.workshopUploadEnabled,
@@ -599,6 +606,7 @@ function buildFileForm(file: UploadRawFile) {
   form.append('docYear', String(nodeForm.docYear))
   form.append('fileType', nodeForm.fileType || 'OTHER')
   form.append('workshopUploadEnabled', String(nodeForm.workshopUploadEnabled))
+  form.append('submitterMode', nodeForm.workshopUploadEnabled ? nodeForm.submitterMode : 'SINGLE')
   if (nodeForm.uploadDeadline) {
     form.append('uploadDeadline', nodeForm.uploadDeadline)
   }
@@ -781,7 +789,7 @@ async function deleteEditingBodyAttachment() {
 }
 
 function formatBodyAttachmentTime(attachment?: DocItemAttachment) {
-  return attachment?.createdAt || attachment?.uploadTime || ''
+  return formatDateTime(attachment?.createdAt || attachment?.uploadTime)
 }
 
 function downloadBlob(data: BlobPart, filename: string) {
@@ -866,12 +874,15 @@ function fileTypeClass(node: DocNode) {
 }
 
 function fileTypeLabel(node: DocNode) {
+  if (resolveFileType(node) === 'IMAGE') {
+    return imageTypeText(node)
+  }
   const labels: Record<FileType, string> = {
     WORD: 'W',
     EXCEL: 'X',
     PPT: 'T',
     PDF: 'P',
-    IMAGE: '图',
+    IMAGE: 'IMG',
     ZIP: 'Z',
     OTHER: 'F'
   }
@@ -879,16 +890,29 @@ function fileTypeLabel(node: DocNode) {
 }
 
 function fileTypeText(node: DocNode) {
+  if (resolveFileType(node) === 'IMAGE') {
+    return imageTypeText(node)
+  }
   const labels: Record<FileType, string> = {
     WORD: 'Word',
     EXCEL: 'Excel',
     PPT: 'PPT',
     PDF: 'PDF',
-    IMAGE: '图片',
+    IMAGE: 'IMG',
     ZIP: 'ZIP',
     OTHER: '其他'
   }
   return labels[resolveFileType(node)]
+}
+
+function imageTypeText(node: DocNode) {
+  const extension = fileExtension(node.nodeName)
+  return ['JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'WEBP', 'SVG'].includes(extension) ? extension : 'IMG'
+}
+
+function fileExtension(name?: string) {
+  const match = (name || '').match(/\.([^.]+)$/)
+  return match?.[1]?.toUpperCase() || ''
 }
 
 function isUploadNode(node: DocNode) {

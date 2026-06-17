@@ -33,7 +33,7 @@
             v-else-if="inlinePreviewKind === 'IMAGE' && inlinePreviewUrl"
             class="image-preview"
             :src="inlinePreviewUrl"
-            alt="图片文件预览"
+            alt="image preview"
           />
           <div v-else-if="inlinePreviewKind === 'ONLYOFFICE'" id="onlyoffice-inline-preview-host" class="office-preview-host"></div>
           <div v-else class="preview-placeholder">
@@ -49,11 +49,11 @@
         <h3>车间提交文件</h3>
       </div>
       <div class="upload-task-status">
-        <el-tag v-if="mySubmission" type="success">已提交</el-tag>
+        <el-tag v-if="submissionStatus" type="success">已提交</el-tag>
         <el-tag v-else-if="deadlineExpired" type="danger">已截止</el-tag>
         <el-tag v-else type="info">待提交</el-tag>
-        <span>每人限提交一次</span>
-        <span v-if="item?.uploadDeadline">截止时间：{{ item.uploadDeadline }}</span>
+        <span>{{ isSingleMode ? '每车间限提交一次' : '可多次提交' }}</span>
+        <span v-if="item?.uploadDeadline">截止时间：{{ formatDateTime(item.uploadDeadline) }}</span>
       </div>
       <el-table :data="item?.requirements || []" border>
         <el-table-column prop="requirementName" label="收集内容" min-width="220" />
@@ -66,7 +66,7 @@
           <template #default="{ row }">
             <div class="requirement-upload-cell">
               <span class="selected-file-name">
-                {{ selectedRequirementFiles[row.id]?.name || (canUploadAttachment ? '未选择' : mySubmission ? '已提交' : '不可提交') }}
+                {{ selectedRequirementFiles[row.id]?.name || (canUploadAttachment ? '未选择' : submissionStatus ? '已提交' : '不可提交') }}
               </span>
               <el-upload
                 v-if="canUploadAttachment"
@@ -86,26 +86,48 @@
       </div>
     </section>
 
-    <section v-if="workshopUploadEnabled && mySubmission" class="detail-content">
+    <section v-if="workshopUploadEnabled && displayedSubmissions.length" class="detail-content">
       <div class="section-heading">
-        <h3>我的提交</h3>
+        <h3>{{ displayedSubmissionTitle }}</h3>
       </div>
-      <el-descriptions :column="3" border>
-        <el-descriptions-item label="上传时间">{{ mySubmission.submittedAt }}</el-descriptions-item>
-        <el-descriptions-item label="所属组织">{{ mySubmission.submitterDeptName }}</el-descriptions-item>
-        <el-descriptions-item label="上传人">{{ mySubmission.uploadUserName }}</el-descriptions-item>
-      </el-descriptions>
-      <el-table :data="mySubmission.attachments || []" style="margin-top: 14px" border>
-        <el-table-column prop="requirementName" label="收集内容" width="180" />
-        <el-table-column prop="originalFileName" label="文件" />
+      <el-table :data="displayedSubmissions" border>
+        <el-table-column label="上传时间" width="180">
+          <template #default="{ row }">{{ formatDateTime(row.submittedAt) }}</template>
+        </el-table-column>
+        <el-table-column prop="submitterDeptName" label="所属组织" width="150" />
+        <el-table-column prop="uploadUserName" label="上传人" width="120" />
+        <el-table-column label="文件" min-width="260">
+          <template #default="{ row }">
+            <div v-if="row.attachments?.length" class="attachment-links">
+              <el-button
+                v-for="attachment in row.attachments"
+                :key="attachment.id"
+                link
+                type="primary"
+                @click="downloadAttachment(attachment)"
+              >
+                {{ attachment.requirementName || attachment.originalFileName }}
+              </el-button>
+            </div>
+            <span v-else>已上传</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="100">
-          <template #default="{ row }"><el-button link type="primary" @click="downloadAttachment(row)">下载</el-button></template>
+          <template #default="{ row }">
+            <el-button v-if="row.deleteAllowed" link type="danger" @click="deleteSubmission(row)">删除</el-button>
+            <span v-else>-</span>
+          </template>
         </el-table-column>
       </el-table>
     </section>
 
     <el-dialog v-model="issuedUploadOpen" title="上传文件" width="720px" @closed="resetIssuedUpload">
+      <div v-if="selectedIssuedAttachmentFile" class="selected-upload-card">
+        <span>待上传：{{ selectedIssuedAttachmentFile.name }}</span>
+        <el-button link type="danger" @click="removePendingIssuedFile">移除</el-button>
+      </div>
       <el-upload
+        v-else
         ref="issuedUploadRef"
         class="attachment-upload"
         drag
@@ -124,7 +146,9 @@
 
     <el-dialog v-model="recordsOpen" title="车间提交记录" width="980px">
       <el-table :data="records" stripe>
-        <el-table-column prop="submittedAt" label="上传时间" width="180" />
+        <el-table-column label="上传时间" width="180">
+          <template #default="{ row }">{{ formatDateTime(row.submittedAt) }}</template>
+        </el-table-column>
         <el-table-column prop="submitterDeptName" label="所属车间" width="150" />
         <el-table-column prop="uploadUserName" label="上传人" width="120" />
         <el-table-column label="文件下载" min-width="260">
@@ -142,6 +166,12 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button v-if="row.deleteAllowed" link type="danger" @click="deleteSubmission(row)">删除</el-button>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
       </el-table>
     </el-dialog>
 
@@ -149,11 +179,12 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadRawFile } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { apiGet, http } from '../api/http'
+import { apiDelete, apiGet, http } from '../api/http'
 import { useAuthStore } from '../stores/auth'
+import { apiDateTimeToTimestamp, formatDateTime } from '../utils/dateTime'
 
 interface DocUploadRequirement {
   id: number
@@ -190,6 +221,7 @@ interface DocItem {
 
 interface DocAttachment {
   id: number
+  submissionId?: number
   requirementName?: string
   originalFileName: string
 }
@@ -199,10 +231,15 @@ interface DocSubmission {
   itemName: string
   categoryName?: string
   sectionDeptName: string
+  submitterDeptId?: number
+  uploadUserId?: number
   submitterDeptName: string
   uploadUserName: string
   submittedAt: string
   attachmentCount: number
+  ownSubmission?: boolean
+  downloadAllowed?: boolean
+  deleteAllowed?: boolean
   attachments?: DocAttachment[]
 }
 
@@ -236,13 +273,32 @@ const inlinePreviewMessage = ref('暂无可预览文件')
 
 const workshopUploadEnabled = computed(() => Boolean(item.value?.workshopUploadEnabled || item.value?.attachmentEnabled))
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === item.value?.sectionDeptId)
-const deadlineExpired = computed(() => Boolean(item.value?.uploadDeadline && new Date(item.value.uploadDeadline).getTime() < Date.now()))
+const deadlineExpired = computed(() => Boolean(item.value?.uploadDeadline && apiDateTimeToTimestamp(item.value.uploadDeadline) < Date.now()))
 const primaryAttachment = computed(() => item.value?.issuedAttachments?.[0])
+const submitterMode = computed(() => item.value?.submitterMode || 'SINGLE')
+const isSingleMode = computed(() => submitterMode.value === 'SINGLE')
+const selectedIssuedAttachmentFile = computed(() => issuedAttachmentFiles.value[0])
+const mySubmissions = ref<DocSubmission[]>([])
+const submissionStatus = computed(() => mySubmission.value)
+const displayedSubmissions = computed(() => {
+  if (!workshopUploadEnabled.value) {
+    return []
+  }
+  if (isSingleMode.value) {
+    return mySubmission.value ? [mySubmission.value] : []
+  }
+  return mySubmissions.value
+})
+const displayedSubmissionTitle = computed(() =>
+  isSingleMode.value && !displayedSubmissions.value.some((submission) => submission.ownSubmission)
+    ? '本车间提交'
+    : '我的提交'
+)
 const canUploadAttachment = computed(() => {
-  if (!workshopUploadEnabled.value || mySubmission.value || deadlineExpired.value) {
+  if (!workshopUploadEnabled.value || deadlineExpired.value) {
     return false
   }
-  return true
+  return !isSingleMode.value || !submissionStatus.value
 })
 
 async function load() {
@@ -253,9 +309,15 @@ async function load() {
   inlinePreviewMessage.value = '正在加载预览'
   item.value = await apiGet<DocItem>(`/doc-items/${itemId.value}`)
   if (workshopUploadEnabled.value) {
-    mySubmission.value = await apiGet<DocSubmission | null>(`/doc-items/${itemId.value}/my-submission`)
+    const [status, submissions] = await Promise.all([
+      apiGet<DocSubmission | null>(`/doc-items/${itemId.value}/my-submission`),
+      apiGet<DocSubmission[]>(`/doc-items/${itemId.value}/submissions`)
+    ])
+    mySubmission.value = status
+    mySubmissions.value = submissions.filter((submission) => submission.ownSubmission || submission.uploadUserId === auth.user?.id)
   } else {
     mySubmission.value = null
+    mySubmissions.value = []
   }
   await loadPrimaryPreview()
 }
@@ -358,9 +420,24 @@ function resetIssuedUpload() {
   issuedUploadRef.value?.clearFiles()
 }
 
+function removePendingIssuedFile() {
+  issuedAttachmentFiles.value = []
+  issuedUploadRef.value?.clearFiles()
+}
+
 async function openRecords() {
   records.value = await apiGet<DocSubmission[]>(`/doc-items/${itemId.value}/submissions`)
   recordsOpen.value = true
+}
+
+async function deleteSubmission(submission: DocSubmission) {
+  await ElMessageBox.confirm('确定删除这条提交记录吗？', '删除提交', { type: 'warning' })
+  await apiDelete(`/submissions/${submission.id}`)
+  ElMessage.success('删除成功')
+  if (recordsOpen.value) {
+    records.value = await apiGet<DocSubmission[]>(`/doc-items/${itemId.value}/submissions`)
+  }
+  await load()
 }
 
 async function downloadAttachment(attachment: DocAttachment) {
@@ -642,6 +719,19 @@ watch(() => route.params.itemId, load)
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.selected-upload-card {
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #f8fafc;
+  color: #1f2d3d;
 }
 
 .inline-preview-section {

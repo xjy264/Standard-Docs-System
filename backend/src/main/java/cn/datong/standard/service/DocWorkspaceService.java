@@ -170,7 +170,7 @@ public class DocWorkspaceService {
         item.setSectionDeptId(placement.sectionDeptId());
         item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
         item.setBusinessType(businessType);
-        item.setSubmitterMode("UPLOAD".equals(businessType) ? "MULTIPLE" : "SINGLE");
+        item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
         item.setFileType(normalizeFileType(request.fileType()));
         item.setDocYear(resolveFileDocYear(request.parentId(), request.docYear()));
         item.setContentHtml(request.contentHtml() == null ? "" : request.contentHtml());
@@ -232,7 +232,7 @@ public class DocWorkspaceService {
         item.setSectionDeptId(placement.sectionDeptId());
         item.setItemName(itemName);
         item.setBusinessType(businessType);
-        item.setSubmitterMode("UPLOAD".equals(businessType) ? "MULTIPLE" : "SINGLE");
+        item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
         item.setFileType(inferFileTypeFromFilename(original));
         item.setDocYear(docYear);
         item.setContentHtml("");
@@ -295,7 +295,7 @@ public class DocWorkspaceService {
             item.setItemName(node.getNodeName());
             item.setSortOrder(node.getSortOrder());
             item.setBusinessType(businessType);
-            item.setSubmitterMode("UPLOAD".equals(businessType) ? "MULTIPLE" : "SINGLE");
+            item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
             item.setFileType(normalizeFileType(request.fileType()));
             item.setDocYear(node.getDocYear());
             if (request.contentHtml() != null) {
@@ -534,22 +534,24 @@ public class DocWorkspaceService {
         }
         List<SysDocUploadRequirement> requirements = requirements(item.getId());
         List<Long> normalizedRequirementIds = normalizeSubmissionRequirementIds(requirements, requirementIds, uploadFiles);
-        requireSubmissionOpen(userId, item);
+        Long submitterDeptId = submitterDept == null ? null : submitterDept.getId();
+        requireSubmissionOpen(userId, submitterDeptId, item);
 
         SysDocSubmission submission = new SysDocSubmission();
         submission.setItemId(item.getId());
         submission.setCategoryId(category == null ? null : category.getId());
         submission.setSectionDeptId(sectionDeptId);
         submission.setWorkshopDeptId(submitterDept != null && isWorkshop(submitterDept) ? submitterDept.getId() : null);
-        submission.setSubmitterDeptId(submitterDept == null ? null : submitterDept.getId());
+        submission.setSubmitterDeptId(submitterDeptId);
         submission.setUploadUserId(userId);
         submission.setSubmittedAt(LocalDateTime.now());
+        submission.setDeleted(0);
         submissionMapper.insert(submission);
 
         for (int i = 0; i < uploadFiles.size(); i++) {
             saveAttachment(userId, submission.getId(), normalizedRequirementIds.get(i), uploadFiles.get(i));
         }
-        return detail(userId, userDeptId, false, submission.getId());
+        return detail(userId, userDeptId, superAdmin, submission.getId());
     }
 
     public List<SysDocSubmission> submissions(Long userId, Long userDeptId, boolean superAdmin, Long categoryId) {
@@ -557,6 +559,7 @@ public class DocWorkspaceService {
         boolean sectionManager = canManageSection(userDeptId, superAdmin, category.getSectionDeptId());
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getCategoryId, categoryId)
+                .eq(SysDocSubmission::getDeleted, 0)
                 .orderByDesc(SysDocSubmission::getSubmittedAt);
         if (!superAdmin && !sectionManager) {
             if (userDeptId == null) {
@@ -565,8 +568,11 @@ public class DocWorkspaceService {
                 wrapper.eq(SysDocSubmission::getSubmitterDeptId, userDeptId);
             }
         }
-        List<SysDocSubmission> result = submissionMapper.selectList(wrapper);
+        List<SysDocSubmission> result = submissionMapper.selectList(wrapper).stream()
+                .filter(submission -> canViewSubmissionInList(userId, userDeptId, superAdmin, submission))
+                .toList();
         fillSubmissionInfo(result);
+        result.forEach(submission -> fillSubmissionAccess(userId, userDeptId, superAdmin, submission, null));
         return result;
     }
 
@@ -574,56 +580,85 @@ public class DocWorkspaceService {
         SysDocItem item = requireItem(itemId);
         requireItemVisible(userDeptId, superAdmin, item);
         boolean sectionManager = canManageSection(userDeptId, superAdmin, itemSectionDeptId(item));
-        if (!superAdmin && !sectionManager) {
-            throw new BusinessException(403, "只有科室用户可以查看全部上传记录");
-        }
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, itemId)
+                .eq(SysDocSubmission::getDeleted, 0)
                 .orderByDesc(SysDocSubmission::getSubmittedAt);
+        if (!superAdmin && !sectionManager) {
+            if (userDeptId == null) {
+                wrapper.eq(SysDocSubmission::getUploadUserId, userId);
+            } else if (isDeptAdmin(userId) || isSingleSubmitterMode(item)) {
+                wrapper.eq(SysDocSubmission::getSubmitterDeptId, userDeptId);
+            } else {
+                wrapper.eq(SysDocSubmission::getUploadUserId, userId);
+            }
+        }
         List<SysDocSubmission> result = submissionMapper.selectList(wrapper);
         fillSubmissionInfo(result);
-        result.forEach(submission -> submission.setAttachments(attachments(submission.getId())));
+        result.forEach(submission -> fillSubmissionAccess(userId, userDeptId, superAdmin, submission, item));
         return result;
     }
 
     public SysDocSubmission mySubmission(Long userId, Long userDeptId, boolean superAdmin, Long itemId) {
-        requireItemVisible(userDeptId, superAdmin, requireItem(itemId));
-        SysDocSubmission submission = submissionMapper.selectOne(new LambdaQueryWrapper<SysDocSubmission>()
+        SysDocItem item = requireItem(itemId);
+        requireItemVisible(userDeptId, superAdmin, item);
+        LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, itemId)
-                .eq(SysDocSubmission::getUploadUserId, userId)
+                .eq(SysDocSubmission::getDeleted, 0)
                 .orderByDesc(SysDocSubmission::getSubmittedAt)
-                .last("LIMIT 1"));
+                .last("LIMIT 1");
+        if (isSingleSubmitterMode(item) && userDeptId != null) {
+            wrapper.eq(SysDocSubmission::getSubmitterDeptId, userDeptId);
+        } else {
+            wrapper.eq(SysDocSubmission::getUploadUserId, userId);
+        }
+        SysDocSubmission submission = submissionMapper.selectOne(wrapper);
         if (submission == null) {
             return null;
         }
         requireSubmissionVisible(userId, userDeptId, superAdmin, submission);
         fillSubmissionInfo(List.of(submission));
-        submission.setAttachments(attachments(submission.getId()));
+        fillSubmissionAccess(userId, userDeptId, superAdmin, submission, item);
         return submission;
     }
 
     public SysDocSubmission detail(Long userId, Long userDeptId, boolean superAdmin, Long submissionId) {
         SysDocSubmission submission = submissionMapper.selectById(submissionId);
-        if (submission == null) {
+        if (submission == null || Objects.equals(submission.getDeleted(), 1)) {
             throw new BusinessException("上传记录不存在");
         }
         requireSubmissionVisible(userId, userDeptId, superAdmin, submission);
         fillSubmissionInfo(List.of(submission));
-        submission.setAttachments(attachments(submissionId));
+        fillSubmissionAccess(userId, userDeptId, superAdmin, submission, null);
         return submission;
     }
 
     public SysDocAttachment requireAttachment(Long userId, Long userDeptId, boolean superAdmin, Long attachmentId) {
         SysDocAttachment attachment = attachmentMapper.selectById(attachmentId);
-        if (attachment == null) {
+        if (attachment == null || Objects.equals(attachment.getDeleted(), 1)) {
             throw new BusinessException("附件不存在");
         }
         SysDocSubmission submission = submissionMapper.selectById(attachment.getSubmissionId());
-        if (submission == null) {
+        if (submission == null || Objects.equals(submission.getDeleted(), 1)) {
             throw new BusinessException("上传记录不存在");
         }
         requireSubmissionVisible(userId, userDeptId, superAdmin, submission);
+        requireSubmissionDownloadable(userId, userDeptId, superAdmin, submission);
         return attachment;
+    }
+
+    @Transactional
+    public void deleteSubmission(Long userId, Long userDeptId, boolean superAdmin, Long submissionId) {
+        SysDocSubmission submission = submissionMapper.selectById(submissionId);
+        if (submission == null || Objects.equals(submission.getDeleted(), 1)) {
+            throw new BusinessException("上传记录不存在");
+        }
+        if (!canDeleteSubmission(userId, userDeptId, superAdmin, submission, null)) {
+            throw new BusinessException(403, "无权删除上传记录");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        submissionMapper.softDeleteById(submissionId, userId, now);
+        attachmentMapper.softDeleteBySubmissionId(submissionId, userId, now);
     }
 
     @Transactional
@@ -987,6 +1022,7 @@ public class DocWorkspaceService {
         attachment.setStoragePath(stored.objectName());
         attachment.setUploadedBy(userId);
         attachment.setCreatedAt(LocalDateTime.now());
+        attachment.setDeleted(0);
         attachmentMapper.insert(attachment);
     }
 
@@ -1049,6 +1085,7 @@ public class DocWorkspaceService {
     private List<SysDocAttachment> attachments(Long submissionId) {
         List<SysDocAttachment> attachments = attachmentMapper.selectList(new LambdaQueryWrapper<SysDocAttachment>()
                 .eq(SysDocAttachment::getSubmissionId, submissionId)
+                .eq(SysDocAttachment::getDeleted, 0)
                 .orderByAsc(SysDocAttachment::getId));
         fillAttachmentInfo(attachments);
         return attachments;
@@ -1127,7 +1164,8 @@ public class DocWorkspaceService {
             node.setVisibleWorkshopIds(scopeMap.getOrDefault(item.getId(), List.of()));
             node.setHasUploadRequirement(uploadItemIdsWithRequirements.contains(item.getId()));
             node.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
-                    .eq(SysDocSubmission::getItemId, item.getId()))));
+                    .eq(SysDocSubmission::getItemId, item.getId())
+                    .eq(SysDocSubmission::getDeleted, 0))));
         }
     }
 
@@ -1153,7 +1191,8 @@ public class DocWorkspaceService {
     private void fillItemCounts(List<SysDocItem> items) {
         for (SysDocItem item : items) {
             item.setSubmissionCount(Math.toIntExact(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
-                    .eq(SysDocSubmission::getItemId, item.getId()))));
+                    .eq(SysDocSubmission::getItemId, item.getId())
+                    .eq(SysDocSubmission::getDeleted, 0))));
         }
     }
 
@@ -1217,7 +1256,8 @@ public class DocWorkspaceService {
             SysUser user = userMap.get(submission.getUploadUserId());
             submission.setUploadUserName(user == null ? null : (user.getRealName() == null ? user.getUsername() : user.getRealName()));
             submission.setAttachmentCount(Math.toIntExact(attachmentMapper.selectCount(new LambdaQueryWrapper<SysDocAttachment>()
-                    .eq(SysDocAttachment::getSubmissionId, submission.getId()))));
+                    .eq(SysDocAttachment::getSubmissionId, submission.getId())
+                    .eq(SysDocAttachment::getDeleted, 0))));
         }
     }
 
@@ -1370,12 +1410,21 @@ public class DocWorkspaceService {
         return submittedIds;
     }
 
-    private void requireSubmissionOpen(Long userId, SysDocItem item) {
-        Long userSubmittedCount = Objects.requireNonNullElse(submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
+    private void requireSubmissionOpen(Long userId, Long submitterDeptId, SysDocItem item) {
+        if (!isSingleSubmitterMode(item)) {
+            return;
+        }
+        LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
                 .eq(SysDocSubmission::getItemId, item.getId())
-                .eq(SysDocSubmission::getUploadUserId, userId)), 0L);
-        if (userSubmittedCount > 0) {
-            throw new BusinessException("您已提交过该文件");
+                .eq(SysDocSubmission::getDeleted, 0);
+        if (submitterDeptId == null) {
+            wrapper.eq(SysDocSubmission::getUploadUserId, userId);
+        } else {
+            wrapper.eq(SysDocSubmission::getSubmitterDeptId, submitterDeptId);
+        }
+        Long submittedCount = Objects.requireNonNullElse(submissionMapper.selectCount(wrapper), 0L);
+        if (submittedCount > 0) {
+            throw new BusinessException("该车间已提交过该文件");
         }
     }
 
@@ -1391,8 +1440,11 @@ public class DocWorkspaceService {
         if (uploadItemIds.isEmpty()) {
             return Set.of();
         }
+        Map<Long, String> modeByItemId = uploadItems.stream()
+                .collect(Collectors.toMap(SysDocItem::getId, item -> normalizeSubmitterMode(item.getSubmitterMode()), (a, b) -> a));
         LambdaQueryWrapper<SysDocSubmission> wrapper = new LambdaQueryWrapper<SysDocSubmission>()
-                .in(SysDocSubmission::getItemId, uploadItemIds);
+                .in(SysDocSubmission::getItemId, uploadItemIds)
+                .eq(SysDocSubmission::getDeleted, 0);
         if (!canManageSection(userDeptId, superAdmin, sectionDeptId)) {
             if (userDeptId == null) {
                 wrapper.eq(SysDocSubmission::getUploadUserId, userId);
@@ -1403,8 +1455,21 @@ public class DocWorkspaceService {
             }
         }
         return submissionMapper.selectList(wrapper).stream()
+                .filter(submission -> canCountCompletedSubmission(userId, userDeptId, superAdmin, sectionDeptId, modeByItemId, submission))
                 .map(SysDocSubmission::getItemId)
                 .collect(Collectors.toSet());
+    }
+
+    private boolean canCountCompletedSubmission(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId,
+                                                Map<Long, String> modeByItemId, SysDocSubmission submission) {
+        if (canManageSection(userDeptId, superAdmin, sectionDeptId)) {
+            return true;
+        }
+        String mode = modeByItemId.getOrDefault(submission.getItemId(), "SINGLE");
+        if ("SINGLE".equals(mode) && userDeptId != null) {
+            return Objects.equals(userDeptId, submission.getSubmitterDeptId());
+        }
+        return Objects.equals(userId, submission.getUploadUserId());
     }
 
     private int[] fillUploadProgress(SysDocNode node, Set<Long> completedItemIds) {
@@ -1456,15 +1521,75 @@ public class DocWorkspaceService {
         }
     }
 
+    private void fillSubmissionAccess(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission, SysDocItem item) {
+        boolean downloadAllowed = canDownloadSubmission(userId, userDeptId, superAdmin, submission, item);
+        submission.setOwnSubmission(Objects.equals(userId, submission.getUploadUserId()));
+        submission.setDownloadAllowed(downloadAllowed);
+        submission.setDeleteAllowed(canDeleteSubmission(userId, userDeptId, superAdmin, submission, item));
+        submission.setAttachments(downloadAllowed ? attachments(submission.getId()) : List.of());
+    }
+
     private void requireSubmissionVisible(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission) {
-        Long submitterDeptId = submission.getSubmitterDeptId() == null ? submission.getWorkshopDeptId() : submission.getSubmitterDeptId();
-        if (superAdmin
-                || Objects.equals(userId, submission.getUploadUserId())
-                || Objects.equals(userDeptId, submission.getSectionDeptId())
-                || Objects.equals(userDeptId, submitterDeptId)) {
+        if (canViewSubmission(userId, userDeptId, superAdmin, submission)) {
             return;
         }
         throw new BusinessException(403, "无权查看上传记录");
+    }
+
+    private boolean canViewSubmission(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission) {
+        SysDocItem item = requireItem(submission.getItemId());
+        requireItemVisible(userDeptId, superAdmin, item);
+        Long submitterDeptId = submission.getSubmitterDeptId() == null ? submission.getWorkshopDeptId() : submission.getSubmitterDeptId();
+        return superAdmin
+                || Objects.equals(userId, submission.getUploadUserId())
+                || Objects.equals(userDeptId, submission.getSectionDeptId())
+                || isSingleSubmitterMode(item) && Objects.equals(userDeptId, submitterDeptId)
+                || isDeptAdmin(userId) && Objects.equals(userDeptId, submitterDeptId);
+    }
+
+    private boolean canViewSubmissionInList(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission) {
+        try {
+            return canViewSubmission(userId, userDeptId, superAdmin, submission);
+        } catch (BusinessException ignored) {
+            return false;
+        }
+    }
+
+    private void requireSubmissionDownloadable(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission) {
+        if (!canDownloadSubmission(userId, userDeptId, superAdmin, submission, null)) {
+            throw new BusinessException(403, "无权下载上传附件");
+        }
+    }
+
+    private boolean canDownloadSubmission(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission, SysDocItem item) {
+        SysDocItem resolvedItem = item == null ? requireItem(submission.getItemId()) : item;
+        Long submitterDeptId = submission.getSubmitterDeptId() == null ? submission.getWorkshopDeptId() : submission.getSubmitterDeptId();
+        return superAdmin
+                || Objects.equals(userDeptId, submission.getSectionDeptId())
+                || Objects.equals(userId, submission.getUploadUserId())
+                || isSingleSubmitterMode(resolvedItem) && isDeptAdmin(userId) && Objects.equals(userDeptId, submitterDeptId);
+    }
+
+    private boolean canDeleteSubmission(Long userId, Long userDeptId, boolean superAdmin, SysDocSubmission submission, SysDocItem item) {
+        SysDocItem resolvedItem = item == null ? requireItem(submission.getItemId()) : item;
+        Long submitterDeptId = submission.getSubmitterDeptId() == null ? submission.getWorkshopDeptId() : submission.getSubmitterDeptId();
+        if (superAdmin || Objects.equals(userDeptId, submission.getSectionDeptId())) {
+            return true;
+        }
+        if (isSingleSubmitterMode(resolvedItem)) {
+            return false;
+        }
+        return Objects.equals(userId, submission.getUploadUserId())
+                || isDeptAdmin(userId) && Objects.equals(userDeptId, submitterDeptId);
+    }
+
+    private boolean isSingleSubmitterMode(SysDocItem item) {
+        return "SINGLE".equals(normalizeSubmitterMode(item.getSubmitterMode()));
+    }
+
+    private boolean isDeptAdmin(Long userId) {
+        Set<Long> adminUserIds = orgAssignmentService.adminUserIds();
+        return userId != null && adminUserIds != null && adminUserIds.contains(userId);
     }
 
     private boolean canManageSection(Long userDeptId, boolean superAdmin, Long sectionDeptId) {

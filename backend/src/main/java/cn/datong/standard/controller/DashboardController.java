@@ -47,8 +47,10 @@ public class DashboardController {
     public ApiResponse<Map<String, Long>> stats() {
         Long userCount = userMapper.selectCount(new LambdaQueryWrapper<SysUser>().eq(SysUser::getDeleted, 0));
         Long fileCount = docItemMapper.selectCount(new LambdaQueryWrapper<SysDocItem>().eq(SysDocItem::getDeleted, 0));
-        Long submissionCount = submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>());
-        Long attachmentCount = attachmentMapper.selectCount(new LambdaQueryWrapper<SysDocAttachment>());
+        Long submissionCount = submissionMapper.selectCount(new LambdaQueryWrapper<SysDocSubmission>()
+                .eq(SysDocSubmission::getDeleted, 0));
+        Long attachmentCount = attachmentMapper.selectCount(new LambdaQueryWrapper<SysDocAttachment>()
+                .eq(SysDocAttachment::getDeleted, 0));
         Long pendingApprovalCount = approvalMapper.selectCount(new LambdaQueryWrapper<SysRegisterApproval>()
                 .eq(SysRegisterApproval::getApprovalStatus, "PENDING"));
         Long unreadCount = notificationMapper.selectCount(new LambdaQueryWrapper<SysNotification>().eq(SysNotification::getReadStatus, "UNREAD"));

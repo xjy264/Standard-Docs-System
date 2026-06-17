@@ -36,6 +36,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -766,7 +767,7 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void sameUserCannotSubmitNotificationTwice() {
+    void singleModeBlocksSecondSubmissionFromSameWorkshop() {
         Fixtures fx = fixtures();
         when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
@@ -779,7 +780,39 @@ class DocWorkspaceServiceTest {
 
         assertThatThrownBy(() -> fx.service.submit(20L, 5L, 8L, null, List.of(file)))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("您已提交过该文件");
+                .hasMessageContaining("该车间已提交过该文件");
+    }
+
+    @Test
+    void multipleModeAllowsSameUserToSubmitAgain() {
+        Fixtures fx = fixtures();
+        SysDocItem item = item(8L, 6L, true);
+        item.setSubmitterMode("MULTIPLE");
+        when(fx.itemMapper.selectById(8L)).thenReturn(item);
+        when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
+        when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
+        when(fx.requirementMapper.selectList(any())).thenReturn(List.of(requirement(70L, 8L, "附件")));
+        when(fx.submissionMapper.selectCount(any())).thenReturn(1L);
+        when(fx.submissionMapper.selectById(any())).thenReturn(submission(1L, 8L, 6L, 2L, 5L, 5L));
+        when(fx.submissionMapper.insert(any(SysDocSubmission.class))).thenAnswer(invocation -> {
+            SysDocSubmission submission = invocation.getArgument(0);
+            submission.setId(1L);
+            return 1;
+        });
+        when(fx.deptMapper.selectList(any())).thenReturn(List.of());
+        when(fx.userMapper.selectList(any())).thenReturn(List.of());
+        when(fx.categoryMapper.selectList(any())).thenReturn(List.of());
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of());
+        when(fx.attachmentMapper.selectCount(any())).thenReturn(1L);
+        when(fx.attachmentMapper.selectList(any())).thenReturn(List.of());
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
+        when(file.getOriginalFilename()).thenReturn("合同.pdf");
+        when(fx.storageService.upload(any(), any())).thenReturn(new StoredObject("standard-docs", "doc-submissions/test.pdf", 100L, "application/pdf"));
+
+        fx.service.submit(20L, 5L, 8L, null, List.of(file));
+
+        verify(fx.submissionMapper).insert(any(SysDocSubmission.class));
     }
 
     @Test
@@ -847,12 +880,9 @@ class DocWorkspaceServiceTest {
     void categorySubmissionQueryFiltersWorkshopRecords() {
         Fixtures fx = fixtures();
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
-        SysDocSubmission own = new SysDocSubmission();
-        own.setId(1L);
-        own.setCategoryId(6L);
-        own.setWorkshopDeptId(5L);
-        own.setSubmitterDeptId(5L);
+        SysDocSubmission own = submission(1L, 8L, 6L, 2L, 5L, 5L);
         when(fx.submissionMapper.selectList(any())).thenReturn(List.of(own));
         when(fx.deptMapper.selectList(any())).thenReturn(List.of());
         when(fx.userMapper.selectList(any())).thenReturn(List.of());
@@ -864,15 +894,84 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void itemSubmissionQueryRejectsWorkshopRecordList() {
+    void itemSubmissionQueryAllowsWorkshopToSeeSingleModeStatus() {
         Fixtures fx = fixtures();
         when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
         when(fx.categoryMapper.selectById(6L)).thenReturn(category(6L, 2L));
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
+        SysDocSubmission status = submission(1L, 8L, 6L, 2L, 5L, 5L);
+        when(fx.submissionMapper.selectList(any())).thenReturn(List.of(status));
+        when(fx.deptMapper.selectList(any())).thenReturn(List.of());
+        when(fx.userMapper.selectList(any())).thenReturn(List.of());
+        when(fx.categoryMapper.selectList(any())).thenReturn(List.of());
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of());
+        when(fx.attachmentMapper.selectCount(any())).thenReturn(1L);
 
-        assertThatThrownBy(() -> fx.service.itemSubmissions(20L, 5L, false, 8L))
+        List<SysDocSubmission> result = fx.service.itemSubmissions(21L, 5L, false, 8L);
+
+        assertThat(result).containsExactly(status);
+        assertThat(status.getAttachments()).isEmpty();
+        assertThat(status.getDownloadAllowed()).isFalse();
+    }
+
+    @Test
+    void multipleModeOwnerCanDeleteOwnSubmission() {
+        Fixtures fx = fixtures();
+        SysDocItem item = item(8L, 6L, true);
+        item.setSubmitterMode("MULTIPLE");
+        when(fx.itemMapper.selectById(8L)).thenReturn(item);
+        SysDocSubmission submission = submission(1L, 8L, 6L, 2L, 5L, 5L);
+        submission.setUploadUserId(20L);
+        when(fx.submissionMapper.selectById(1L)).thenReturn(submission);
+
+        fx.service.deleteSubmission(20L, 5L, false, 1L);
+
+        verify(fx.submissionMapper).softDeleteById(eqLong(1L), eqLong(20L), any(LocalDateTime.class));
+        verify(fx.attachmentMapper).softDeleteBySubmissionId(eqLong(1L), eqLong(20L), any(LocalDateTime.class));
+    }
+
+    @Test
+    void workshopAdminCanDeleteSameWorkshopMultipleModeSubmission() {
+        Fixtures fx = fixtures();
+        SysDocItem item = item(8L, 6L, true);
+        item.setSubmitterMode("MULTIPLE");
+        when(fx.itemMapper.selectById(8L)).thenReturn(item);
+        SysDocSubmission submission = submission(1L, 8L, 6L, 2L, 5L, 5L);
+        submission.setUploadUserId(20L);
+        when(fx.submissionMapper.selectById(1L)).thenReturn(submission);
+        when(fx.orgAssignmentService.adminUserIds()).thenReturn(Set.of(40L));
+
+        fx.service.deleteSubmission(40L, 5L, false, 1L);
+
+        verify(fx.submissionMapper).softDeleteById(eqLong(1L), eqLong(40L), any(LocalDateTime.class));
+        verify(fx.attachmentMapper).softDeleteBySubmissionId(eqLong(1L), eqLong(40L), any(LocalDateTime.class));
+    }
+
+    @Test
+    void singleModeWorkshopUserCannotDeleteSubmission() {
+        Fixtures fx = fixtures();
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
+        SysDocSubmission submission = submission(1L, 8L, 6L, 2L, 5L, 5L);
+        submission.setUploadUserId(20L);
+        when(fx.submissionMapper.selectById(1L)).thenReturn(submission);
+
+        assertThatThrownBy(() -> fx.service.deleteSubmission(20L, 5L, false, 1L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("只有科室用户可以查看全部上传记录");
+                .hasMessageContaining("无权删除上传记录");
+    }
+
+    @Test
+    void sectionManagerCanDeleteSingleModeSubmissionForCorrection() {
+        Fixtures fx = fixtures();
+        when(fx.itemMapper.selectById(8L)).thenReturn(item(8L, 6L, true));
+        SysDocSubmission submission = submission(1L, 8L, 6L, 2L, 5L, 5L);
+        submission.setUploadUserId(20L);
+        when(fx.submissionMapper.selectById(1L)).thenReturn(submission);
+
+        fx.service.deleteSubmission(30L, 2L, false, 1L);
+
+        verify(fx.submissionMapper).softDeleteById(eqLong(1L), eqLong(30L), any(LocalDateTime.class));
+        verify(fx.attachmentMapper).softDeleteBySubmissionId(eqLong(1L), eqLong(30L), any(LocalDateTime.class));
     }
 
     @Test
@@ -1165,6 +1264,7 @@ class DocWorkspaceServiceTest {
         submission.setWorkshopDeptId(workshopDeptId);
         submission.setSubmitterDeptId(submitterDeptId);
         submission.setUploadUserId(20L);
+        submission.setDeleted(0);
         return submission;
     }
 
@@ -1190,6 +1290,7 @@ class DocWorkspaceServiceTest {
         attachment.setStoragePath(storagePath);
         attachment.setUploadedBy(20L);
         attachment.setCreatedAt(LocalDateTime.now());
+        attachment.setDeleted(0);
         return attachment;
     }
 
