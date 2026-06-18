@@ -27,7 +27,7 @@ print_help() {
   ./run.sh backup          备份 MySQL 数据库，默认保留 14 天
   ./run.sh restore FILE    从备份文件恢复 MySQL 数据库
   ./run.sh migrate         对已有数据库执行幂等迁移脚本
-  ./run.sh export-errors   导出最近 7 天系统错误故障包
+  ./run.sh export-errors [--days 7] 导出最近 7 天系统错误故障包
   ./run.sh init-prod-env   生成生产部署 .env 模板和随机密钥
   ./run.sh local           本地开发启动：Docker 启动 MySQL/Redis/MinIO，本机启动前后端
   ./run.sh help            查看帮助
@@ -302,6 +302,11 @@ restore_db() {
 export_errors() {
   ensure_env
   local days="${2:-7}"
+  if [ "${2:-}" = "--days" ]; then
+    days="${3:-}"
+  elif [[ "${2:-}" == --days=* ]]; then
+    days="${2#--days=}"
+  fi
   if ! [[ "$days" =~ ^[0-9]+$ ]]; then
     echo "导出天数必须是数字。"
     exit 1

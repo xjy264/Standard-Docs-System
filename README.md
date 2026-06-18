@@ -65,7 +65,7 @@ npm run dev
 服务器本地也可以导出：
 
 ```bash
-./run.sh export-errors 7
+./run.sh export-errors --days 7
 ```
 
 导出包包含错误事件、完整堆栈、容器日志摘要和自检结果。密码、Cookie、JWT、CSRF、MinIO 密钥、文件正文和原始敏感请求体不会写入错误事件。
