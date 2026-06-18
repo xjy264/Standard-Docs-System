@@ -196,6 +196,22 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void createFileWithMainFileRejectsSvgUpload() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料夹", null, 1, 10));
+        MultipartFile file = new MockMultipartFile("file", "图标.svg", "image/svg+xml", "<svg></svg>".getBytes());
+        DocNodeRequest request = new DocNodeRequest(2L, 5L, "图标", 30, null, false, "", null, 2026);
+
+        assertThatThrownBy(() -> fx.service.createFileNodeWithMainFile(10L, 2L, false, request, file))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("不支持上传该类型文件");
+
+        verify(fx.storageService, never()).upload(any(), any());
+        verify(fx.itemMapper, never()).insert(any(SysDocItem.class));
+    }
+
+    @Test
     void createFileWithMainFileInheritsParentFolderYearWhenDocYearMissing() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));

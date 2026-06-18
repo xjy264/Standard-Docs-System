@@ -461,7 +461,7 @@ async function loadPrimaryPreview() {
   const preview = await apiGet<AttachmentPreview>(`/doc-item-attachments/${attachment.id}/preview`)
   if ((preview.previewType === 'PDF' || preview.previewType === 'IMAGE') && preview.url) {
     inlinePreviewKind.value = preview.previewType
-    inlinePreviewUrl.value = appendAccessToken(new URL(preview.url, window.location.origin).toString())
+    inlinePreviewUrl.value = new URL(preview.url, window.location.origin).toString()
     inlinePreviewMessage.value = ''
     return
   }
@@ -518,20 +518,11 @@ async function openOfficePreview(preview: AttachmentPreview, attachment: DocItem
   }, 0)
 }
 
-function appendAccessToken(url: string) {
-  if (!auth.token) {
-    return url
-  }
-  const fileUrl = new URL(url)
-  fileUrl.searchParams.set('access_token', auth.token)
-  return fileUrl.toString()
-}
-
 function onlyOfficeFileUrl(downloadUrl: string) {
   const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
   const defaultBase = isLocalHost ? 'http://host.docker.internal:8010' : window.location.origin
   const base = import.meta.env.VITE_ONLYOFFICE_FILE_BASE || defaultBase
-  return appendAccessToken(new URL(downloadUrl, base).toString())
+  return new URL(downloadUrl, base).toString()
 }
 
 function loadOnlyOfficeScript(documentServerUrl: string) {

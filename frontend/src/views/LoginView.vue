@@ -65,13 +65,13 @@ async function login() {
   }
   loading.value = true
   try {
-    const result = await apiPost<{ token: string; user: any; permissions: string[] }>('/auth/login', form)
+    const result = await apiPost<{ user: any; permissions: string[] }>('/auth/login', form)
     if (rememberPhone.value) {
       localStorage.setItem(REMEMBER_PHONE_KEY, form.phone.trim())
     } else {
       localStorage.removeItem(REMEMBER_PHONE_KEY)
     }
-    auth.setSession(result.token, result.user, result.permissions)
+    auth.setSession(result.user, result.permissions)
     router.push('/dashboard')
   } catch {
     resetCaptcha()

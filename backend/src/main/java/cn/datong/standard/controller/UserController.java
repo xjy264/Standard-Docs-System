@@ -178,7 +178,14 @@ public class UserController {
 
     @GetMapping("/{id}/effective-permissions")
     public ApiResponse<Set<String>> effectivePermissions(@PathVariable Long id) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        if (!currentUser.superAdmin() && !currentUser.userId().equals(id)) {
+            throw new cn.datong.standard.common.BusinessException(403, "只能查看自己的有效权限");
+        }
         SysUser user = userMapper.selectById(id);
+        if (user == null) {
+            throw new cn.datong.standard.common.BusinessException("用户不存在");
+        }
         return ApiResponse.success(permissionService.getEffectivePermissions(id, Boolean.TRUE.equals(user.getIsSuperAdmin())));
     }
 

@@ -66,7 +66,28 @@ class DocSubmissionControllerTest {
 
         assertThat(response.getData().previewType()).isEqualTo("ONLYOFFICE");
         assertThat(response.getData().fileType()).isEqualTo("XLSX");
-        assertThat(response.getData().url()).isEqualTo("/api/doc-item-attachments/8/download");
+        assertThat(response.getData().url()).startsWith("/api/doc-item-attachments/8/ticket-download?ticket=");
+        assertThat(response.getData().url()).doesNotContain("access_token");
         assertThat(response.getData().documentServerUrl()).isEqualTo("http://localhost:8082");
+    }
+
+    @Test
+    void previewItemAttachmentDoesNotInlineSvgImages() {
+        DocWorkspaceService docWorkspaceService = mock(DocWorkspaceService.class);
+        DocSubmissionController controller = new DocSubmissionController(docWorkspaceService, mock(FileStorageService.class));
+        CurrentUser currentUser = new CurrentUser(1L, 2L, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(currentUser, null, List.of()));
+        SysDocItemAttachment attachment = new SysDocItemAttachment();
+        attachment.setId(9L);
+        attachment.setOriginalFileName("图标.svg");
+        attachment.setExtension("svg");
+        attachment.setMimeType("image/svg+xml");
+        when(docWorkspaceService.requireItemAttachment(1L, 2L, true, 9L)).thenReturn(attachment);
+
+        ApiResponse<DocAttachmentPreview> response = controller.previewItemAttachment(9L);
+
+        assertThat(response.getData().previewType()).isEqualTo("UNSUPPORTED");
+        assertThat(response.getData().url()).isNull();
     }
 }

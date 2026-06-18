@@ -5,17 +5,23 @@ import cn.datong.standard.dto.AuthTokenResponse;
 import cn.datong.standard.dto.AuthUser;
 import cn.datong.standard.service.AuthService;
 import cn.datong.standard.service.CaptchaService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class AuthControllerTest {
 
@@ -25,8 +31,7 @@ class AuthControllerTest {
         when(captchaService.create()).thenThrow(new IllegalStateException("resource missing"));
         AuthController controller = new AuthController(
                 captchaService,
-                mock(AuthService.class),
-                new ObjectMapper()
+                mock(AuthService.class)
         );
 
         ApiResponse<?> response = controller.captcha();
@@ -46,8 +51,7 @@ class AuthControllerTest {
         )));
         AuthController controller = new AuthController(
                 captchaService,
-                mock(AuthService.class),
-                new ObjectMapper()
+                mock(AuthService.class)
         );
 
         ApiResponse<?> response = controller.captcha();
@@ -59,19 +63,37 @@ class AuthControllerTest {
     }
 
     @Test
-    void devLoginRedirectsToDashboard() throws Exception {
+    void controllerDoesNotExposeDevLoginEndpoint() {
+        assertThat(Stream.of(AuthController.class.getDeclaredMethods()).map(java.lang.reflect.Method::getName))
+                .doesNotContain("devLogin");
+    }
+
+    @Test
+    void loginSetsHttpOnlyCookieAndDoesNotExposeTokenInBody() throws Exception {
         AuthService authService = mock(AuthService.class);
-        HttpServletRequest request = mock(HttpServletRequest.class);
         AuthUser user = new AuthUser(1L, "admin", "系统管理员", "00000000000", 1L, true, true);
-        when(authService.devLoginAs(eq(1L), eq(request))).thenReturn(new AuthTokenResponse("token", user, Set.of("*")));
+        when(authService.login(any(), any())).thenReturn(new AuthTokenResponse("token", user, Set.of("*")));
         AuthController controller = new AuthController(
                 mock(CaptchaService.class),
-                authService,
-                new ObjectMapper()
+                authService
         );
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
-        String html = controller.devLogin(1L, request);
-
-        assertThat(html).contains("location.replace('/dashboard')");
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "phone": "00000000000",
+                                  "password": "Admin12345@@",
+                                  "captchaKey": "captcha-id",
+                                  "captchaCode": "SLIDER_PASSED"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(cookie().httpOnly("SDS_AUTH", true))
+                .andExpect(cookie().exists("XSRF-TOKEN"))
+                .andExpect(jsonPath("$.data.token").doesNotExist())
+                .andExpect(jsonPath("$.data.user.id").value(1))
+                .andExpect(jsonPath("$.data.permissions[0]").value("*"));
     }
 }

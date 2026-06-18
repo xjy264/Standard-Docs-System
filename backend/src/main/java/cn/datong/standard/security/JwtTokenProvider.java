@@ -25,28 +25,22 @@ public class JwtTokenProvider {
         this.expireSeconds = expireSeconds;
     }
 
-    public String createToken(Long userId, Long deptId, boolean superAdmin) {
+    public String createToken(Long userId) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(String.valueOf(userId))
-                .claim("deptId", deptId)
-                .claim("superAdmin", superAdmin)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(expireSeconds)))
                 .signWith(key)
                 .compact();
     }
 
-    public CurrentUser parse(String token) {
+    public Long parseUserId(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-        Long userId = Long.valueOf(claims.getSubject());
-        Object dept = claims.get("deptId");
-        Long deptId = dept == null ? null : Long.valueOf(String.valueOf(dept));
-        boolean superAdmin = Boolean.parseBoolean(String.valueOf(claims.get("superAdmin")));
-        return new CurrentUser(userId, deptId, superAdmin);
+        return Long.valueOf(claims.getSubject());
     }
 }

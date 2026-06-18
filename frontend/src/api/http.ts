@@ -10,7 +10,8 @@ export interface ApiResult<T> {
 
 export const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '/api',
-  timeout: 30000
+  timeout: 30000,
+  withCredentials: true
 })
 
 const AUTH_INVALID_MESSAGE = '登录状态已失效，请重新登录。'
@@ -113,9 +114,12 @@ function messageByStatus(status?: number, message?: string) {
   return '操作未完成，请稍后重试。'
 }
 
-function handleAuthInvalid() {
+function handleAuthInvalid(silent = false) {
   const auth = useAuthStore()
   auth.logout()
+  if (silent) {
+    return
+  }
   if (!authInvalidNotified) {
     authInvalidNotified = true
     showErrorOnce(AUTH_INVALID_MESSAGE, 'auth-invalid')
@@ -132,7 +136,7 @@ function handleAuthInvalid() {
 
 function handleResponseError(status: number | undefined, message: string, silent: boolean) {
   if (message === AUTH_INVALID_MESSAGE) {
-    handleAuthInvalid()
+    handleAuthInvalid(silent)
     return
   }
   if (!silent) {
@@ -141,12 +145,24 @@ function handleResponseError(status: number | undefined, message: string, silent
 }
 
 http.interceptors.request.use((config) => {
-  const auth = useAuthStore()
-  if (auth.token) {
-    config.headers.Authorization = `Bearer ${auth.token}`
+  const method = (config.method || 'get').toUpperCase()
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrfToken = readCookie('XSRF-TOKEN')
+    if (csrfToken) {
+      config.headers = config.headers || {}
+      config.headers['X-XSRF-TOKEN'] = csrfToken
+    }
   }
   return config
 })
+
+function readCookie(name: string) {
+  return document.cookie
+    .split(';')
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`))
+    ?.slice(name.length + 1) || ''
+}
 
 http.interceptors.response.use(
   (response) => {

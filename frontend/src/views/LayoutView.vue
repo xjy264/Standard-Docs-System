@@ -37,6 +37,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiGet, apiGetSilent } from '../api/http'
+import { apiPost } from '../api/http'
 import { useAuthStore } from '../stores/auth'
 
 interface DeptNavigationItem {
@@ -58,9 +59,13 @@ const canManageDocRoots = computed(() => Boolean(auth.user?.isSuperAdmin || auth
 const canManageRepairTemplates = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
 const defaultOpeneds = computed(() => navigation.value.filter((item) => item.children.length).map((item) => `dept-${item.id}`))
 
-function logout() {
-  auth.logout()
-  router.push('/login')
+async function logout() {
+  try {
+    await apiPost('/auth/logout')
+  } finally {
+    auth.logout()
+    router.push('/login')
+  }
 }
 
 async function loadNavigation() {
@@ -72,12 +77,12 @@ async function loadNavigation() {
 }
 
 async function refreshCurrentUser() {
-  if (!auth.token) {
+  if (!auth.isAuthenticated) {
     return true
   }
   try {
-    const user = await apiGetSilent('/auth/me')
-    auth.updateUser(user)
+    const session = await apiGetSilent<{ user: any; permissions: string[] }>('/auth/me')
+    auth.setSession(session.user, session.permissions)
     return true
   } catch {
     auth.logout()

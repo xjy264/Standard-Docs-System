@@ -20,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -108,6 +109,46 @@ class UserControllerTest {
                 .hasMessage("用户不存在");
 
         verify(userMapper, never()).updateById(any(SysUser.class));
+    }
+
+    @Test
+    void effectivePermissionsRejectsOtherUserWhenRequesterIsNotSuperAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(new CurrentUser(1L, 1L, false), null, List.of())
+        );
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        UserController controller = controller(userMapper, mock(PasswordEncoder.class), mock(OperationLogService.class));
+
+        assertThatThrownBy(() -> controller.effectivePermissions(2L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("只能查看自己的有效权限");
+
+        verify(userMapper, never()).selectById(2L);
+    }
+
+    @Test
+    void effectivePermissionsAllowsSelfLookup() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(new CurrentUser(1L, 1L, false), null, List.of())
+        );
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        SysUser user = user(1L);
+        user.setIsSuperAdmin(false);
+        when(userMapper.selectById(1L)).thenReturn(user);
+        when(permissionService.getEffectivePermissions(1L, false)).thenReturn(Set.of("user:view"));
+        UserController controller = new UserController(
+                userMapper,
+                mock(SysUserRoleMapper.class),
+                mock(SysUserPermissionMapper.class),
+                permissionService,
+                mock(UserAdminService.class),
+                mock(OrgAssignmentService.class),
+                mock(PasswordEncoder.class),
+                mock(OperationLogService.class)
+        );
+
+        assertThat(controller.effectivePermissions(1L).getData()).containsExactly("user:view");
     }
 
     private UserController controller(SysUserMapper userMapper, PasswordEncoder passwordEncoder, OperationLogService logService) {

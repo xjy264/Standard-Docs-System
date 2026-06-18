@@ -14,6 +14,7 @@
 - 初始密码：`Admin12345@@`
 
 数据库中保存的是 BCrypt 加密后的密码。首次部署后建议尽快修改管理员密码。
+系统不提供跳过密码的管理员免密登录入口。
 
 ## 本地启动
 
@@ -42,15 +43,20 @@ cp .env.example .env
 docker compose up -d
 ```
 
+已有数据卷升级代码后，执行幂等数据库迁移：
+
+```bash
+./run.sh migrate
+```
+
 访问地址：
 
 - 前端：`http://localhost:8000`
-- 后端接口：`http://localhost:8010/api`
-- MinIO 控制台：`http://localhost:9001`
-- OnlyOffice：`http://localhost:8082`
-- Knife4j：`http://localhost:8010/doc.html`
+- 后端接口：`http://localhost:8010/api`（默认仅本机或 Docker 内网访问）
+- MinIO 控制台：`http://localhost:9001`（默认仅本机访问）
+- OnlyOffice：`http://localhost:8082`（默认仅本机访问）
 
-公网部署时，修改 `deploy/.env` 中的域名、端口、MinIO 外部地址和 JWT 密钥。
+公网部署时，修改 `deploy/.env` 中的域名、端口、MinIO 外部地址和 JWT 密钥，只暴露前端或统一 Nginx 入口；Knife4j 默认关闭，本地调试时再通过环境变量开启。
 
 PDF 和图片可直接在浏览器中预览。Word、Excel、PPT 本地预览需要先启动 OnlyOffice：
 
@@ -60,7 +66,7 @@ docker compose up -d onlyoffice
 ```
 
 后端启用 Office 预览时设置 `ONLYOFFICE_ENABLED=true`、`ONLYOFFICE_URL=http://localhost:8082`。
-本地开发时，前端默认把 Office 文件下载地址指向 `http://host.docker.internal:8010`，便于 OnlyOffice 容器直连后端；同时需要保持 `ONLYOFFICE_ALLOW_PRIVATE_IP_ADDRESS=true`，允许 OnlyOffice 拉取本机后端文件。特殊部署可通过 `VITE_ONLYOFFICE_FILE_BASE` 覆盖。
+本地开发时，前端默认把 Office 文件下载地址指向 `http://host.docker.internal:8010`，便于 OnlyOffice 容器直连后端；同时需要保持 `ONLYOFFICE_ALLOW_PRIVATE_IP_ADDRESS=true`，允许 OnlyOffice 拉取本机后端文件。Office 文件拉取使用短时附件访问票据，不会在 URL 中携带登录 JWT。特殊部署可通过 `VITE_ONLYOFFICE_FILE_BASE` 覆盖。
 
 ## 第一阶段重点
 
@@ -74,5 +80,6 @@ docker compose up -d onlyoffice
 ```bash
 cd backend && mvn test
 cd frontend && npm run build
+./run.sh migrate
 cd deploy && docker compose up -d
 ```

@@ -12,33 +12,31 @@ export interface LoginUser {
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    token: localStorage.getItem('token') || '',
-    user: JSON.parse(localStorage.getItem('user') || 'null') as LoginUser | null,
-    permissions: JSON.parse(localStorage.getItem('permissions') || '[]') as string[]
+    user: null as LoginUser | null,
+    permissions: [] as string[],
+    initialized: false
   }),
   getters: {
+    isAuthenticated: (state) => Boolean(state.user),
     hasPermission: (state) => (code: string) => Boolean(state.user?.isSuperAdmin) || state.permissions.includes('*') || state.permissions.includes(code)
   },
   actions: {
-    setSession(token: string, user: LoginUser, permissions: string[]) {
-      this.token = token
+    setSession(user: LoginUser, permissions: string[]) {
       this.user = user
       this.permissions = permissions
-      localStorage.setItem('token', token)
-      localStorage.setItem('user', JSON.stringify(user))
-      localStorage.setItem('permissions', JSON.stringify(permissions))
+      this.initialized = true
     },
     updateUser(user: LoginUser) {
       this.user = user
-      localStorage.setItem('user', JSON.stringify(user))
+      this.initialized = true
+    },
+    markInitialized() {
+      this.initialized = true
     },
     logout() {
-      this.token = ''
       this.user = null
       this.permissions = []
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      localStorage.removeItem('permissions')
+      this.initialized = true
     }
   }
 })

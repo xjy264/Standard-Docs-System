@@ -1,6 +1,7 @@
 package cn.datong.standard.service;
 
 import cn.datong.standard.common.BusinessException;
+import cn.datong.standard.dto.AuthSessionResponse;
 import cn.datong.standard.dto.AuthTokenResponse;
 import cn.datong.standard.dto.AuthUser;
 import cn.datong.standard.dto.LoginRequest;
@@ -12,11 +13,11 @@ import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.security.JwtTokenProvider;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.net.InetAddress;
 import java.time.LocalDateTime;
 import java.util.Set;
 
@@ -31,6 +32,8 @@ public class AuthService {
     private final PermissionService permissionService;
     private final OperationLogService logService;
     private final OrgAssignmentService orgAssignmentService;
+    @Autowired(required = false)
+    private LoginAttemptService loginAttemptService;
 
     public void register(RegisterRequest request) {
         captchaService.verify(request.captchaKey(), request.captchaCode());
@@ -67,39 +70,34 @@ public class AuthService {
     public AuthTokenResponse login(LoginRequest request, HttpServletRequest servletRequest) {
         captchaService.verify(request.captchaKey(), request.captchaCode());
         String phone = UserInputValidator.trim(request.phone());
+        if (loginAttemptService != null) {
+            loginAttemptService.assertAllowed(phone, servletRequest);
+        }
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getPhone, phone));
-        if (user == null || !passwordEncoder.matches(request.password(), user.getPassword())) {
+        if (user == null || Integer.valueOf(1).equals(user.getDeleted()) || !passwordEncoder.matches(request.password(), user.getPassword())) {
+            if (loginAttemptService != null) {
+                loginAttemptService.recordFailure(phone, servletRequest);
+            }
             logService.login(phone, null, "FAIL", "手机号或密码错误", servletRequest);
             throw new BusinessException("手机号或密码错误");
         }
         if (!"APPROVED".equals(user.getApprovalStatus()) || !"ENABLED".equals(user.getStatus())) {
             String reason = loginBlockedMessage(user);
+            if (loginAttemptService != null) {
+                loginAttemptService.recordFailure(phone, servletRequest);
+            }
             logService.login(phone, user.getId(), "FAIL", reason, servletRequest);
             throw new BusinessException(reason);
         }
         user.setLastLoginTime(LocalDateTime.now());
         userMapper.updateById(user);
-        String token = jwtTokenProvider.createToken(user.getId(), user.getDeptId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
+        String token = jwtTokenProvider.createToken(user.getId());
         Set<String> permissions = permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
+        if (loginAttemptService != null) {
+            loginAttemptService.clear(phone, servletRequest);
+        }
         logService.login(phone, user.getId(), "SUCCESS", null, servletRequest);
-        return new AuthTokenResponse(token, authUser(user), permissions);
-    }
-
-    public AuthTokenResponse devLoginAsUserOne(HttpServletRequest servletRequest) {
-        return devLoginAs(1L, servletRequest);
-    }
-
-    public AuthTokenResponse devLoginAs(Long userId, HttpServletRequest servletRequest) {
-        if (!isLocalRequest(servletRequest)) {
-            throw new BusinessException(403, "仅本地开发环境允许跳过登录");
-        }
-        SysUser user = userMapper.selectById(userId);
-        if (user == null) {
-            throw new BusinessException("本地开发用户不存在");
-        }
-        String token = jwtTokenProvider.createToken(user.getId(), user.getDeptId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
-        Set<String> permissions = permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin()));
         return new AuthTokenResponse(token, authUser(user), permissions);
     }
 
@@ -111,13 +109,13 @@ public class AuthService {
         return authUser(user);
     }
 
-    private boolean isLocalRequest(HttpServletRequest servletRequest) {
-        try {
-            String remoteAddr = servletRequest.getRemoteAddr();
-            return remoteAddr != null && InetAddress.getByName(remoteAddr).isLoopbackAddress();
-        } catch (Exception ignored) {
-            return false;
+    public AuthSessionResponse currentSession(Long userId) {
+        SysUser user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
         }
+        return new AuthSessionResponse(authUser(user),
+                permissionService.getEffectivePermissions(user.getId(), Boolean.TRUE.equals(user.getIsSuperAdmin())));
     }
 
     private AuthUser authUser(SysUser user) {

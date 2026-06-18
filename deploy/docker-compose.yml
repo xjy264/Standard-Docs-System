@@ -10,7 +10,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-standard123}
       TZ: Asia/Shanghai
     ports:
-      - "3306:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql-init:/docker-entrypoint-initdb.d
@@ -20,9 +20,11 @@ services:
     image: redis:7
     container_name: dt-standard-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
 
@@ -35,8 +37,8 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
 
@@ -48,7 +50,7 @@ services:
       JWT_ENABLED: ${ONLYOFFICE_JWT_ENABLED:-false}
       ALLOW_PRIVATE_IP_ADDRESS: ${ONLYOFFICE_ALLOW_PRIVATE_IP_ADDRESS:-true}
     ports:
-      - "${ONLYOFFICE_PORT:-8082}:80"
+      - "127.0.0.1:${ONLYOFFICE_PORT:-8082}:80"
 
   backend:
     build:
@@ -67,14 +69,19 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-standard123}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       ONLYOFFICE_ENABLED: ${ONLYOFFICE_ENABLED:-false}
       ONLYOFFICE_URL: ${ONLYOFFICE_URL:-}
-      JWT_SECRET: ${JWT_SECRET:-DatongStandardDocsJwtSecretMustBeLongEnough2026}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      KNIFE4J_ENABLED: ${KNIFE4J_ENABLED:-false}
+      SPRINGDOC_API_DOCS_ENABLED: ${SPRINGDOC_API_DOCS_ENABLED:-false}
+      SPRINGDOC_SWAGGER_UI_ENABLED: ${SPRINGDOC_SWAGGER_UI_ENABLED:-false}
     ports:
-      - "${BACKEND_PORT:-8010}:8010"
+      - "127.0.0.1:${BACKEND_PORT:-8010}:8010"
 
   frontend:
     build:

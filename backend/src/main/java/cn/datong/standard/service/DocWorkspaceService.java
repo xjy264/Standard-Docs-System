@@ -61,6 +61,11 @@ import java.util.stream.Collectors;
 public class DocWorkspaceService {
     private static final String DEFAULT_REPAIR_TEMPLATE_LIBRARY_NAME = "房建大修模板库";
     private static final String BODY_ATTACHMENT_EXISTS_MESSAGE = "请先删除原有文件后再上传";
+    private static final Set<String> ALLOWED_UPLOAD_EXTENSIONS = Set.of(
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+            "png", "jpg", "jpeg", "gif", "bmp", "webp",
+            "zip", "rar", "7z", "dwg", "dxf", "txt"
+    );
 
     private final SysDeptMapper deptMapper;
     private final SysUserMapper userMapper;
@@ -224,6 +229,7 @@ public class DocWorkspaceService {
         String businessType = resolveUnifiedBusinessType(request);
         boolean workshopUploadEnabled = Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType);
         String extension = extension(original);
+        validateAllowedUploadExtension(extension);
         String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
                 + (extension.isBlank() ? "" : "." + extension);
         StoredObject stored = storageService.upload(file, objectName);
@@ -802,6 +808,7 @@ public class DocWorkspaceService {
                 ? "未命名文件"
                 : file.getOriginalFilename().trim();
         String extension = extension(original);
+        validateAllowedUploadExtension(extension);
         String objectName = "repair-templates/" + LocalDate.now() + "/" + UUID.randomUUID()
                 + (extension.isBlank() ? "" : "." + extension);
         StoredObject stored = storageService.upload(file, objectName);
@@ -945,6 +952,7 @@ public class DocWorkspaceService {
                     ? templateItem.getItemName()
                     : templateItem.getOriginalFileName();
             String extension = extension(original);
+            validateAllowedUploadExtension(extension);
             byte[] bytes = readTemplateFile(templateItem);
             MultipartFile copyFile = new StoredMultipartFile("file", original, templateItem.getMimeType(), bytes);
             String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
@@ -1008,6 +1016,7 @@ public class DocWorkspaceService {
     private void saveAttachment(Long userId, Long submissionId, Long requirementId, MultipartFile file) {
         String original = file.getOriginalFilename() == null ? "未命名文件" : file.getOriginalFilename();
         String extension = extension(original);
+        validateAllowedUploadExtension(extension);
         String objectName = "doc-submissions/" + LocalDate.now() + "/" + UUID.randomUUID()
                 + (extension.isBlank() ? "" : "." + extension);
         StoredObject stored = storageService.upload(file, objectName);
@@ -1029,6 +1038,7 @@ public class DocWorkspaceService {
     private void saveItemAttachment(Long userId, Long itemId, MultipartFile file) {
         String original = file.getOriginalFilename() == null ? "未命名文件" : file.getOriginalFilename();
         String extension = extension(original);
+        validateAllowedUploadExtension(extension);
         String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
                 + (extension.isBlank() ? "" : "." + extension);
         StoredObject stored = storageService.upload(file, objectName);
@@ -1882,9 +1892,15 @@ public class DocWorkspaceService {
             case "ppt", "pptx" -> "PPT";
             case "pdf" -> "PDF";
             case "zip" -> "ZIP";
-            case "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg" -> "IMAGE";
+            case "png", "jpg", "jpeg", "gif", "bmp", "webp" -> "IMAGE";
             default -> "OTHER";
         };
+    }
+
+    private void validateAllowedUploadExtension(String extension) {
+        if (extension == null || extension.isBlank() || !ALLOWED_UPLOAD_EXTENSIONS.contains(extension.toLowerCase(Locale.ROOT))) {
+            throw new BusinessException("不支持上传该类型文件");
+        }
     }
 
     private Integer resolveFolderDocYear(Long parentId, Integer docYear) {

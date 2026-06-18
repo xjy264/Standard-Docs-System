@@ -1,6 +1,7 @@
 package cn.datong.standard.controller;
 
 import cn.datong.standard.common.ApiResponse;
+import cn.datong.standard.common.BusinessException;
 import cn.datong.standard.dto.CurrentUser;
 import cn.datong.standard.entity.SysNotification;
 import cn.datong.standard.mapper.SysNotificationMapper;
@@ -42,7 +43,11 @@ public class NotificationController {
 
     @PostMapping("/{id}/read")
     public ApiResponse<Void> read(@PathVariable Long id) {
+        CurrentUser currentUser = SecurityUtils.currentUser();
         SysNotification notification = notificationMapper.selectById(id);
+        if (notification == null || !currentUser.userId().equals(notification.getUserId())) {
+            throw new BusinessException(404, "通知不存在");
+        }
         notification.setReadStatus("READ");
         notification.setReadTime(LocalDateTime.now());
         notificationMapper.updateById(notification);

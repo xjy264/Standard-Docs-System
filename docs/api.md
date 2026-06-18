@@ -15,9 +15,10 @@
 - `GET /api/auth/captcha`：获取滑块验证码。
 - `POST /api/auth/captcha/check`：校验滑块轨迹，返回登录和注册使用的一次性验证码凭证。
 - `POST /api/auth/register`：注册，请求体包含 `phone`、`realName`、`deptId`、`password`、`confirmPassword`，不再填写用户名；`realName` 仅允许 2-10 位中文和中间点，`phone` 必须为中国大陆 11 位手机号；密码需满足 8-20 位且包含大小写字母、数字、常见英文特殊符号。
-- `POST /api/auth/login`：手机号登录，请求体包含 `phone`、`password`；返回用户信息包含 `admin`，用于标识是否为管理员；密码正确但账号待审核时提示管理员审核中。
-- `POST /api/auth/logout`：登出。
-- `GET /api/auth/me`：当前用户信息，返回用户信息包含 `admin`。
+- `POST /api/auth/login`：手机号登录，请求体包含 `phone`、`password`；登录成功后通过 `SDS_AUTH` HttpOnly Cookie 建立会话，并返回 `user` 和 `permissions`，不向前端返回 JWT；密码正确但账号待审核时提示管理员审核中。
+- `POST /api/auth/logout`：登出，清理登录 Cookie 和 CSRF Cookie。
+- `GET /api/auth/me`：当前会话信息，返回 `user` 和 `permissions`，用户信息包含 `admin`。
+- 已登录的非 GET/HEAD/OPTIONS 请求必须携带 `X-XSRF-TOKEN` 请求头，值来自同名 CSRF Cookie。
 
 ## 注册审批
 
@@ -44,7 +45,7 @@
 ## 权限
 
 - `GET /api/roles`：角色模板列表。
-- `GET /api/roles/permissions`：权限点列表。
+- `GET /api/roles/permissions`：权限点列表，需要 `role:view` 权限。
 - `POST /api/roles/{id}/permissions`：配置角色权限。
 - `GET /api/permission-matrix?deptId=1`：部门用户权限矩阵。
 - `POST /api/permission-matrix/users/{userId}`：保存用户权限。
@@ -78,8 +79,9 @@
 - `POST /api/doc-items/{id}/issued-attachments`：本科室用户或超级管理员上传下达文件附件，使用 `multipart/form-data`。
 - `POST /api/doc-items/{id}/body-attachments`：本科室用户或超级管理员上传文件正文附件，使用 `multipart/form-data`；同一文件同一时间只允许一个当前有效正文附件，已有附件时必须先删除原有文件后再上传。
 - `GET /api/doc-item-attachments/{id}/download`：下载下达文件附件。
-- `GET /api/doc-item-attachments/{id}/preview`：查询下达文件附件预览信息；PDF 和图片返回 `inline` 预览地址，Word、Excel、PPT 返回 OnlyOffice 预览配置，未配置 OnlyOffice 时返回普通用户可读提示。前端本地开发时默认将 Office 文件下载地址指向 `http://host.docker.internal:8010`，OnlyOffice 容器需配置 `ONLYOFFICE_ALLOW_PRIVATE_IP_ADDRESS=true` 才能拉取本机后端文件；特殊部署可通过 `VITE_ONLYOFFICE_FILE_BASE` 覆盖。
+- `GET /api/doc-item-attachments/{id}/preview`：查询下达文件附件预览信息；PDF 和图片返回 `inline` 预览地址并依赖登录 Cookie 访问，Word、Excel、PPT 返回 OnlyOffice 预览配置和短时附件访问票据 URL，不返回登录 JWT；未配置 OnlyOffice 时返回普通用户可读提示。前端本地开发时默认将 Office 文件下载地址指向 `http://host.docker.internal:8010`，OnlyOffice 容器需配置 `ONLYOFFICE_ALLOW_PRIVATE_IP_ADDRESS=true` 才能拉取本机后端文件；特殊部署可通过 `VITE_ONLYOFFICE_FILE_BASE` 覆盖。
 - `GET /api/doc-item-attachments/{id}/inline`：下达文件附件内联预览文件流，支持 PDF 和图片直接在浏览器中预览。
+- `GET /api/doc-item-attachments/{id}/ticket-download?ticket=...`：OnlyOffice 使用的短时附件访问地址，票据只绑定当前附件并默认 5 分钟有效。
 - `DELETE /api/doc-item-attachments/{id}`：本科室用户或超级管理员软删除文件正文附件，真实文件暂不删除；被删除附件不再展示、下载或预览。
 - `GET /api/submissions/{id}`：查看上传记录详情。
 - `DELETE /api/submissions/{id}`：软删除上传记录。多份模式下本人可删除自己的提交，本车间管理员可删除本车间提交；单份模式下车间侧不可删除，科室用户和超级管理员可删除用于纠错。

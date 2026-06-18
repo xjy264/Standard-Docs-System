@@ -73,6 +73,8 @@ public class RoleController {
 
     @GetMapping("/permissions")
     public ApiResponse<List<SysPermission>> permissions() {
+        CurrentUser currentUser = SecurityUtils.currentUser();
+        permissionService.require(currentUser.userId(), currentUser.superAdmin(), "role:view");
         return ApiResponse.success(permissionMapper.selectList(new LambdaQueryWrapper<SysPermission>()
                 .eq(SysPermission::getStatus, "ENABLED")
                 .orderByAsc(SysPermission::getSortOrder)));

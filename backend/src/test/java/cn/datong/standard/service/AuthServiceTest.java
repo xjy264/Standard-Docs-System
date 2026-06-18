@@ -9,7 +9,6 @@ import cn.datong.standard.entity.SysUser;
 import cn.datong.standard.mapper.SysRegisterApprovalMapper;
 import cn.datong.standard.mapper.SysUserMapper;
 import cn.datong.standard.security.JwtTokenProvider;
-import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,115 +25,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthServiceTest {
-
-    @Test
-    void devLoginAsUserOneAllowsLoopbackRequest() {
-        SysUserMapper userMapper = mock(SysUserMapper.class);
-        JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
-        PermissionService permissionService = mock(PermissionService.class);
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        SysUser user = new SysUser();
-        user.setId(1L);
-        user.setDeptId(1L);
-        user.setIsSuperAdmin(true);
-        when(request.getRemoteAddr()).thenReturn("127.0.0.1");
-        when(userMapper.selectById(1L)).thenReturn(user);
-        when(jwtTokenProvider.createToken(1L, 1L, true)).thenReturn("dev-token");
-        when(permissionService.getEffectivePermissions(1L, true)).thenReturn(Set.of("*"));
-        OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
-        AuthService service = new AuthService(
-                userMapper,
-                mock(SysRegisterApprovalMapper.class),
-                mock(PasswordEncoder.class),
-                mock(CaptchaService.class),
-                jwtTokenProvider,
-                permissionService,
-                mock(OperationLogService.class),
-                orgAssignmentService
-        );
-
-        AuthTokenResponse response = service.devLoginAsUserOne(request);
-
-        assertThat(response.token()).isEqualTo("dev-token");
-        assertThat(response.user().id()).isEqualTo(1L);
-        assertThat(response.user().admin()).isTrue();
-        assertThat(response.permissions()).containsExactly("*");
-    }
-
-    @Test
-    void devLoginAsSpecificUserAllowsLoopbackRequest() {
-        SysUserMapper userMapper = mock(SysUserMapper.class);
-        JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
-        PermissionService permissionService = mock(PermissionService.class);
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        SysUser user = new SysUser();
-        user.setId(42L);
-        user.setDeptId(7L);
-        user.setIsSuperAdmin(false);
-        when(request.getRemoteAddr()).thenReturn("127.0.0.1");
-        when(userMapper.selectById(42L)).thenReturn(user);
-        when(jwtTokenProvider.createToken(42L, 7L, false)).thenReturn("dev-token-42");
-        when(permissionService.getEffectivePermissions(42L, false)).thenReturn(Set.of("file:upload"));
-        OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
-        when(orgAssignmentService.adminUserIds()).thenReturn(Set.of(42L));
-        AuthService service = new AuthService(
-                userMapper,
-                mock(SysRegisterApprovalMapper.class),
-                mock(PasswordEncoder.class),
-                mock(CaptchaService.class),
-                jwtTokenProvider,
-                permissionService,
-                mock(OperationLogService.class),
-                orgAssignmentService
-        );
-
-        AuthTokenResponse response = service.devLoginAs(42L, request);
-
-        assertThat(response.token()).isEqualTo("dev-token-42");
-        assertThat(response.user().id()).isEqualTo(42L);
-        assertThat(response.user().admin()).isTrue();
-        assertThat(response.permissions()).containsExactly("file:upload");
-    }
-
-    @Test
-    void devLoginAsSpecificUserRejectsNonLocalRequest() {
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getRemoteAddr()).thenReturn("192.168.1.10");
-        AuthService service = new AuthService(
-                mock(SysUserMapper.class),
-                mock(SysRegisterApprovalMapper.class),
-                mock(PasswordEncoder.class),
-                mock(CaptchaService.class),
-                mock(JwtTokenProvider.class),
-                mock(PermissionService.class),
-                mock(OperationLogService.class),
-                mock(OrgAssignmentService.class)
-        );
-
-        assertThatThrownBy(() -> service.devLoginAs(42L, request))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("仅本地开发环境允许跳过登录");
-    }
-
-    @Test
-    void devLoginAsUserOneRejectsNonLocalRequest() {
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getRemoteAddr()).thenReturn("192.168.1.10");
-        AuthService service = new AuthService(
-                mock(SysUserMapper.class),
-                mock(SysRegisterApprovalMapper.class),
-                mock(PasswordEncoder.class),
-                mock(CaptchaService.class),
-                mock(JwtTokenProvider.class),
-                mock(PermissionService.class),
-                mock(OperationLogService.class),
-                mock(OrgAssignmentService.class)
-        );
-
-        assertThatThrownBy(() -> service.devLoginAsUserOne(request))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("仅本地开发环境允许跳过登录");
-    }
 
     @Test
     void registerRejectsUnassignableDept() {
@@ -476,6 +366,47 @@ class AuthServiceTest {
     }
 
     @Test
+    void deletedUserCannotLoginEvenWhenPasswordMatches() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
+        OperationLogService logService = mock(OperationLogService.class);
+        SysUser user = new SysUser();
+        user.setId(100L);
+        user.setPhone("13800000000");
+        user.setPassword("encoded-password");
+        user.setStatus("ENABLED");
+        user.setApprovalStatus("APPROVED");
+        user.setDeleted(1);
+        when(userMapper.selectOne(any())).thenReturn(user);
+        when(passwordEncoder.matches("Password123", "encoded-password")).thenReturn(true);
+        AuthService service = new AuthService(
+                userMapper,
+                mock(SysRegisterApprovalMapper.class),
+                passwordEncoder,
+                mock(CaptchaService.class),
+                jwtTokenProvider,
+                mock(PermissionService.class),
+                logService,
+                mock(OrgAssignmentService.class)
+        );
+
+        assertThatThrownBy(() -> service.login(
+                new LoginRequest(
+                        "13800000000",
+                        "Password123",
+                        "captcha-id",
+                        CaptchaService.SLIDER_PASSED_CODE
+                ),
+                null
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("手机号或密码错误");
+        verify(jwtTokenProvider, never()).createToken(any());
+        verify(logService).login("13800000000", null, "FAIL", "手机号或密码错误", null);
+    }
+
+    @Test
     void loginWithPhoneSucceeds() {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
@@ -492,7 +423,7 @@ class AuthServiceTest {
         user.setIsSuperAdmin(true);
         when(userMapper.selectOne(any())).thenReturn(user);
         when(passwordEncoder.matches("Admin12345@@", "encoded-password")).thenReturn(true);
-        when(jwtTokenProvider.createToken(1L, 24L, true)).thenReturn("token");
+        when(jwtTokenProvider.createToken(1L)).thenReturn("token");
         when(permissionService.getEffectivePermissions(1L, true)).thenReturn(Set.of("*"));
         OrgAssignmentService orgAssignmentService = mock(OrgAssignmentService.class);
         AuthService service = new AuthService(

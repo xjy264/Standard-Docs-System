@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { apiGetSilent } from '../api/http'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import LayoutView from '../views/LayoutView.vue'
@@ -62,12 +63,32 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to) => {
+let restoreSessionPromise: Promise<void> | null = null
+
+async function restoreSession() {
   const auth = useAuthStore()
-  if (!auth.token && !['/login', '/register'].includes(to.path)) {
+  if (auth.initialized) {
+    return
+  }
+  if (!restoreSessionPromise) {
+    restoreSessionPromise = apiGetSilent<{ user: any; permissions: string[] }>('/auth/me')
+      .then((session) => auth.setSession(session.user, session.permissions))
+      .catch(() => auth.logout())
+      .finally(() => {
+        auth.markInitialized()
+        restoreSessionPromise = null
+      })
+  }
+  await restoreSessionPromise
+}
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  await restoreSession()
+  if (!auth.isAuthenticated && !['/login', '/register'].includes(to.path)) {
     return '/login'
   }
-  if (auth.token && to.path === '/login') {
+  if (auth.isAuthenticated && to.path === '/login') {
     return '/dashboard'
   }
   return true

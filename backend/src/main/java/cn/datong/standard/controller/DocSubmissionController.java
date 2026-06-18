@@ -7,15 +7,17 @@ import cn.datong.standard.entity.SysDocAttachment;
 import cn.datong.standard.entity.SysDocItemAttachment;
 import cn.datong.standard.entity.SysDocSubmission;
 import cn.datong.standard.security.SecurityUtils;
+import cn.datong.standard.service.AttachmentAccessTicketService;
 import cn.datong.standard.service.DocWorkspaceService;
 import cn.datong.standard.storage.FileStorageService;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,14 +26,27 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 @RestController
-@RequiredArgsConstructor
 public class DocSubmissionController {
     private final DocWorkspaceService docWorkspaceService;
     private final FileStorageService storageService;
+    private final AttachmentAccessTicketService ticketService;
     @Value("${app.office.onlyoffice-enabled:false}")
     private boolean onlyOfficeEnabled;
     @Value("${app.office.document-server-url:}")
     private String onlyOfficeUrl;
+
+    public DocSubmissionController(DocWorkspaceService docWorkspaceService, FileStorageService storageService) {
+        this(docWorkspaceService, storageService, new AttachmentAccessTicketService(null));
+    }
+
+    @Autowired
+    public DocSubmissionController(DocWorkspaceService docWorkspaceService,
+                                   FileStorageService storageService,
+                                   AttachmentAccessTicketService ticketService) {
+        this.docWorkspaceService = docWorkspaceService;
+        this.storageService = storageService;
+        this.ticketService = ticketService;
+    }
 
     @GetMapping("/api/submissions/{id}")
     public ApiResponse<SysDocSubmission> detail(@PathVariable Long id) {
@@ -76,7 +91,7 @@ public class DocSubmissionController {
             return ApiResponse.success(new DocAttachmentPreview("PDF", "PDF", attachment.getOriginalFileName(),
                     "/api/doc-item-attachments/" + id + "/inline", null, null));
         }
-        if (isImageExtension(extension)) {
+        if (isSafeImageExtension(extension)) {
             return ApiResponse.success(new DocAttachmentPreview("IMAGE", extension.toUpperCase(), attachment.getOriginalFileName(),
                     "/api/doc-item-attachments/" + id + "/inline", null, null));
         }
@@ -85,8 +100,9 @@ public class DocSubmissionController {
                 return ApiResponse.success(new DocAttachmentPreview("UNCONFIGURED", extension.toUpperCase(), attachment.getOriginalFileName(),
                         null, null, "预览服务未配置"));
             }
+            String ticket = ticketService.issueItemAttachmentTicket(currentUser, id);
             return ApiResponse.success(new DocAttachmentPreview("ONLYOFFICE", extension.toUpperCase(), attachment.getOriginalFileName(),
-                    "/api/doc-item-attachments/" + id + "/download", onlyOfficeUrl, null));
+                    "/api/doc-item-attachments/" + id + "/ticket-download?ticket=" + urlEncode(ticket), onlyOfficeUrl, null));
         }
         return ApiResponse.success(new DocAttachmentPreview("UNSUPPORTED", extension.toUpperCase(), attachment.getOriginalFileName(),
                 null, null, "该格式暂不支持在线预览"));
@@ -96,7 +112,18 @@ public class DocSubmissionController {
     public void inlineItemAttachment(@PathVariable Long id, HttpServletResponse response) throws Exception {
         CurrentUser currentUser = SecurityUtils.currentUser();
         SysDocItemAttachment attachment = docWorkspaceService.requireItemAttachment(currentUser.userId(), currentUser.deptId(), currentUser.superAdmin(), id);
+        String extension = attachment.getExtension() == null ? "" : attachment.getExtension().toLowerCase();
+        if (!"pdf".equals(extension) && !isSafeImageExtension(extension)) {
+            throw new cn.datong.standard.common.BusinessException("该格式暂不支持在线预览");
+        }
         downloadObject(response, attachment.getMimeType(), attachment.getOriginalFileName(), attachment.getStorageBucket(), attachment.getStoragePath(), true);
+    }
+
+    @GetMapping("/api/doc-item-attachments/{id}/ticket-download")
+    public void ticketDownloadItemAttachment(@PathVariable Long id, @RequestParam String ticket, HttpServletResponse response) throws Exception {
+        ticketService.requireItemAttachmentTicket(id, ticket);
+        SysDocItemAttachment attachment = docWorkspaceService.requireItemAttachment(id);
+        downloadObject(response, attachment.getMimeType(), attachment.getOriginalFileName(), attachment.getStorageBucket(), attachment.getStoragePath());
     }
 
     private void downloadObject(HttpServletResponse response,
@@ -105,6 +132,8 @@ public class DocSubmissionController {
                                 String storageBucket,
                                 String storagePath) throws Exception {
         response.setContentType(mimeType == null ? "application/octet-stream" : mimeType);
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''"
                 + URLEncoder.encode(originalFileName, StandardCharsets.UTF_8));
         try (InputStream input = storageService.download(storageBucket, storagePath)) {
@@ -119,6 +148,8 @@ public class DocSubmissionController {
                                 String storagePath,
                                 boolean inline) throws Exception {
         response.setContentType(mimeType == null ? "application/octet-stream" : mimeType);
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Disposition", (inline ? "inline" : "attachment") + "; filename*=UTF-8''"
                 + URLEncoder.encode(originalFileName, StandardCharsets.UTF_8));
         try (InputStream input = storageService.download(storageBucket, storagePath)) {
@@ -126,7 +157,11 @@ public class DocSubmissionController {
         }
     }
 
-    private boolean isImageExtension(String extension) {
-        return extension.matches("png|jpg|jpeg|gif|bmp|webp|svg");
+    private boolean isSafeImageExtension(String extension) {
+        return extension.matches("png|jpg|jpeg|gif|bmp|webp");
+    }
+
+    private String urlEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

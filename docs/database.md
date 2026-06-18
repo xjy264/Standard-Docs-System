@@ -43,3 +43,5 @@
 - `12-doc-node-upload-progress-default-hidden.sql`：将目录文件夹上传进度字段默认值调整为不显示，并把已有文件夹统一更新为不显示。
 - `13-doc-recycle-bin.sql`：为文件回收站、正文附件软删除和 30 天自动清理追加必要字段和索引。
 - `14-doc-submission-soft-delete.sql`：为车间提交记录和提交附件追加软删除字段和索引。
+
+已有 MySQL 数据卷不会自动重新执行 `deploy/mysql-init/` 中新增脚本。升级代码后，在仓库根目录执行 `./run.sh migrate`，按顺序补齐 `13-doc-recycle-bin.sql` 和 `14-doc-submission-soft-delete.sql` 中的幂等字段与索引。
