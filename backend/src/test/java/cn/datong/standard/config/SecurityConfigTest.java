@@ -3,6 +3,7 @@ package cn.datong.standard.config;
 import cn.datong.standard.security.JwtAuthenticationFilter;
 import cn.datong.standard.security.JwtTokenProvider;
 import cn.datong.standard.security.CsrfProtectionFilter;
+import cn.datong.standard.security.TraceIdFilter;
 import cn.datong.standard.mapper.SysUserMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         SecurityConfig.class,
         JwtAuthenticationFilter.class,
         CsrfProtectionFilter.class,
+        TraceIdFilter.class,
         SecurityConfigTest.FrameTestController.class,
         SecurityConfigTest.TestConfig.class
 })

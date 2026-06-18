@@ -8,6 +8,8 @@ const formDeclaration = loginView.match(/const form = reactive\((\{[^)]*\})\)/s)
 const authStore = readFileSync(resolve('src/stores/auth.ts'), 'utf8')
 const httpClient = readFileSync(resolve('src/api/http.ts'), 'utf8')
 const detailView = readFileSync(resolve('src/views/DocItemDetailView.vue'), 'utf8')
+const personalSpaceView = readFileSync(resolve('src/views/PersonalSpaceView.vue'), 'utf8')
+const errorReporter = readFileSync(resolve('src/utils/errorReporter.ts'), 'utf8')
 
 test('login form does not prefill the seeded demo account', () => {
   assert.match(formDeclaration, /password:\s*['"]['"]/)
@@ -30,4 +32,19 @@ test('frontend keeps login jwt out of script-visible storage and urls', () => {
   assert.match(httpClient, /withCredentials:\s*true/)
   assert.match(httpClient, /X-XSRF-TOKEN/)
   assert.doesNotMatch(detailView, /access_token/)
+})
+
+test('system error console lives in notifications and is super admin only', () => {
+  assert.match(personalSpaceView, /系统错误/)
+  assert.match(personalSpaceView, /isSuperAdmin/)
+  assert.match(personalSpaceView, /ErrorEventPanel/)
+})
+
+test('frontend reports runtime errors without recursive reporting or secrets', () => {
+  assert.match(errorReporter, /installErrorReporter/)
+  assert.match(errorReporter, /window\.addEventListener\(['"]error['"]/)
+  assert.match(errorReporter, /window\.addEventListener\(['"]unhandledrejection['"]/)
+  assert.match(errorReporter, /reporting/)
+  assert.doesNotMatch(errorReporter, /password/)
+  assert.doesNotMatch(errorReporter, /Authorization/)
 })

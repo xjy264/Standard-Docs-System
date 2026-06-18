@@ -38,9 +38,9 @@ npm run dev
 ## Docker Compose 部署
 
 ```bash
-cd deploy
-cp .env.example .env
-docker compose up -d
+./run.sh init-prod-env
+./run.sh deploy
+./run.sh doctor
 ```
 
 已有数据卷升级代码后，执行幂等数据库迁移：
@@ -57,6 +57,18 @@ docker compose up -d
 - OnlyOffice：`http://localhost:8082`（默认仅本机访问）
 
 公网部署时，修改 `deploy/.env` 中的域名、端口、MinIO 外部地址和 JWT 密钥，只暴露前端或统一 Nginx 入口；Knife4j 默认关闭，本地调试时再通过环境变量开启。
+
+## 内网故障导出
+
+系统会记录后端异常、前端运行错误和接口错误。超级管理员在“个人空间 / 我的提醒”中可看到“系统错误”页签，支持查看完整错误信息、按同类 Bug 统计和一键导出故障包。
+
+服务器本地也可以导出：
+
+```bash
+./run.sh export-errors 7
+```
+
+导出包包含错误事件、完整堆栈、容器日志摘要和自检结果。密码、Cookie、JWT、CSRF、MinIO 密钥、文件正文和原始敏感请求体不会写入错误事件。
 
 PDF 和图片可直接在浏览器中预览。Word、Excel、PPT 本地预览需要先启动 OnlyOffice：
 
@@ -81,5 +93,5 @@ docker compose up -d onlyoffice
 cd backend && mvn test
 cd frontend && npm run build
 ./run.sh migrate
-cd deploy && docker compose up -d
+./run.sh doctor
 ```

@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { reportHttpError } from '../utils/errorReporter'
 
 export interface ApiResult<T> {
   code: number
@@ -183,6 +184,7 @@ http.interceptors.response.use(
         ? messageByStatus(status, rawMessage)
         : '无法连接系统服务，请确认网络正常后重试。'
     handleResponseError(status, message, hasSilentErrorHeader(error.config))
+    reportHttpError(error, message)
     if (message === AUTH_INVALID_MESSAGE) {
       return Promise.reject(new Error(message))
     }

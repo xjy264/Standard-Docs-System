@@ -2,6 +2,7 @@ package cn.datong.standard.config;
 
 import cn.datong.standard.security.JwtAuthenticationFilter;
 import cn.datong.standard.security.CsrfProtectionFilter;
+import cn.datong.standard.security.TraceIdFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +21,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CsrfProtectionFilter csrfProtectionFilter;
+    private final TraceIdFilter traceIdFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -48,10 +50,13 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/login",
                                 "/api/depts/tree",
-                                "/api/doc-item-attachments/*/ticket-download"
+                                "/api/doc-item-attachments/*/ticket-download",
+                                "/actuator/health",
+                                "/actuator/health/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(traceIdFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(csrfProtectionFilter, JwtAuthenticationFilter.class)
                 .build();

@@ -12,6 +12,7 @@
 - `sys_notification`：系统内通知表。
 - `sys_operation_log`：操作日志表。
 - `sys_login_log`：登录日志表。
+- `sys_error_event`：系统错误事件表，记录后端异常、前端运行错误、接口错误、追踪编号、错误编号、用户和版本上下文；完整堆栈仅超级管理员可在通知台查看和导出。
 - `sys_register_approval`：注册审批表。
 - `sys_system_config`：系统配置表。
 
@@ -43,5 +44,6 @@
 - `12-doc-node-upload-progress-default-hidden.sql`：将目录文件夹上传进度字段默认值调整为不显示，并把已有文件夹统一更新为不显示。
 - `13-doc-recycle-bin.sql`：为文件回收站、正文附件软删除和 30 天自动清理追加必要字段和索引。
 - `14-doc-submission-soft-delete.sql`：为车间提交记录和提交附件追加软删除字段和索引。
+- `15-error-events.sql`：新增系统错误事件表和查询索引，用于通知台 Bug 统计和内网故障导出。
 
-已有 MySQL 数据卷不会自动重新执行 `deploy/mysql-init/` 中新增脚本。升级代码后，在仓库根目录执行 `./run.sh migrate`，按顺序补齐 `13-doc-recycle-bin.sql` 和 `14-doc-submission-soft-delete.sql` 中的幂等字段与索引。
+已有 MySQL 数据卷不会自动重新执行 `deploy/mysql-init/` 中新增脚本。升级代码后，在仓库根目录执行 `./run.sh migrate`，按顺序补齐 `13-doc-recycle-bin.sql`、`14-doc-submission-soft-delete.sql` 和 `15-error-events.sql` 中的幂等字段与索引。后端同时接入 Flyway，`V1__baseline_schema_and_seed.sql` 对应当前 01-14 初始化基线，`V15__error_events.sql` 对应错误事件增量；`baseline-on-migrate` 用于兼容已有数据卷，后续新增结构优先追加 `db/migration/V*.sql`，不覆盖历史 SQL。

@@ -2,6 +2,7 @@
 .runtime/
 .vite/
 backups/
+error-events-*.zip
 .worktrees/
 
 # Java

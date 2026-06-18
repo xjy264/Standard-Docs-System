@@ -92,3 +92,14 @@
 - `GET /api/notifications`：通知列表。
 - `GET /api/notifications/unread-count`：未读通知数量。
 - `POST /api/notifications/{id}/read`：标记通知已读。
+
+## 系统错误与 Bug 统计
+
+错误统计入口位于通知台的“系统错误”页签，仅超级管理员可见。普通用户仍只看到自己的提醒。
+
+- `GET /api/error-events`：超级管理员分页查询系统错误，支持 `source`、`severity`、`resolved`、`keyword`、`startTime`、`endTime`、`page`、`size`。
+- `GET /api/error-events/{id}`：超级管理员查看错误详情，包含后端堆栈、前端堆栈、接口、用户、组织、浏览器和版本信息。
+- `POST /api/error-events/frontend`：登录用户前端错误上报接口，读取和导出仍仅限超级管理员。
+- `POST /api/error-events/{id}/resolve`：超级管理员标记错误已处理，请求体包含 `remark`。
+- `GET /api/error-events/export`：超级管理员导出 ZIP 故障包。
+- 后端响应头包含 `X-Trace-Id`；500 类错误返回“错误编号”，普通页面不展示程序堆栈。
