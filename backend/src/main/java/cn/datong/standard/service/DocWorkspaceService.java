@@ -12,6 +12,7 @@ import cn.datong.standard.entity.SysDocItem;
 import cn.datong.standard.entity.SysDocItemAttachment;
 import cn.datong.standard.entity.SysDocItemWorkshopScope;
 import cn.datong.standard.entity.SysDocNode;
+import cn.datong.standard.entity.SysDocNodeWorkshopScope;
 import cn.datong.standard.entity.SysRepairProjectTemplate;
 import cn.datong.standard.entity.SysRepairProjectTemplateItem;
 import cn.datong.standard.entity.SysDocSubmission;
@@ -24,6 +25,7 @@ import cn.datong.standard.mapper.SysDocItemMapper;
 import cn.datong.standard.mapper.SysDocItemAttachmentMapper;
 import cn.datong.standard.mapper.SysDocItemWorkshopScopeMapper;
 import cn.datong.standard.mapper.SysDocNodeMapper;
+import cn.datong.standard.mapper.SysDocNodeWorkshopScopeMapper;
 import cn.datong.standard.mapper.SysDocSubmissionMapper;
 import cn.datong.standard.mapper.SysDocUploadRequirementMapper;
 import cn.datong.standard.mapper.SysRepairProjectTemplateItemMapper;
@@ -59,6 +61,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class DocWorkspaceService {
+    private static final String MODULE_INTERNAL = "INTERNAL";
+    private static final String MODULE_RULES = "RULES";
     private static final String DEFAULT_REPAIR_TEMPLATE_LIBRARY_NAME = "房建大修模板库";
     private static final String BODY_ATTACHMENT_EXISTS_MESSAGE = "请先删除原有文件后再上传";
     private static final Set<String> ALLOWED_UPLOAD_EXTENSIONS = Set.of(
@@ -77,6 +81,7 @@ public class DocWorkspaceService {
     private final SysDocUploadRequirementMapper requirementMapper;
     private final SysDocItemAttachmentMapper itemAttachmentMapper;
     private final SysDocItemWorkshopScopeMapper itemWorkshopScopeMapper;
+    private final SysDocNodeWorkshopScopeMapper nodeWorkshopScopeMapper;
     private final SysRepairProjectTemplateMapper repairTemplateMapper;
     private final SysRepairProjectTemplateItemMapper repairTemplateItemMapper;
     private final FileStorageService storageService;
@@ -107,19 +112,27 @@ public class DocWorkspaceService {
     }
 
     public List<SysDocNode> documentTree(Long sectionDeptId) {
-        return documentTree(null, null, false, sectionDeptId, null);
+        return documentTree(null, null, false, sectionDeptId, null, MODULE_INTERNAL);
     }
 
     public List<SysDocNode> documentTree(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, String businessType) {
+        return documentTree(userId, userDeptId, superAdmin, sectionDeptId, businessType, MODULE_INTERNAL);
+    }
+
+    public List<SysDocNode> documentTree(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, String businessType, String moduleType) {
         requireSection(sectionDeptId);
         String normalizedBusinessType = normalizeBusinessTypeOrNull(businessType);
-        List<SysDocNode> nodes = nodeMapper.selectList(new LambdaQueryWrapper<SysDocNode>()
+        String normalizedModuleType = normalizeModuleType(moduleType);
+        List<SysDocNode> nodes = Objects.requireNonNullElse(nodeMapper.selectList(new LambdaQueryWrapper<SysDocNode>()
                 .eq(SysDocNode::getSectionDeptId, sectionDeptId)
+                .eq(SysDocNode::getModuleType, normalizedModuleType)
                 .eq(SysDocNode::getDeleted, 0)
                 .orderByAsc(SysDocNode::getSortOrder)
-                .orderByAsc(SysDocNode::getId));
+                .orderByAsc(SysDocNode::getId)), List.of());
         fillNodeItemInfo(nodes);
+        fillNodeWorkshopScopes(nodes);
         nodes = nodes.stream()
+                .filter(node -> normalizedModuleType.equals(normalizeModuleType(node.getModuleType())))
                 .filter(node -> !"FILE".equalsIgnoreCase(node.getNodeType())
                         || normalizedBusinessType == null
                         || normalizedBusinessType.equalsIgnoreCase(node.getBusinessType()))
@@ -137,6 +150,7 @@ public class DocWorkspaceService {
                 nodeMap.get(node.getParentId()).getChildren().add(node);
             }
         }
+        roots = reshapeWorkshopTree(userDeptId, superAdmin, sectionDeptId, normalizedModuleType, roots);
         if (normalizedBusinessType == null || "UPLOAD".equals(normalizedBusinessType)) {
             Set<Long> completedItemIds = completedUploadItemIds(userId, userDeptId, superAdmin, sectionDeptId);
             roots.forEach(root -> fillUploadProgress(root, completedItemIds));
@@ -144,22 +158,54 @@ public class DocWorkspaceService {
         return roots;
     }
 
+    private List<SysDocNode> reshapeWorkshopTree(Long userDeptId, boolean superAdmin, Long sectionDeptId, String moduleType, List<SysDocNode> roots) {
+        if (!MODULE_INTERNAL.equals(moduleType) || canManageSection(userDeptId, superAdmin, sectionDeptId) || !isWorkshop(userDeptId)) {
+            return roots;
+        }
+        return flattenOwnWorkshopFolders(roots, userDeptId);
+    }
+
+    private List<SysDocNode> flattenOwnWorkshopFolders(List<SysDocNode> nodes, Long workshopDeptId) {
+        List<SysDocNode> result = new ArrayList<>();
+        for (SysDocNode node : nodes) {
+            node.setChildren(flattenOwnWorkshopFolders(node.getChildren(), workshopDeptId));
+            if ("FOLDER".equalsIgnoreCase(node.getNodeType()) && node.getWorkshopDeptId() != null) {
+                if (Objects.equals(node.getWorkshopDeptId(), workshopDeptId)) {
+                    result.addAll(node.getChildren());
+                }
+                continue;
+            }
+            if (node.getWorkshopDeptId() == null || Objects.equals(node.getWorkshopDeptId(), workshopDeptId)) {
+                result.add(node);
+            }
+        }
+        return result;
+    }
+
     public SysDocNode createFolderNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
-        NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), true);
+        NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), true, request.moduleType());
+        String moduleType = placement.moduleType();
+        boolean workshopUploadEnabled = MODULE_INTERNAL.equals(moduleType) && Boolean.TRUE.equals(request.workshopUploadEnabled());
         SysDocNode node = new SysDocNode();
         node.setSectionDeptId(placement.sectionDeptId());
-        node.setParentId(request.parentId());
+        node.setModuleType(moduleType);
+        node.setParentId(placement.parentId());
         node.setNodeType("FOLDER");
         node.setNodeName(requiredText(request.nodeName(), "请输入文件夹名称"));
         node.setDocYear(resolveFolderDocYear(request.parentId(), request.docYear()));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         node.setLevel(placement.level());
         node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 0));
+        node.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
         node.setCreatedBy(userId);
         node.setCreatedAt(LocalDateTime.now());
         node.setUpdatedAt(LocalDateTime.now());
         node.setDeleted(0);
         nodeMapper.insert(node);
+        replaceNodeWorkshopScopes(node.getId(), workshopUploadEnabled ? request.visibleWorkshopIds() : List.of());
+        if (workshopUploadEnabled) {
+            ensureConfiguredWorkshopFolders(userId, node, request.visibleWorkshopIds());
+        }
         return node;
     }
 
@@ -168,11 +214,13 @@ public class DocWorkspaceService {
         if (request.parentId() == null) {
             throw new BusinessException("只能在文件夹下新建文件");
         }
-        NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), false);
-        String businessType = resolveUnifiedBusinessType(request);
-        boolean workshopUploadEnabled = Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType);
+        NodePlacement placement = resolveFilePlacement(userId, userDeptId, superAdmin, request);
+        String businessType = resolveFileBusinessType(request, placement.moduleType());
+        boolean workshopUploadEnabled = MODULE_INTERNAL.equals(placement.moduleType())
+                && (Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType));
         SysDocItem item = new SysDocItem();
         item.setSectionDeptId(placement.sectionDeptId());
+        item.setModuleType(placement.moduleType());
         item.setItemName(requiredText(request.nodeName(), "请输入文件名称"));
         item.setBusinessType(businessType);
         item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
@@ -182,24 +230,26 @@ public class DocWorkspaceService {
         item.setAttachmentEnabled(workshopUploadEnabled ? 1 : 0);
         item.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
         item.setUploadDeadline(request.uploadDeadline());
-        item.setVisibilityScope(resolveVisibilityScope(request.visibleWorkshopIds()));
+        item.setVisibilityScope(resolveVisibilityScope(fileVisibleWorkshopIds(placement.moduleType(), request)));
         item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         item.setCreatedBy(userId);
         item.setCreatedAt(LocalDateTime.now());
         item.setUpdatedAt(LocalDateTime.now());
         item.setDeleted(0);
         itemMapper.insert(item);
-        replaceWorkshopScopes(item.getId(), request.visibleWorkshopIds());
+        replaceWorkshopScopes(item.getId(), fileVisibleWorkshopIds(placement.moduleType(), request));
 
         SysDocNode node = new SysDocNode();
         node.setSectionDeptId(placement.sectionDeptId());
-        node.setParentId(request.parentId());
+        node.setModuleType(placement.moduleType());
+        node.setParentId(placement.parentId());
         node.setNodeType("FILE");
         node.setNodeName(item.getItemName());
         node.setItemId(item.getId());
         node.setDocYear(item.getDocYear());
         node.setSortOrder(item.getSortOrder());
         node.setLevel(placement.level());
+        node.setWorkshopDeptId(placement.workshopDeptId());
         node.setCreatedBy(userId);
         node.setCreatedAt(LocalDateTime.now());
         node.setUpdatedAt(LocalDateTime.now());
@@ -223,11 +273,12 @@ public class DocWorkspaceService {
         String original = file.getOriginalFilename() == null || file.getOriginalFilename().trim().isBlank()
                 ? "未命名文件"
                 : file.getOriginalFilename().trim();
-        NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), false);
+        NodePlacement placement = resolveFilePlacement(userId, userDeptId, superAdmin, request);
         String itemName = requiredText(request.nodeName(), "请输入文件名称");
         Integer docYear = resolveFileDocYear(request.parentId(), request.docYear());
-        String businessType = resolveUnifiedBusinessType(request);
-        boolean workshopUploadEnabled = Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType);
+        String businessType = resolveFileBusinessType(request, placement.moduleType());
+        boolean workshopUploadEnabled = MODULE_INTERNAL.equals(placement.moduleType())
+                && (Boolean.TRUE.equals(request.workshopUploadEnabled()) || "UPLOAD".equals(businessType));
         String extension = extension(original);
         validateAllowedUploadExtension(extension);
         String objectName = "doc-items/" + LocalDate.now() + "/" + UUID.randomUUID()
@@ -236,6 +287,7 @@ public class DocWorkspaceService {
 
         SysDocItem item = new SysDocItem();
         item.setSectionDeptId(placement.sectionDeptId());
+        item.setModuleType(placement.moduleType());
         item.setItemName(itemName);
         item.setBusinessType(businessType);
         item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
@@ -245,24 +297,26 @@ public class DocWorkspaceService {
         item.setAttachmentEnabled(workshopUploadEnabled ? 1 : 0);
         item.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
         item.setUploadDeadline(request.uploadDeadline());
-        item.setVisibilityScope(resolveVisibilityScope(request.visibleWorkshopIds()));
+        item.setVisibilityScope(resolveVisibilityScope(fileVisibleWorkshopIds(placement.moduleType(), request)));
         item.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         item.setCreatedBy(userId);
         item.setCreatedAt(LocalDateTime.now());
         item.setUpdatedAt(LocalDateTime.now());
         item.setDeleted(0);
         itemMapper.insert(item);
-        replaceWorkshopScopes(item.getId(), request.visibleWorkshopIds());
+        replaceWorkshopScopes(item.getId(), fileVisibleWorkshopIds(placement.moduleType(), request));
 
         SysDocNode node = new SysDocNode();
         node.setSectionDeptId(placement.sectionDeptId());
-        node.setParentId(request.parentId());
+        node.setModuleType(placement.moduleType());
+        node.setParentId(placement.parentId());
         node.setNodeType("FILE");
         node.setNodeName(item.getItemName());
         node.setItemId(item.getId());
         node.setDocYear(item.getDocYear());
         node.setSortOrder(item.getSortOrder());
         node.setLevel(placement.level());
+        node.setWorkshopDeptId(placement.workshopDeptId());
         node.setCreatedBy(userId);
         node.setCreatedAt(LocalDateTime.now());
         node.setUpdatedAt(LocalDateTime.now());
@@ -278,7 +332,7 @@ public class DocWorkspaceService {
     @Transactional
     public SysDocNode updateNode(Long userDeptId, boolean superAdmin, Long id, DocNodeRequest request) {
         SysDocNode node = requireNode(id);
-        requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
+        requireManageNode(userDeptId, superAdmin, node);
         node.setNodeName(requiredText(request.nodeName(), "请输入名称"));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         if ("FILE".equalsIgnoreCase(node.getNodeType())) {
@@ -286,20 +340,32 @@ public class DocWorkspaceService {
         } else {
             node.setDocYear(request.docYear() == null ? node.getDocYear() : requiredDocYear(request.docYear(), "请选择资料年份"));
             node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 0));
+            boolean workshopUploadEnabled = MODULE_INTERNAL.equals(normalizeModuleType(node.getModuleType()))
+                    && Boolean.TRUE.equals(request.workshopUploadEnabled());
+            node.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
+            replaceNodeWorkshopScopes(node.getId(), workshopUploadEnabled ? request.visibleWorkshopIds() : List.of());
+            if (workshopUploadEnabled) {
+                ensureConfiguredWorkshopFolders(null, node, request.visibleWorkshopIds());
+            }
         }
         node.setUpdatedAt(LocalDateTime.now());
         nodeMapper.updateById(node);
         if ("FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null) {
             SysDocItem item = requireItem(node.getItemId());
-            String businessType = request.businessType() == null ? normalizeBusinessType(item) : resolveUnifiedBusinessType(request);
+            String moduleType = normalizeModuleType(node.getModuleType());
+            String businessType = request.businessType() == null ? normalizeBusinessType(item) : resolveFileBusinessType(request, moduleType);
             boolean workshopUploadEnabled = request.workshopUploadEnabled() == null
                     ? Objects.equals(item.getWorkshopUploadEnabled(), 1)
                     : Boolean.TRUE.equals(request.workshopUploadEnabled());
-            if ("UPLOAD".equals(businessType)) {
+            if (!MODULE_INTERNAL.equals(moduleType)) {
+                workshopUploadEnabled = false;
+                businessType = "ISSUED";
+            } else if ("UPLOAD".equals(businessType)) {
                 workshopUploadEnabled = true;
             }
             item.setItemName(node.getNodeName());
             item.setSortOrder(node.getSortOrder());
+            item.setModuleType(moduleType);
             item.setBusinessType(businessType);
             item.setSubmitterMode("UPLOAD".equals(businessType) ? normalizeSubmitterMode(request.submitterMode()) : "SINGLE");
             item.setFileType(normalizeFileType(request.fileType()));
@@ -310,10 +376,10 @@ public class DocWorkspaceService {
             item.setAttachmentEnabled(workshopUploadEnabled ? 1 : 0);
             item.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
             item.setUploadDeadline(request.uploadDeadline());
-            item.setVisibilityScope(resolveVisibilityScope(request.visibleWorkshopIds()));
+            item.setVisibilityScope(resolveVisibilityScope(fileVisibleWorkshopIds(moduleType, request)));
             item.setUpdatedAt(LocalDateTime.now());
             itemMapper.updateById(item);
-            replaceWorkshopScopes(item.getId(), request.visibleWorkshopIds());
+            replaceWorkshopScopes(item.getId(), fileVisibleWorkshopIds(moduleType, request));
             if (workshopUploadEnabled) {
                 replaceRequirements(item.getId(), defaultRequirements(request.requirements()));
             } else {
@@ -354,7 +420,7 @@ public class DocWorkspaceService {
     @Transactional
     public void deleteNode(Long userId, Long userDeptId, boolean superAdmin, Long id) {
         SysDocNode node = requireNode(id);
-        requireManageSection(userDeptId, superAdmin, node.getSectionDeptId());
+        requireManageNode(userDeptId, superAdmin, node);
         if ("FOLDER".equalsIgnoreCase(node.getNodeType()) && hasUndeletedDescendant(node)) {
             throw new BusinessException("文件夹下存在未删除内容，无法删除");
         }
@@ -367,8 +433,12 @@ public class DocWorkspaceService {
     }
 
     public List<DocRecycleBinItem> recycleBinItems(Long userDeptId, boolean superAdmin, Long sectionDeptId) {
+        return recycleBinItems(userDeptId, superAdmin, sectionDeptId, MODULE_INTERNAL);
+    }
+
+    public List<DocRecycleBinItem> recycleBinItems(Long userDeptId, boolean superAdmin, Long sectionDeptId, String moduleType) {
         requireManageSection(userDeptId, superAdmin, sectionDeptId);
-        return nodeMapper.selectRecycleBinItems(sectionDeptId);
+        return nodeMapper.selectRecycleBinItems(sectionDeptId, normalizeModuleType(moduleType));
     }
 
     @Transactional
@@ -387,6 +457,9 @@ public class DocWorkspaceService {
         }
         if (!Objects.equals(target.getSectionDeptId(), node.getSectionDeptId())) {
             throw new BusinessException("恢复目录不属于原科室");
+        }
+        if (!normalizeModuleType(target.getModuleType()).equals(normalizeModuleType(node.getModuleType()))) {
+            throw new BusinessException("恢复目录不属于原模块");
         }
         Long sameNameCount = Objects.requireNonNullElse(nodeMapper.selectCount(new LambdaQueryWrapper<SysDocNode>()
                 .eq(SysDocNode::getSectionDeptId, node.getSectionDeptId())
@@ -471,6 +544,7 @@ public class DocWorkspaceService {
         SysDocItem item = new SysDocItem();
         item.setCategoryId(category.getId());
         item.setSectionDeptId(category.getSectionDeptId());
+        item.setModuleType(normalizeModuleType(request.getModuleType()));
         applyItemRequest(item, request);
         item.setCreatedBy(userId);
         item.setCreatedAt(LocalDateTime.now());
@@ -884,6 +958,7 @@ public class DocWorkspaceService {
         for (SysRepairProjectTemplateItem templateItem : templateItems) {
             SysDocItem item = new SysDocItem();
             item.setSectionDeptId(parent.getSectionDeptId());
+            item.setModuleType(normalizeModuleType(parent.getModuleType()));
             item.setItemName(requiredText(templateItem.getItemName(), "请输入资料项名称"));
             item.setBusinessType("ISSUED");
             item.setSubmitterMode("SINGLE");
@@ -979,6 +1054,7 @@ public class DocWorkspaceService {
 
             SysDocNode fileNode = new SysDocNode();
             fileNode.setSectionDeptId(parent.getSectionDeptId());
+            fileNode.setModuleType(normalizeModuleType(parent.getModuleType()));
             fileNode.setParentId(parent.getId());
             fileNode.setNodeType("FILE");
             fileNode.setNodeName(item.getItemName());
@@ -999,10 +1075,11 @@ public class DocWorkspaceService {
 
     private void applyItemRequest(SysDocItem item, SysDocItem request) {
         item.setItemName(requiredText(request.getItemName(), "请输入文件名称"));
+        item.setModuleType(normalizeModuleType(item.getModuleType() == null ? request.getModuleType() : item.getModuleType()));
         String businessType = request.getBusinessType() == null
                 ? (request.getAttachmentEnabled() != null && request.getAttachmentEnabled() == 1 ? "UPLOAD" : "ISSUED")
                 : request.getBusinessType();
-        item.setBusinessType(normalizeBusinessType(businessType));
+        item.setBusinessType(MODULE_RULES.equals(item.getModuleType()) ? "ISSUED" : normalizeBusinessType(businessType));
         item.setSubmitterMode("UPLOAD".equals(item.getBusinessType()) ? normalizeSubmitterMode(request.getSubmitterMode()) : "SINGLE");
         item.setFileType(normalizeFileType(request.getFileType()));
         item.setContentHtml(request.getContentHtml() == null ? "" : request.getContentHtml());
@@ -1140,6 +1217,24 @@ public class DocWorkspaceService {
         storageService.remove(bucket, storagePath);
     }
 
+    private void fillNodeWorkshopScopes(List<SysDocNode> nodes) {
+        Set<Long> folderIds = nodes.stream()
+                .filter(node -> "FOLDER".equalsIgnoreCase(node.getNodeType()) && node.getId() != null)
+                .map(SysDocNode::getId)
+                .collect(Collectors.toSet());
+        if (folderIds.isEmpty()) {
+            return;
+        }
+        Map<Long, List<Long>> scopeMap = Objects.requireNonNullElse(nodeWorkshopScopeMapper.selectList(new LambdaQueryWrapper<SysDocNodeWorkshopScope>()
+                        .in(SysDocNodeWorkshopScope::getNodeId, folderIds)), List.<SysDocNodeWorkshopScope>of())
+                .stream()
+                .collect(Collectors.groupingBy(SysDocNodeWorkshopScope::getNodeId,
+                        Collectors.mapping(SysDocNodeWorkshopScope::getWorkshopDeptId, Collectors.toList())));
+        nodes.stream()
+                .filter(node -> "FOLDER".equalsIgnoreCase(node.getNodeType()))
+                .forEach(node -> node.setVisibleWorkshopIds(scopeMap.getOrDefault(node.getId(), List.of())));
+    }
+
     private void fillNodeItemInfo(List<SysDocNode> nodes) {
         Set<Long> itemIds = nodes.stream()
                 .filter(node -> "FILE".equalsIgnoreCase(node.getNodeType()) && node.getItemId() != null)
@@ -1164,6 +1259,7 @@ public class DocWorkspaceService {
                 continue;
             }
             node.setAttachmentEnabled(item.getAttachmentEnabled());
+            node.setModuleType(normalizeModuleType(item.getModuleType()));
             node.setFileType(item.getFileType());
             node.setDocYear(item.getDocYear());
             node.setBusinessType(normalizeBusinessType(item));
@@ -1216,6 +1312,7 @@ public class DocWorkspaceService {
         Map<Long, SysDept> deptMap = deptMapper.selectList(new LambdaQueryWrapper<SysDept>().eq(SysDept::getDeleted, 0))
                 .stream().collect(Collectors.toMap(SysDept::getId, Function.identity(), (a, b) -> a));
         for (SysDocItem item : items) {
+            item.setModuleType(normalizeModuleType(item.getModuleType()));
             item.setBusinessType(normalizeBusinessType(item));
             item.setSubmitterMode(normalizeSubmitterMode(item.getSubmitterMode()));
             item.setWorkshopUploadEnabled(normalizeWorkshopUploadEnabled(item));
@@ -1348,6 +1445,10 @@ public class DocWorkspaceService {
 
     private String resolveVisibilityScope(List<Long> visibleWorkshopIds) {
         return normalizeVisibleWorkshopIds(visibleWorkshopIds).isEmpty() ? "ALL" : "SELECTED";
+    }
+
+    private List<Long> fileVisibleWorkshopIds(String moduleType, DocNodeRequest request) {
+        return MODULE_RULES.equals(normalizeModuleType(moduleType)) ? List.of() : request.visibleWorkshopIds();
     }
 
     private String normalizeVisibilityScope(String visibilityScope) {
@@ -1613,15 +1714,28 @@ public class DocWorkspaceService {
         }
     }
 
+    private void requireManageNode(Long userDeptId, boolean superAdmin, SysDocNode node) {
+        requireSection(node.getSectionDeptId());
+        if (canManageSection(userDeptId, superAdmin, node.getSectionDeptId())) {
+            return;
+        }
+        if ("FILE".equalsIgnoreCase(node.getNodeType())
+                && node.getWorkshopDeptId() != null
+                && Objects.equals(node.getWorkshopDeptId(), userDeptId)) {
+            return;
+        }
+        throw new BusinessException(403, "只能维护本科室资料");
+    }
+
     private NodePlacement resolvePlacement(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, Long parentId,
-                                           boolean rootFolderRequiresAdmin) {
+                                           boolean rootFolderRequiresAdmin, String moduleType) {
         if (parentId == null) {
             if (rootFolderRequiresAdmin) {
                 requireRootFolderManage(userId, userDeptId, superAdmin, sectionDeptId);
             } else {
                 requireManageSection(userDeptId, superAdmin, sectionDeptId);
             }
-            return new NodePlacement(sectionDeptId, 1);
+            return new NodePlacement(sectionDeptId, null, 1, normalizeModuleType(moduleType), null);
         }
         SysDocNode parent = requireNode(parentId);
         if (!"FOLDER".equalsIgnoreCase(parent.getNodeType())) {
@@ -1635,7 +1749,116 @@ public class DocWorkspaceService {
         if (level > 5) {
             throw new BusinessException("目录层级最多支持五层");
         }
-        return new NodePlacement(parent.getSectionDeptId(), level);
+        return new NodePlacement(parent.getSectionDeptId(), parent.getId(), level, normalizeModuleType(parent.getModuleType()), parent.getWorkshopDeptId());
+    }
+
+    private NodePlacement resolveFilePlacement(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
+        SysDocNode parent = requireNode(request.parentId());
+        if (!"FOLDER".equalsIgnoreCase(parent.getNodeType())) {
+            throw new BusinessException("只能在文件夹下新增内容");
+        }
+        if (!Objects.equals(request.sectionDeptId(), parent.getSectionDeptId())) {
+            throw new BusinessException("父级目录不属于当前科室");
+        }
+        if (canManageSection(userDeptId, superAdmin, parent.getSectionDeptId())) {
+            int level = nextLevel(parent);
+            return new NodePlacement(parent.getSectionDeptId(), parent.getId(), level, normalizeModuleType(parent.getModuleType()), parent.getWorkshopDeptId());
+        }
+        if (MODULE_INTERNAL.equals(normalizeModuleType(parent.getModuleType()))
+                && Objects.equals(parent.getWorkshopUploadEnabled(), 1)
+                && isWorkshop(userDeptId)) {
+            if (!folderUploadAllowed(parent.getId(), userDeptId)) {
+                throw new BusinessException(403, "该文件夹未开放车间上传");
+            }
+            SysDocNode workshopFolder = ensureWorkshopFolder(userId, parent, userDeptId);
+            return new NodePlacement(parent.getSectionDeptId(), workshopFolder.getId(), nextLevel(workshopFolder), MODULE_INTERNAL, userDeptId);
+        }
+        throw new BusinessException(403, "该文件夹未开放车间上传");
+    }
+
+    private int nextLevel(SysDocNode parent) {
+        int level = parent.getLevel() == null ? 2 : parent.getLevel() + 1;
+        if (level > 5) {
+            throw new BusinessException("目录层级最多支持五层");
+        }
+        return level;
+    }
+
+    private boolean folderUploadAllowed(Long folderId, Long workshopDeptId) {
+        List<Long> allowedIds = Objects.requireNonNullElse(nodeWorkshopScopeMapper.selectList(new LambdaQueryWrapper<SysDocNodeWorkshopScope>()
+                        .eq(SysDocNodeWorkshopScope::getNodeId, folderId)), List.<SysDocNodeWorkshopScope>of())
+                .stream()
+                .map(SysDocNodeWorkshopScope::getWorkshopDeptId)
+                .toList();
+        return allowedIds.isEmpty() || allowedIds.contains(workshopDeptId);
+    }
+
+    private SysDocNode ensureWorkshopFolder(Long userId, SysDocNode parent, Long workshopDeptId) {
+        SysDept workshop = submitterDept(workshopDeptId);
+        return ensureWorkshopFolder(userId, parent, workshopDeptId, workshop == null ? "车间" : workshop.getDeptName());
+    }
+
+    private SysDocNode ensureWorkshopFolder(Long userId, SysDocNode parent, Long workshopDeptId, String workshopName) {
+        List<SysDocNode> existing = Objects.requireNonNullElse(nodeMapper.selectList(new LambdaQueryWrapper<SysDocNode>()
+                        .eq(SysDocNode::getParentId, parent.getId())
+                        .eq(SysDocNode::getWorkshopDeptId, workshopDeptId)
+                        .eq(SysDocNode::getDeleted, 0)
+                        .orderByAsc(SysDocNode::getId)), List.of());
+        if (!existing.isEmpty()) {
+            return existing.getFirst();
+        }
+        SysDocNode node = new SysDocNode();
+        node.setSectionDeptId(parent.getSectionDeptId());
+        node.setModuleType(MODULE_INTERNAL);
+        node.setParentId(parent.getId());
+        node.setNodeType("FOLDER");
+        node.setNodeName(workshopName);
+        node.setDocYear(parent.getDocYear());
+        node.setSortOrder(0);
+        node.setLevel(nextLevel(parent));
+        node.setShowUploadProgress(0);
+        node.setWorkshopUploadEnabled(0);
+        node.setWorkshopDeptId(workshopDeptId);
+        node.setCreatedBy(userId);
+        node.setCreatedAt(LocalDateTime.now());
+        node.setUpdatedAt(LocalDateTime.now());
+        node.setDeleted(0);
+        nodeMapper.insert(node);
+        return node;
+    }
+
+    private void ensureConfiguredWorkshopFolders(Long userId, SysDocNode parent, List<Long> scopeIds) {
+        for (SysDept workshop : scopedWorkshops(scopeIds)) {
+            ensureWorkshopFolder(userId, parent, workshop.getId(), workshop.getDeptName());
+        }
+    }
+
+    private List<SysDept> scopedWorkshops(List<Long> scopeIds) {
+        Set<Long> allowedIds = new HashSet<>(normalizeVisibleWorkshopIds(scopeIds));
+        return Objects.requireNonNullElse(deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
+                        .eq(SysDept::getDeleted, 0)
+                        .eq(SysDept::getStatus, "ENABLED")), List.<SysDept>of())
+                .stream()
+                .filter(this::isWorkshop)
+                .filter(dept -> allowedIds.isEmpty() || allowedIds.contains(dept.getId()))
+                .sorted(Comparator.comparing(SysDept::getSortOrder, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(SysDept::getId, Comparator.nullsLast(Long::compareTo)))
+                .toList();
+    }
+
+    private void replaceNodeWorkshopScopes(Long nodeId, List<Long> workshopIds) {
+        if (nodeId == null) {
+            return;
+        }
+        nodeWorkshopScopeMapper.delete(new LambdaQueryWrapper<SysDocNodeWorkshopScope>()
+                .eq(SysDocNodeWorkshopScope::getNodeId, nodeId));
+        for (Long workshopId : normalizeVisibleWorkshopIds(workshopIds)) {
+            SysDocNodeWorkshopScope scope = new SysDocNodeWorkshopScope();
+            scope.setNodeId(nodeId);
+            scope.setWorkshopDeptId(workshopId);
+            scope.setCreatedAt(LocalDateTime.now());
+            nodeWorkshopScopeMapper.insert(scope);
+        }
     }
 
     private void requireRootFolderManage(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId) {
@@ -1728,7 +1951,7 @@ public class DocWorkspaceService {
         return node;
     }
 
-    private record NodePlacement(Long sectionDeptId, int level) {
+    private record NodePlacement(Long sectionDeptId, Long parentId, int level, String moduleType, Long workshopDeptId) {
     }
 
     private SysDocItem requireItem(Long id) {
@@ -1936,6 +2159,14 @@ public class DocWorkspaceService {
         return normalizeBusinessType(item.getBusinessType());
     }
 
+    private String normalizeModuleType(String moduleType) {
+        if (moduleType == null || moduleType.trim().isBlank()) {
+            return MODULE_INTERNAL;
+        }
+        String normalized = moduleType.trim().toUpperCase(Locale.ROOT);
+        return MODULE_RULES.equals(normalized) ? MODULE_RULES : MODULE_INTERNAL;
+    }
+
     private String normalizeBusinessType(String businessType) {
         if (businessType == null || businessType.trim().isBlank()) {
             return "ISSUED";
@@ -1952,6 +2183,10 @@ public class DocWorkspaceService {
             return normalizeBusinessType(request.businessType());
         }
         return Boolean.TRUE.equals(request.workshopUploadEnabled()) || Boolean.TRUE.equals(request.attachmentEnabled()) ? "UPLOAD" : "ISSUED";
+    }
+
+    private String resolveFileBusinessType(DocNodeRequest request, String moduleType) {
+        return MODULE_RULES.equals(normalizeModuleType(moduleType)) ? "ISSUED" : resolveUnifiedBusinessType(request);
     }
 
     private String normalizeBusinessTypeOrNull(String businessType) {

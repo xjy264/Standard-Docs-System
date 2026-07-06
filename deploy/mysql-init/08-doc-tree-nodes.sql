@@ -61,6 +61,7 @@ DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS sys_doc_node (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   section_dept_id BIGINT NOT NULL,
+  module_type VARCHAR(32) NOT NULL DEFAULT 'INTERNAL',
   parent_id BIGINT NULL,
   node_type VARCHAR(16) NOT NULL,
   node_name VARCHAR(128) NOT NULL,
@@ -69,6 +70,8 @@ CREATE TABLE IF NOT EXISTS sys_doc_node (
   sort_order INT NOT NULL DEFAULT 0,
   level INT NOT NULL DEFAULT 1,
   show_upload_progress TINYINT(1) NOT NULL DEFAULT 0,
+  workshop_upload_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  workshop_dept_id BIGINT NULL,
   created_by BIGINT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -76,9 +79,11 @@ CREATE TABLE IF NOT EXISTS sys_doc_node (
   deleted_by BIGINT NULL,
   deleted TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_doc_node_section (section_dept_id, deleted, sort_order),
+  INDEX idx_doc_node_module (section_dept_id, module_type, deleted, sort_order),
   INDEX idx_doc_node_parent (parent_id, deleted, sort_order),
+  INDEX idx_doc_node_workshop_folder (parent_id, workshop_dept_id, deleted),
   INDEX idx_doc_node_item (item_id, deleted),
-  INDEX idx_doc_node_recycle (section_dept_id, node_type, deleted, deleted_at)
+  INDEX idx_doc_node_recycle (section_dept_id, module_type, node_type, deleted, deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO sys_doc_node (

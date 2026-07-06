@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   category_id BIGINT NULL,
   section_dept_id BIGINT NULL,
+  module_type VARCHAR(32) NOT NULL DEFAULT 'INTERNAL',
   item_name VARCHAR(128) NOT NULL,
   business_type VARCHAR(32) NOT NULL DEFAULT 'ISSUED',
   submitter_mode VARCHAR(32) NOT NULL DEFAULT 'SINGLE',
@@ -110,7 +111,8 @@ CREATE TABLE IF NOT EXISTS sys_doc_item (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_doc_item_category (category_id, deleted, sort_order),
-  INDEX idx_doc_item_section_type (section_dept_id, business_type, deleted, sort_order)
+  INDEX idx_doc_item_section_type (section_dept_id, business_type, deleted, sort_order),
+  INDEX idx_doc_item_module (section_dept_id, module_type, business_type, deleted, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_doc_item_workshop_scope (

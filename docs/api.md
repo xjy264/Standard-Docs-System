@@ -50,20 +50,20 @@
 - `GET /api/permission-matrix?deptId=1`：部门用户权限矩阵。
 - `POST /api/permission-matrix/users/{userId}`：保存用户权限。
 
-## 首页统计
+## 首页
 
-- `GET /api/dashboard/stats`：首页统计，返回 `userCount`、`fileCount`、`submissionCount`、`attachmentCount`、`pendingApprovalCount`、`unreadCount`、`uploadEnabledFileCount`、`sectionCount`。
-- `GET /api/dashboard/section-file-tree`：首页科室组织树和文件数统计，返回 `id`、`parentId`、`deptName`、`deptType`、`fileCount`、`children`。
+- `/dashboard`：前端首页不展示侧边栏，只提供“内业资料”和“规章制度”两个入口；点击后进入第一个可见科室。
+- `GET /api/dashboard/stats`、`GET /api/dashboard/section-file-tree`：保留兼容历史统计接口，当前首页入口不依赖这两个接口。
 
-## 科室资料与车间填报
+## 内业资料、规章制度与车间填报
 
-- `GET /api/doc-tree?sectionDeptId=1`：查询科室下多级资料目录树，节点类型包含文件夹和文件，最高五层；文件夹和文件节点返回 `docYear`，文件节点额外返回 `fileType`、`businessType`、`workshopUploadEnabled`、`uploadDeadline`、`visibilityScope`、`visibleWorkshopIds`；前端默认不传 `businessType`，统一返回上传任务和下达文件；`businessType` 仍可选传 `UPLOAD` 或 `ISSUED` 用于兼容筛选；统一目录和上传任务目录的文件夹节点返回 `showUploadProgress`、`uploadTaskCount`、`completedUploadTaskCount`、`progressPercent`，`showUploadProgress` 表示是否显示上传进度，进度只统计已配置收集项的上传任务文件。
-- `POST /api/doc-nodes/folders`：新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`docYear`、`sortOrder`、`showUploadProgress`；`showUploadProgress` 未传时默认不显示上传进度；`parentId` 为空时仅本科室管理员或超级管理员可新增最高级文件夹。
-- `POST /api/doc-nodes/files`：本科室用户或超级管理员新增文件，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`businessType`、`fileType`、`docYear`、`contentHtml`、`submitterMode`、`requirements`、`uploadDeadline`、`workshopUploadEnabled`、`visibleWorkshopIds`、`sortOrder`；前端不在文件弹窗中展示年份选择，`docYear` 默认来自父级年度目录，未传时后端也会尝试继承父文件夹年份；上传任务的 `requirements` 元素包含 `requirementName`、`description`、`sortOrder`。
-- `PUT /api/doc-nodes/{id}`：本科室用户或超级管理员修改文件夹或文件名称、排序；文件夹节点可同步修改年份和是否显示上传进度，未传时默认不显示进度；文件节点可同步修改文件类型、富文本内容、业务类型、提交模式、上传截止时间、车间上传选项、可见车间范围和收集项名称及说明，前端文件编辑弹窗不展示年份选择。文件节点编辑支持 `application/json` 保存元数据，也支持 `multipart/form-data` 附带 `file` 重新上传文件附件，并按新文件名同步文件类型。
+- `GET /api/doc-tree?sectionDeptId=1&moduleType=INTERNAL`：查询科室下多级资料目录树，`moduleType` 可选 `INTERNAL` 或 `RULES`，不传默认 `INTERNAL`；节点类型包含文件夹和文件，最高五层；文件夹和文件节点返回 `docYear`、`moduleType`，内业资料上传文件夹返回 `workshopUploadEnabled`、`visibleWorkshopIds`，自动生成的车间文件夹和车间文件返回 `workshopDeptId`。车间用户查看内业资料时，后端隐藏其他车间文件夹，并把本车间文件夹下文件平铺到母文件夹下。`businessType` 仍可选传 `UPLOAD` 或 `ISSUED` 用于兼容历史上传任务筛选。
+- `POST /api/doc-nodes/folders`：新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`docYear`、`sortOrder`、`moduleType`、`showUploadProgress`；内业资料文件夹还可传 `workshopUploadEnabled` 和 `visibleWorkshopIds`，勾选允许车间上传后会为允许车间生成车间名称文件夹，`visibleWorkshopIds` 为空表示全部当前车间；规章制度忽略车间上传配置。`parentId` 为空时仅本科室管理员或超级管理员可新增最高级文件夹。
+- `POST /api/doc-nodes/files`：新增文件，请求体或表单包含 `sectionDeptId`、`parentId`、`nodeName`、`moduleType`、`fileType`、`docYear`、`sortOrder`；前端默认用 `multipart/form-data` 同时上传正文附件。科室和超级管理员在对应模块目录下新增文件；车间用户只能在内业资料已开放上传的母文件夹下新增文件，后端实际落到本车间自动文件夹。历史 `businessType=UPLOAD`、`submitterMode`、`requirements`、`uploadDeadline`、`visibleWorkshopIds` 仍保留兼容旧上传清单。
+- `PUT /api/doc-nodes/{id}`：修改文件夹或文件名称、排序；内业资料文件夹可同步修改是否允许车间上传和可上传车间，取消授权后已有车间文件保留但禁止继续新增；规章制度不启用车间上传。文件节点编辑支持 `application/json` 保存元数据，也支持 `multipart/form-data` 附带 `file` 重新上传文件附件，并按新文件名同步文件类型。
 - `DELETE /api/doc-nodes/{id}`：本科室用户或超级管理员删除目录节点；文件节点移入本科室共享回收站，文件夹存在子节点时禁止删除且不进入回收站。
-- `GET /api/doc-nodes/recycle-bin?sectionDeptId=1`：本科室用户或超级管理员查看本科室回收站文件表格，返回 `id`、`itemId`、`nodeName`、`fileType`、`docYear`、`deletedAt`、`deletedByName`、`originalParentName`、`submissionCount`、`attachmentCount`。
-- `POST /api/doc-nodes/{id}/restore`：本科室用户或超级管理员恢复回收站文件，请求体包含 `targetParentId`；目标目录必须是同科室未删除文件夹，若目标目录已有同名文件则拒绝恢复。
+- `GET /api/doc-nodes/recycle-bin?sectionDeptId=1&moduleType=INTERNAL`：本科室用户或超级管理员按模块查看本科室回收站文件表格，返回 `id`、`itemId`、`nodeName`、`fileType`、`docYear`、`deletedAt`、`deletedByName`、`originalParentName`、`submissionCount`、`attachmentCount`。
+- `POST /api/doc-nodes/{id}/restore`：本科室用户或超级管理员恢复回收站文件，请求体包含 `targetParentId`；目标目录必须是同科室、同模块未删除文件夹，若目标目录已有同名文件则拒绝恢复。
 - `GET /api/doc-categories?sectionDeptId=1`：查询科室下旧二级侧边栏，保留兼容历史页面和旧数据。
 - `POST /api/doc-categories`：本科室用户或超级管理员新增二级侧边栏。
 - `PUT /api/doc-categories/{id}`：本科室用户或超级管理员修改二级侧边栏名称和排序。

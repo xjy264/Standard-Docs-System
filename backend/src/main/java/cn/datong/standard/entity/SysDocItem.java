@@ -17,6 +17,7 @@ public class SysDocItem {
     private Long id;
     private Long categoryId;
     private Long sectionDeptId;
+    private String moduleType;
     private String itemName;
     private String businessType;
     private String submitterMode;

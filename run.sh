@@ -115,6 +115,7 @@ migration_files=(
   "13-doc-recycle-bin.sql"
   "14-doc-submission-soft-delete.sql"
   "15-error-events.sql"
+  "16-doc-modules.sql"
 )
 
 env_value() {

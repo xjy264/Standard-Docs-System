@@ -31,16 +31,18 @@ public class DocNodeController {
 
     @GetMapping("/api/doc-tree")
     public ApiResponse<List<SysDocNode>> tree(@RequestParam Long sectionDeptId,
-                                              @RequestParam(required = false) String businessType) {
+                                              @RequestParam(required = false) String businessType,
+                                              @RequestParam(required = false) String moduleType) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         return ApiResponse.success(docWorkspaceService.documentTree(currentUser.userId(), currentUser.deptId(),
-                currentUser.superAdmin(), sectionDeptId, businessType));
+                currentUser.superAdmin(), sectionDeptId, businessType, moduleType));
     }
 
     @GetMapping("/api/doc-nodes/recycle-bin")
-    public ApiResponse<List<DocRecycleBinItem>> recycleBin(@RequestParam Long sectionDeptId) {
+    public ApiResponse<List<DocRecycleBinItem>> recycleBin(@RequestParam Long sectionDeptId,
+                                                           @RequestParam(required = false) String moduleType) {
         CurrentUser currentUser = SecurityUtils.currentUser();
-        return ApiResponse.success(docWorkspaceService.recycleBinItems(currentUser.deptId(), currentUser.superAdmin(), sectionDeptId));
+        return ApiResponse.success(docWorkspaceService.recycleBinItems(currentUser.deptId(), currentUser.superAdmin(), sectionDeptId, moduleType));
     }
 
     @PostMapping("/api/doc-nodes/folders")
@@ -61,6 +63,7 @@ public class DocNodeController {
                                                           @RequestParam String nodeName,
                                                           @RequestParam(required = false) Integer sortOrder,
                                                           @RequestParam Integer docYear,
+                                                          @RequestParam(required = false) String moduleType,
                                                           @RequestParam(required = false, defaultValue = "false") Boolean workshopUploadEnabled,
                                                           @RequestParam(required = false) String submitterMode,
                                                           @RequestParam(required = false)
@@ -72,7 +75,7 @@ public class DocNodeController {
         DocNodeRequest request = new DocNodeRequest(sectionDeptId, parentId, nodeName, sortOrder, null,
                 workshopUploadEnabled, "", null, docYear, workshopUploadEnabled ? "UPLOAD" : "ISSUED",
                 workshopUploadEnabled ? submitterMode : "SINGLE", null, uploadDeadline,
-                workshopUploadEnabled, visibleWorkshopIds);
+                workshopUploadEnabled, visibleWorkshopIds, null, moduleType);
         return ApiResponse.success(docWorkspaceService.createFileNodeWithMainFile(currentUser.userId(), currentUser.deptId(),
                 currentUser.superAdmin(), request, file));
     }
@@ -91,6 +94,7 @@ public class DocNodeController {
                                                       @RequestParam(required = false) Integer sortOrder,
                                                       @RequestParam(required = false) Integer docYear,
                                                       @RequestParam(required = false) String fileType,
+                                                      @RequestParam(required = false) String moduleType,
                                                       @RequestParam(required = false, defaultValue = "false") Boolean workshopUploadEnabled,
                                                       @RequestParam(required = false) String submitterMode,
                                                       @RequestParam(required = false)
@@ -102,7 +106,7 @@ public class DocNodeController {
         DocNodeRequest request = new DocNodeRequest(sectionDeptId, parentId, nodeName, sortOrder, null,
                 workshopUploadEnabled, "", fileType, docYear, workshopUploadEnabled ? "UPLOAD" : "ISSUED",
                 workshopUploadEnabled ? submitterMode : "SINGLE", null, uploadDeadline,
-                workshopUploadEnabled, visibleWorkshopIds);
+                workshopUploadEnabled, visibleWorkshopIds, null, moduleType);
         return ApiResponse.success(docWorkspaceService.updateNodeWithMainFile(currentUser.userId(), currentUser.deptId(),
                 currentUser.superAdmin(), id, request, file));
     }
