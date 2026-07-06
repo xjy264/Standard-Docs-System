@@ -183,11 +183,11 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void workshopCanCreateFileUnderEnabledInternalFolder() {
+    void workshopCanCreateFileUnderAnyInternalFolderWithoutUploadGate() {
         Fixtures fx = fixtures();
         SysDocNode parent = node(10L, 2L, null, "FOLDER", "内业资料", null, 1, 10);
         parent.setModuleType("INTERNAL");
-        parent.setWorkshopUploadEnabled(1);
+        parent.setWorkshopUploadEnabled(0);
         when(fx.nodeMapper.selectById(10L)).thenReturn(parent);
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
         when(fx.itemMapper.insert(any(SysDocItem.class))).thenAnswer(invocation -> {
@@ -212,15 +212,14 @@ class DocWorkspaceServiceTest {
         fx.service.createFileNodeWithMainFile(20L, 5L, false, request, file);
 
         ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
-        verify(fx.nodeMapper, times(2)).insert(nodeCaptor.capture());
-        assertThat(nodeCaptor.getAllValues().get(0).getNodeName()).isEqualTo("房建车间");
-        assertThat(nodeCaptor.getAllValues().get(0).getWorkshopDeptId()).isEqualTo(5L);
-        assertThat(nodeCaptor.getAllValues().get(1).getParentId()).isEqualTo(99L);
-        assertThat(nodeCaptor.getAllValues().get(1).getWorkshopDeptId()).isEqualTo(5L);
+        verify(fx.nodeMapper).insert(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getNodeType()).isEqualTo("FILE");
+        assertThat(nodeCaptor.getValue().getParentId()).isEqualTo(10L);
+        assertThat(nodeCaptor.getValue().getWorkshopDeptId()).isEqualTo(5L);
     }
 
     @Test
-    void createUploadFolderCreatesScopedWorkshopFolders() {
+    void createFolderIgnoresWorkshopUploadConfiguration() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         when(fx.orgAssignmentService.adminUserIds()).thenReturn(Set.of(10L));
@@ -234,33 +233,51 @@ class DocWorkspaceServiceTest {
             return 1;
         });
         DocNodeRequest request = new DocNodeRequest(2L, null, "内业资料", 0, null, false, "", null, 2026,
-                null, null, null, null, true, List.of(5L, 6L), false, "INTERNAL");
+                null, null, null, null, true, List.of(5L, 6L), true, "INTERNAL");
 
         fx.service.createFolderNode(10L, 2L, false, request);
 
         ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
-        verify(fx.nodeMapper, times(3)).insert(nodeCaptor.capture());
-        assertThat(nodeCaptor.getAllValues()).extracting(SysDocNode::getNodeName)
-                .containsExactly("内业资料", "房建车间", "公寓车间");
-        assertThat(nodeCaptor.getAllValues().get(1).getWorkshopDeptId()).isEqualTo(5L);
-        assertThat(nodeCaptor.getAllValues().get(2).getWorkshopDeptId()).isEqualTo(6L);
-        verify(fx.nodeWorkshopScopeMapper, times(2)).insert(any(SysDocNodeWorkshopScope.class));
+        verify(fx.nodeMapper).insert(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getWorkshopUploadEnabled()).isEqualTo(0);
+        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(0);
+        assertThat(nodeCaptor.getValue().getWorkshopDeptId()).isNull();
+        verify(fx.nodeWorkshopScopeMapper, never()).insert(any(SysDocNodeWorkshopScope.class));
     }
 
     @Test
-    void workshopCannotCreateFileWhenFolderScopeRemoved() {
+    void updateFolderIgnoresWorkshopUploadConfiguration() {
         Fixtures fx = fixtures();
-        SysDocNode parent = node(10L, 2L, null, "FOLDER", "内业资料", null, 1, 10);
-        parent.setModuleType("INTERNAL");
-        parent.setWorkshopUploadEnabled(1);
+        SysDocNode folder = node(10L, 2L, null, "FOLDER", "内业资料", null, 1, 10);
+        folder.setModuleType("INTERNAL");
+        folder.setWorkshopUploadEnabled(1);
+        folder.setShowUploadProgress(1);
+        when(fx.nodeMapper.selectById(10L)).thenReturn(folder);
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "内业资料", 0, null, false, "", null, 2026,
+                null, null, null, null, true, List.of(5L), true, "INTERNAL");
+
+        fx.service.updateNode(2L, false, 10L, request);
+
+        ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
+        verify(fx.nodeMapper).updateById(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getWorkshopUploadEnabled()).isEqualTo(0);
+        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(0);
+        verify(fx.nodeWorkshopScopeMapper, never()).insert(any(SysDocNodeWorkshopScope.class));
+    }
+
+    @Test
+    void workshopCannotCreateFileUnderRulesFolder() {
+        Fixtures fx = fixtures();
+        SysDocNode parent = node(10L, 2L, null, "FOLDER", "制度资料", null, 1, 10);
+        parent.setModuleType("RULES");
         when(fx.nodeMapper.selectById(10L)).thenReturn(parent);
         when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
-        when(fx.nodeWorkshopScopeMapper.selectList(any())).thenReturn(List.of(nodeScope(10L, 6L)));
         MultipartFile file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
-        when(file.getOriginalFilename()).thenReturn("照片.png");
-        DocNodeRequest request = new DocNodeRequest(2L, 10L, "检查照片", 0, null, false, "", "IMAGE", 2026,
-                null, null, null, null, null, null, null, "INTERNAL");
+        when(file.getOriginalFilename()).thenReturn("制度.pdf");
+        DocNodeRequest request = new DocNodeRequest(2L, 10L, "制度", 0, null, false, "", "PDF", 2026,
+                null, null, null, null, null, null, null, "RULES");
 
         assertThatThrownBy(() -> fx.service.createFileNodeWithMainFile(20L, 5L, false, request, file))
                 .isInstanceOf(BusinessException.class)

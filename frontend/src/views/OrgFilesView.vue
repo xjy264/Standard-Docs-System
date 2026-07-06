@@ -65,11 +65,6 @@
                   {{ fileTypeLabel(data) }}
                 </span>
                 <span class="doc-node-name">{{ node.label }}</span>
-                <el-tag v-if="isUploadNode(data)" class="upload-tag" size="small" type="success">上传</el-tag>
-                <div v-if="shouldShowFolderProgress(data)" class="folder-progress">
-                  <el-progress :percentage="data.progressPercent || 0" :show-text="false" />
-                  <span>已完成 {{ data.completedUploadTaskCount || 0 }}/{{ data.uploadTaskCount || 0 }}</span>
-                </div>
               </div>
             </div>
             <div v-if="canManageSection || canCreateFileInFolder(data) || canManageNode(data)" class="doc-tree-actions">
@@ -97,30 +92,6 @@
           <el-input v-model="nodeForm.nodeName" maxlength="128" />
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="nodeForm.sortOrder" :min="0" /></el-form-item>
-        <el-form-item v-if="isInternalModule && nodeForm.nodeType === 'FOLDER'">
-          <el-checkbox v-model="nodeForm.showUploadProgress">显示上传进度</el-checkbox>
-        </el-form-item>
-        <template v-if="isInternalModule && nodeForm.nodeType === 'FOLDER'">
-          <el-form-item>
-            <el-checkbox v-model="nodeForm.workshopUploadEnabled">允许车间上传</el-checkbox>
-          </el-form-item>
-          <el-form-item v-if="nodeForm.workshopUploadEnabled" label="可上传车间">
-            <el-select
-              v-model="nodeForm.visibleWorkshopIds"
-              multiple
-              clearable
-              placeholder="默认全部当前车间可上传"
-              style="width: 100%"
-            >
-              <el-option
-                v-for="dept in workshopOptions"
-                :key="dept.id"
-                :label="dept.deptName"
-                :value="dept.id"
-              />
-            </el-select>
-          </el-form-item>
-        </template>
         <template v-if="nodeForm.nodeType === 'FILE'">
           <el-form-item label="文件">
             <div v-if="showExistingBodyAttachment" class="body-attachment-card">
@@ -350,7 +321,6 @@ const isWorkshopUser = computed(() => {
   const dept = currentUserDept.value
   return Boolean(dept?.deptType === 'WORKSHOP' || dept?.deptName?.includes('车间'))
 })
-const workshopOptions = computed(() => depts.value.filter((dept) => dept.deptType === 'WORKSHOP' || dept.deptName.includes('车间')))
 const allFiles = computed(() => flattenFiles(treeData.value))
 const searchMode = computed(() => Boolean(activeKeyword.value))
 const yearTreeData = computed(() => filterTreeByYear(treeData.value, selectedYear.value))
@@ -446,11 +416,7 @@ function openFileDialog(parent?: DocNode) {
 }
 
 function canCreateFileInFolder(node: DocNode) {
-  if (!isInternalModule.value || node.nodeType !== 'FOLDER' || !isWorkshopUser.value || !node.workshopUploadEnabled) {
-    return false
-  }
-  const userDeptId = auth.user?.deptId
-  return Boolean(userDeptId && (!node.visibleWorkshopIds?.length || node.visibleWorkshopIds.includes(userDeptId)))
+  return Boolean(isInternalModule.value && node.nodeType === 'FOLDER' && isWorkshopUser.value)
 }
 
 function canManageNode(node: DocNode) {
@@ -560,12 +526,10 @@ async function submitNode() {
     fileType: nodeForm.fileType,
     businessType: 'ISSUED',
     submitterMode: 'SINGLE',
-    showUploadProgress: isInternalModule.value && nodeForm.nodeType === 'FOLDER' ? nodeForm.showUploadProgress : undefined,
+    showUploadProgress: false,
     uploadDeadline: null,
-    workshopUploadEnabled: isInternalModule.value && nodeForm.nodeType === 'FOLDER' ? nodeForm.workshopUploadEnabled : false,
-    visibleWorkshopIds: isInternalModule.value && nodeForm.nodeType === 'FOLDER' && nodeForm.workshopUploadEnabled
-      ? nodeForm.visibleWorkshopIds
-      : [],
+    workshopUploadEnabled: false,
+    visibleWorkshopIds: [],
     requirements: []
   }
   const treeStateBeforeSave = captureTreeState([nodeForm.parentId])
@@ -920,16 +884,6 @@ function fileExtension(name?: string) {
   return match?.[1]?.toUpperCase() || ''
 }
 
-function isUploadNode(node: DocNode) {
-  return node.nodeType === 'FILE' && node.businessType === 'UPLOAD'
-}
-
-function shouldShowFolderProgress(node: DocNode) {
-  return node.nodeType === 'FOLDER'
-    && node.showUploadProgress !== 0
-    && Boolean(node.uploadTaskCount)
-}
-
 function handleDialogClosed() {
   issuedFiles.value = []
   editingBodyAttachment.value = undefined
@@ -1164,20 +1118,6 @@ watch(selectedYear, () => {
   font-size: 18px;
 }
 
-.folder-progress {
-  width: min(260px, 30vw);
-  display: grid;
-  grid-template-columns: minmax(90px, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  color: #637083;
-  font-size: 12px;
-}
-
-.upload-tag {
-  flex: 0 0 auto;
-}
-
 .doc-file-icon {
   flex: 0 0 auto;
   width: 24px;
@@ -1192,10 +1132,6 @@ watch(selectedYear, () => {
   font-weight: 700;
   line-height: 1;
   box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
-}
-
-.doc-file-icon.is-upload {
-  background: #168a4a;
 }
 
 .doc-file-icon.is-word {
@@ -1273,10 +1209,6 @@ watch(selectedYear, () => {
   .doc-tree-row {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .folder-progress {
-    width: min(100%, 320px);
   }
 
   .doc-tree-actions {
