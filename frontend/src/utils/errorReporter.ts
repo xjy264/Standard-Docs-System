@@ -69,6 +69,10 @@ function reportRuntimeError(error: unknown, component?: string) {
 }
 
 function reportPayload(payload: ErrorPayload) {
+  const csrfToken = readCookie('XSRF-TOKEN')
+  if (!csrfToken) {
+    return
+  }
   if (reporting) {
     return
   }
@@ -79,7 +83,7 @@ function reportPayload(payload: ErrorPayload) {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      'X-XSRF-TOKEN': readCookie('XSRF-TOKEN'),
+      'X-XSRF-TOKEN': csrfToken,
       'X-Error-Report': '1'
     },
     body
