@@ -10,6 +10,8 @@ const httpClient = readFileSync(resolve('src/api/http.ts'), 'utf8')
 const detailView = readFileSync(resolve('src/views/DocItemDetailView.vue'), 'utf8')
 const personalSpaceView = readFileSync(resolve('src/views/PersonalSpaceView.vue'), 'utf8')
 const errorReporter = readFileSync(resolve('src/utils/errorReporter.ts'), 'utf8')
+const layoutView = readFileSync(resolve('src/views/LayoutView.vue'), 'utf8')
+const orgFilesView = readFileSync(resolve('src/views/OrgFilesView.vue'), 'utf8')
 
 test('login form does not prefill the seeded demo account', () => {
   assert.match(formDeclaration, /password:\s*['"]['"]/)
@@ -52,4 +54,28 @@ test('frontend reports runtime errors without recursive reporting or secrets', (
 test('frontend skips error event submission before login csrf cookie exists', () => {
   assert.match(errorReporter, /const csrfToken = readCookie\(['"]XSRF-TOKEN['"]\)/)
   assert.match(errorReporter, /if\s*\(!csrfToken\)\s*{\s*return\s*}/)
+})
+
+test('module layout puts home in the top left and removes sidebar home', () => {
+  assert.match(layoutView, /<div class="top-actions top-left">[\s\S]*router\.push\('\/dashboard'\)[\s\S]*首页[\s\S]*<\/div>/)
+  assert.doesNotMatch(layoutView, />资料目录<\/el-button>/)
+  assert.doesNotMatch(layoutView, /<el-menu-item\s+index="\/dashboard">首页<\/el-menu-item>/)
+})
+
+test('org files view removes upload badges and folder upload options', () => {
+  assert.doesNotMatch(orgFilesView, /type="success">上传<\/el-tag>/)
+  assert.doesNotMatch(orgFilesView, /upload-tag/)
+  assert.doesNotMatch(orgFilesView, /shouldShowFolderProgress/)
+  assert.doesNotMatch(orgFilesView, /显示上传进度/)
+  assert.doesNotMatch(orgFilesView, /允许车间上传/)
+  assert.doesNotMatch(orgFilesView, /可上传车间/)
+})
+
+test('internal workshop file creation is not gated by folder upload config', () => {
+  const functionBody = orgFilesView.match(/function canCreateFileInFolder\(node: DocNode\) \{([\s\S]*?)\n\}/)?.[1] ?? ''
+  assert.match(functionBody, /isInternalModule\.value/)
+  assert.match(functionBody, /node\.nodeType\s*={2,3}\s*'FOLDER'/)
+  assert.match(functionBody, /isWorkshopUser\.value/)
+  assert.doesNotMatch(functionBody, /workshopUploadEnabled/)
+  assert.doesNotMatch(functionBody, /visibleWorkshopIds/)
 })

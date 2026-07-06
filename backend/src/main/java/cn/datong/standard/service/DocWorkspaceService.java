@@ -185,7 +185,6 @@ public class DocWorkspaceService {
     public SysDocNode createFolderNode(Long userId, Long userDeptId, boolean superAdmin, DocNodeRequest request) {
         NodePlacement placement = resolvePlacement(userId, userDeptId, superAdmin, request.sectionDeptId(), request.parentId(), true, request.moduleType());
         String moduleType = placement.moduleType();
-        boolean workshopUploadEnabled = MODULE_INTERNAL.equals(moduleType) && Boolean.TRUE.equals(request.workshopUploadEnabled());
         SysDocNode node = new SysDocNode();
         node.setSectionDeptId(placement.sectionDeptId());
         node.setModuleType(moduleType);
@@ -195,17 +194,14 @@ public class DocWorkspaceService {
         node.setDocYear(resolveFolderDocYear(request.parentId(), request.docYear()));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         node.setLevel(placement.level());
-        node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 0));
-        node.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
+        node.setShowUploadProgress(0);
+        node.setWorkshopUploadEnabled(0);
         node.setCreatedBy(userId);
         node.setCreatedAt(LocalDateTime.now());
         node.setUpdatedAt(LocalDateTime.now());
         node.setDeleted(0);
         nodeMapper.insert(node);
-        replaceNodeWorkshopScopes(node.getId(), workshopUploadEnabled ? request.visibleWorkshopIds() : List.of());
-        if (workshopUploadEnabled) {
-            ensureConfiguredWorkshopFolders(userId, node, request.visibleWorkshopIds());
-        }
+        replaceNodeWorkshopScopes(node.getId(), List.of());
         return node;
     }
 
@@ -339,14 +335,9 @@ public class DocWorkspaceService {
             node.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
         } else {
             node.setDocYear(request.docYear() == null ? node.getDocYear() : requiredDocYear(request.docYear(), "请选择资料年份"));
-            node.setShowUploadProgress(booleanFlag(request.showUploadProgress(), 0));
-            boolean workshopUploadEnabled = MODULE_INTERNAL.equals(normalizeModuleType(node.getModuleType()))
-                    && Boolean.TRUE.equals(request.workshopUploadEnabled());
-            node.setWorkshopUploadEnabled(workshopUploadEnabled ? 1 : 0);
-            replaceNodeWorkshopScopes(node.getId(), workshopUploadEnabled ? request.visibleWorkshopIds() : List.of());
-            if (workshopUploadEnabled) {
-                ensureConfiguredWorkshopFolders(null, node, request.visibleWorkshopIds());
-            }
+            node.setShowUploadProgress(0);
+            node.setWorkshopUploadEnabled(0);
+            replaceNodeWorkshopScopes(node.getId(), List.of());
         }
         node.setUpdatedAt(LocalDateTime.now());
         nodeMapper.updateById(node);
@@ -1764,14 +1755,8 @@ public class DocWorkspaceService {
             int level = nextLevel(parent);
             return new NodePlacement(parent.getSectionDeptId(), parent.getId(), level, normalizeModuleType(parent.getModuleType()), parent.getWorkshopDeptId());
         }
-        if (MODULE_INTERNAL.equals(normalizeModuleType(parent.getModuleType()))
-                && Objects.equals(parent.getWorkshopUploadEnabled(), 1)
-                && isWorkshop(userDeptId)) {
-            if (!folderUploadAllowed(parent.getId(), userDeptId)) {
-                throw new BusinessException(403, "该文件夹未开放车间上传");
-            }
-            SysDocNode workshopFolder = ensureWorkshopFolder(userId, parent, userDeptId);
-            return new NodePlacement(parent.getSectionDeptId(), workshopFolder.getId(), nextLevel(workshopFolder), MODULE_INTERNAL, userDeptId);
+        if (MODULE_INTERNAL.equals(normalizeModuleType(parent.getModuleType())) && isWorkshop(userDeptId)) {
+            return new NodePlacement(parent.getSectionDeptId(), parent.getId(), nextLevel(parent), MODULE_INTERNAL, userDeptId);
         }
         throw new BusinessException(403, "该文件夹未开放车间上传");
     }
