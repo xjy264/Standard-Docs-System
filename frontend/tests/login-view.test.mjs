@@ -62,8 +62,10 @@ test('module layout puts home in the top left and removes sidebar home', () => {
   assert.doesNotMatch(layoutView, /<el-menu-item\s+index="\/dashboard">首页<\/el-menu-item>/)
 })
 
-test('module layout shows the section sidebar in navigation order for both modules', () => {
-  assert.match(layoutView, /<el-sub-menu\s+index="sections">[\s\S]*<template\s+#title>科室<\/template>[\s\S]*v-for="dept in navigation"[\s\S]*:index="`\/\$\{moduleBase\}\/\$\{dept\.id\}`"/)
+test('module layout lists sections directly in navigation order for both modules', () => {
+  assert.doesNotMatch(layoutView, /<el-sub-menu\s+index="sections"/)
+  assert.doesNotMatch(layoutView, /<template\s+#title>科室<\/template>/)
+  assert.match(layoutView, /<el-menu-item\s+v-for="dept in navigation"[\s\S]*:index="`\/\$\{moduleBase\}\/\$\{dept\.id\}`"/)
   assert.match(layoutView, /route\.path\.startsWith\('\/rules'\)\s*\?\s*'rules'\s*:\s*'internal'/)
 })
 

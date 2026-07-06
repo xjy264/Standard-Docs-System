@@ -22,10 +22,7 @@
             <el-menu-item v-if="auth.hasPermission('user:view')" index="/console/users">用户管理</el-menu-item>
           </template>
           <template v-else>
-            <el-sub-menu index="sections">
-              <template #title>科室</template>
-              <el-menu-item v-for="dept in navigation" :key="dept.id" :index="`/${moduleBase}/${dept.id}`">{{ dept.deptName }}</el-menu-item>
-            </el-sub-menu>
+            <el-menu-item v-for="dept in navigation" :key="dept.id" :index="`/${moduleBase}/${dept.id}`">{{ dept.deptName }}</el-menu-item>
           </template>
         </el-menu>
       </aside>
@@ -62,7 +59,7 @@ const isDashboard = computed(() => route.path === '/dashboard')
 const moduleBase = computed(() => route.path.startsWith('/rules') ? 'rules' : 'internal')
 const canManageDocRoots = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
 const canManageRepairTemplates = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
-const defaultOpeneds = computed(() => isConsole.value ? [] : ['sections'])
+const defaultOpeneds: string[] = []
 
 async function logout() {
   try {
