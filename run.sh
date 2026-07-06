@@ -116,6 +116,7 @@ migration_files=(
   "14-doc-submission-soft-delete.sql"
   "15-error-events.sql"
   "16-doc-modules.sql"
+  "17-seed-missing-sections.sql"
 )
 
 env_value() {
