@@ -47,11 +47,13 @@ public interface SysDocNodeMapper extends BaseMapper<SysDocNode> {
             LEFT JOIN sys_doc_node parent ON parent.id = node.parent_id
             LEFT JOIN sys_user user ON user.id = node.deleted_by
             WHERE node.section_dept_id = #{sectionDeptId}
+              AND node.module_type = #{moduleType}
               AND node.node_type = 'FILE'
               AND node.deleted = 1
             ORDER BY node.deleted_at DESC, node.id DESC
             """)
-    List<DocRecycleBinItem> selectRecycleBinItems(@Param("sectionDeptId") Long sectionDeptId);
+    List<DocRecycleBinItem> selectRecycleBinItems(@Param("sectionDeptId") Long sectionDeptId,
+                                                  @Param("moduleType") String moduleType);
 
     @Select("""
             SELECT *

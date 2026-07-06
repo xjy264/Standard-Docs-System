@@ -106,6 +106,10 @@ body {
   min-height: calc(100vh - 58px);
 }
 
+.workspace.is-dashboard {
+  grid-template-columns: 1fr;
+}
+
 .sidebar {
   background: #fff;
   border-right: 1px solid var(--line);

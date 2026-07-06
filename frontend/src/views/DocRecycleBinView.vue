@@ -2,7 +2,7 @@
   <div class="recycle-page">
     <div class="page-title compact-title">
       <div>
-        <el-button link type="primary" @click="router.push(`/org/${deptId}`)">返回科室资料</el-button>
+        <el-button link type="primary" @click="router.push(`/${moduleBase}/${deptId}`)">返回科室资料</el-button>
         <h2>回收站</h2>
         <p class="page-subtitle">已删除文件保留 30 天，超过期限后系统将自动清理相关文件。</p>
       </div>
@@ -84,6 +84,8 @@ interface DocNode {
 const route = useRoute()
 const router = useRouter()
 const deptId = computed(() => Number(route.params.deptId))
+const moduleType = computed<'INTERNAL' | 'RULES'>(() => route.path.startsWith('/rules') ? 'RULES' : 'INTERNAL')
+const moduleBase = computed(() => moduleType.value === 'RULES' ? 'rules' : 'internal')
 const items = ref<RecycleItem[]>([])
 const folderTree = ref<DocNode[]>([])
 const restoreOpen = ref(false)
@@ -93,8 +95,8 @@ const targetParentId = ref<number>()
 
 async function load() {
   const [recycleItems, tree] = await Promise.all([
-    apiGet<RecycleItem[]>('/doc-nodes/recycle-bin', { sectionDeptId: deptId.value }),
-    apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value })
+    apiGet<RecycleItem[]>('/doc-nodes/recycle-bin', { sectionDeptId: deptId.value, moduleType: moduleType.value }),
+    apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value, moduleType: moduleType.value })
   ])
   items.value = recycleItems
   folderTree.value = foldersOnly(tree)
@@ -153,7 +155,7 @@ function formatDate(value?: string) {
 }
 
 onMounted(load)
-watch(() => route.params.deptId, () => load())
+watch(() => [route.path, route.params.deptId], () => load())
 </script>
 
 <style scoped>

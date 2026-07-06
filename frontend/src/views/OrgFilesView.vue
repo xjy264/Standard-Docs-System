@@ -3,6 +3,7 @@
     <div class="page-title compact-title">
       <div>
         <h2>{{ currentSection?.deptName || '科室资料' }}</h2>
+        <p class="page-subtitle">{{ moduleTitle }}</p>
       </div>
     </div>
 
@@ -71,12 +72,12 @@
                 </div>
               </div>
             </div>
-            <div v-if="canManageSection" class="doc-tree-actions">
-              <el-button v-if="data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
-              <el-button v-if="data.nodeType === 'FOLDER' && isRepairChildFolder(data)" link type="primary" @click.stop="openImportDialog(data)">从模板库导入</el-button>
-              <el-button v-if="data.nodeType === 'FOLDER'" link type="primary" @click.stop="openFileDialog(data)">新增文件</el-button>
-              <el-button link type="primary" @click.stop="openEditDialog(data)">编辑</el-button>
-              <el-button link type="danger" @click.stop="deleteNode(data)">删除</el-button>
+            <div v-if="canManageSection || canCreateFileInFolder(data) || canManageNode(data)" class="doc-tree-actions">
+              <el-button v-if="canManageSection && data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
+              <el-button v-if="isInternalModule && canManageSection && data.nodeType === 'FOLDER' && isRepairChildFolder(data)" link type="primary" @click.stop="openImportDialog(data)">从模板库导入</el-button>
+              <el-button v-if="data.nodeType === 'FOLDER' && (canManageSection || canCreateFileInFolder(data))" link type="primary" @click.stop="openFileDialog(data)">新增文件</el-button>
+              <el-button v-if="canManageNode(data)" link type="primary" @click.stop="openEditDialog(data)">编辑</el-button>
+              <el-button v-if="canManageNode(data)" link type="danger" @click.stop="deleteNode(data)">删除</el-button>
             </div>
           </div>
         </template>
@@ -96,9 +97,30 @@
           <el-input v-model="nodeForm.nodeName" maxlength="128" />
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="nodeForm.sortOrder" :min="0" /></el-form-item>
-        <el-form-item v-if="nodeForm.nodeType === 'FOLDER'">
+        <el-form-item v-if="isInternalModule && nodeForm.nodeType === 'FOLDER'">
           <el-checkbox v-model="nodeForm.showUploadProgress">显示上传进度</el-checkbox>
         </el-form-item>
+        <template v-if="isInternalModule && nodeForm.nodeType === 'FOLDER'">
+          <el-form-item>
+            <el-checkbox v-model="nodeForm.workshopUploadEnabled">允许车间上传</el-checkbox>
+          </el-form-item>
+          <el-form-item v-if="nodeForm.workshopUploadEnabled" label="可上传车间">
+            <el-select
+              v-model="nodeForm.visibleWorkshopIds"
+              multiple
+              clearable
+              placeholder="默认全部当前车间可上传"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="dept in workshopOptions"
+                :key="dept.id"
+                :label="dept.deptName"
+                :value="dept.id"
+              />
+            </el-select>
+          </el-form-item>
+        </template>
         <template v-if="nodeForm.nodeType === 'FILE'">
           <el-form-item label="文件">
             <div v-if="showExistingBodyAttachment" class="body-attachment-card">
@@ -143,44 +165,6 @@
           </el-form-item>
           <el-form-item label="文件类型">
             <el-tag>{{ fileTypeText({ nodeName: nodeForm.nodeName, nodeType: 'FILE', fileType: nodeForm.fileType || 'OTHER' } as DocNode) }}</el-tag>
-          </el-form-item>
-          <el-form-item label="可见车间">
-            <el-select
-              v-model="nodeForm.visibleWorkshopIds"
-              multiple
-              clearable
-              placeholder="默认全部车间可见"
-              style="width: 100%"
-            >
-              <el-option
-                v-for="dept in workshopOptions"
-                :key="dept.id"
-                :label="dept.deptName"
-                :value="dept.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="车间上传">
-            <el-radio-group v-model="nodeForm.workshopUploadEnabled" class="workshop-upload-options">
-              <el-radio :value="false">不需要车间上传</el-radio>
-              <el-radio :value="true">需要车间上传</el-radio>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item v-if="nodeForm.workshopUploadEnabled" label="上传截止时间">
-            <el-date-picker
-              v-model="nodeForm.uploadDeadline"
-              type="datetime"
-              format="YYYY-MM-DD HH:mm"
-              value-format="YYYY-MM-DDTHH:mm:00"
-              placeholder="不填则不限时"
-              style="width: 260px"
-            />
-          </el-form-item>
-          <el-form-item v-if="nodeForm.workshopUploadEnabled" label="提交方式">
-            <el-radio-group v-model="nodeForm.submitterMode" class="workshop-upload-options">
-              <el-radio value="SINGLE">单份提交</el-radio>
-              <el-radio value="MULTIPLE">多份提交</el-radio>
-            </el-radio-group>
           </el-form-item>
         </template>
       </el-form>
@@ -274,6 +258,8 @@ interface DocNode {
   uploadDeadline?: string
   visibilityScope?: string
   visibleWorkshopIds?: number[]
+  moduleType?: 'INTERNAL' | 'RULES'
+  workshopDeptId?: number
   showUploadProgress?: number
   uploadTaskCount?: number
   completedUploadTaskCount?: number
@@ -313,6 +299,10 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const deptId = computed(() => Number(route.params.deptId))
+const moduleType = computed<'INTERNAL' | 'RULES'>(() => route.path.startsWith('/rules') ? 'RULES' : 'INTERNAL')
+const moduleBase = computed(() => moduleType.value === 'RULES' ? 'rules' : 'internal')
+const isInternalModule = computed(() => moduleType.value === 'INTERNAL')
+const moduleTitle = computed(() => moduleType.value === 'RULES' ? '规章制度' : '内业资料')
 const sections = ref<SectionItem[]>([])
 const depts = ref<DeptItem[]>([])
 const treeData = ref<DocNode[]>([])
@@ -355,6 +345,11 @@ const importForm = reactive({
 
 const currentSection = computed(() => sections.value.find((item) => item.id === deptId.value))
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === deptId.value)
+const currentUserDept = computed(() => depts.value.find((dept) => dept.id === auth.user?.deptId))
+const isWorkshopUser = computed(() => {
+  const dept = currentUserDept.value
+  return Boolean(dept?.deptType === 'WORKSHOP' || dept?.deptName?.includes('车间'))
+})
 const workshopOptions = computed(() => depts.value.filter((dept) => dept.deptType === 'WORKSHOP' || dept.deptName.includes('车间')))
 const allFiles = computed(() => flattenFiles(treeData.value))
 const searchMode = computed(() => Boolean(activeKeyword.value))
@@ -394,7 +389,7 @@ const dialogTitle = computed(() => {
   if (nodeForm.nodeType === 'FOLDER') return '新增文件夹'
   return '新增文件'
 })
-const treeStateKey = computed(() => `org-tree-state:${deptId.value}`)
+const treeStateKey = computed(() => `${moduleBase.value}-tree-state:${deptId.value}`)
 
 async function load(restore = route.query.restore === '1') {
   sections.value = await apiGet<SectionItem[]>('/sections/navigation')
@@ -403,7 +398,7 @@ async function load(restore = route.query.restore === '1') {
 }
 
 async function loadTree(restore = false) {
-  treeData.value = await apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value })
+  treeData.value = await apiGet<DocNode[]>('/doc-tree', { sectionDeptId: deptId.value, moduleType: moduleType.value })
   await nextTick()
   if (restore) {
     restoreTreeState()
@@ -411,7 +406,7 @@ async function loadTree(restore = false) {
 }
 
 function openRecycleBin() {
-  router.push(`/org/${deptId.value}/recycle-bin`)
+  router.push(`/${moduleBase.value}/${deptId.value}/recycle-bin`)
 }
 
 function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
@@ -448,6 +443,18 @@ function openFileDialog(parent?: DocNode) {
   }
   resetForm('FILE', parent)
   nodeDialogOpen.value = true
+}
+
+function canCreateFileInFolder(node: DocNode) {
+  if (!isInternalModule.value || node.nodeType !== 'FOLDER' || !isWorkshopUser.value || !node.workshopUploadEnabled) {
+    return false
+  }
+  const userDeptId = auth.user?.deptId
+  return Boolean(userDeptId && (!node.visibleWorkshopIds?.length || node.visibleWorkshopIds.includes(userDeptId)))
+}
+
+function canManageNode(node: DocNode) {
+  return canManageSection.value || Boolean(isInternalModule.value && node.nodeType === 'FILE' && node.workshopDeptId === auth.user?.deptId)
 }
 
 async function openImportDialog(parent: DocNode) {
@@ -547,18 +554,19 @@ async function submitNode() {
     parentId: nodeForm.parentId,
     nodeName: nodeForm.nodeName.trim(),
     sortOrder: nodeForm.sortOrder,
+    moduleType: moduleType.value,
     docYear: nodeForm.docYear,
     contentHtml: '',
     fileType: nodeForm.fileType,
-    businessType: nodeForm.workshopUploadEnabled ? 'UPLOAD' : 'ISSUED',
-    submitterMode: nodeForm.workshopUploadEnabled ? nodeForm.submitterMode : 'SINGLE',
-    showUploadProgress: nodeForm.nodeType === 'FOLDER' ? nodeForm.showUploadProgress : undefined,
-    uploadDeadline: nodeForm.workshopUploadEnabled ? nodeForm.uploadDeadline || null : null,
-    workshopUploadEnabled: nodeForm.workshopUploadEnabled,
-    visibleWorkshopIds: nodeForm.visibleWorkshopIds,
-    requirements: nodeForm.workshopUploadEnabled
-      ? [{ requirementName: '文件', description: '', sortOrder: 0 }]
-      : []
+    businessType: 'ISSUED',
+    submitterMode: 'SINGLE',
+    showUploadProgress: isInternalModule.value && nodeForm.nodeType === 'FOLDER' ? nodeForm.showUploadProgress : undefined,
+    uploadDeadline: null,
+    workshopUploadEnabled: isInternalModule.value && nodeForm.nodeType === 'FOLDER' ? nodeForm.workshopUploadEnabled : false,
+    visibleWorkshopIds: isInternalModule.value && nodeForm.nodeType === 'FOLDER' && nodeForm.workshopUploadEnabled
+      ? nodeForm.visibleWorkshopIds
+      : [],
+    requirements: []
   }
   const treeStateBeforeSave = captureTreeState([nodeForm.parentId])
   let changedNode: DocNode | undefined
@@ -604,13 +612,10 @@ function buildFileForm(file: UploadRawFile) {
   form.append('nodeName', nodeForm.nodeName.trim())
   form.append('sortOrder', String(nodeForm.sortOrder || 0))
   form.append('docYear', String(nodeForm.docYear))
+  form.append('moduleType', moduleType.value)
   form.append('fileType', nodeForm.fileType || 'OTHER')
-  form.append('workshopUploadEnabled', String(nodeForm.workshopUploadEnabled))
-  form.append('submitterMode', nodeForm.workshopUploadEnabled ? nodeForm.submitterMode : 'SINGLE')
-  if (nodeForm.uploadDeadline) {
-    form.append('uploadDeadline', nodeForm.uploadDeadline)
-  }
-  nodeForm.visibleWorkshopIds.forEach((id) => form.append('visibleWorkshopIds', String(id)))
+  form.append('workshopUploadEnabled', 'false')
+  form.append('submitterMode', 'SINGLE')
   form.append('file', file)
   return form
 }
@@ -728,7 +733,7 @@ function openItemDetail(node: DocNode) {
     return
   }
   saveTreeState()
-  router.push(`/org/${deptId.value}/items/${node.itemId}`)
+  router.push(`/${moduleBase.value}/${deptId.value}/items/${node.itemId}`)
 }
 
 function onIssuedFileChange(_file: UploadFile, files: UploadFiles) {
@@ -933,7 +938,7 @@ function handleDialogClosed() {
 }
 
 onMounted(() => load())
-watch(() => [route.params.deptId, route.query.restore], () => load(route.query.restore === '1'))
+watch(() => [route.path, route.params.deptId, route.query.restore], () => load(route.query.restore === '1'))
 watch(selectedYear, () => {
   activeKeyword.value = ''
 })
@@ -946,6 +951,12 @@ watch(selectedYear, () => {
 
 .compact-title {
   margin-bottom: 12px;
+}
+
+.page-subtitle {
+  margin: 6px 0 0;
+  color: #637083;
+  font-size: 13px;
 }
 
 .tree-toolbar {

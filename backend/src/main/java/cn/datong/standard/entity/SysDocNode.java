@@ -18,6 +18,7 @@ public class SysDocNode {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long sectionDeptId;
+    private String moduleType;
     private Long parentId;
     private String nodeType;
     private String nodeName;
@@ -25,6 +26,8 @@ public class SysDocNode {
     private Integer sortOrder;
     private Integer level;
     private Integer showUploadProgress;
+    private Integer workshopUploadEnabled;
+    private Long workshopDeptId;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -44,8 +47,6 @@ public class SysDocNode {
     private String businessType;
     @TableField(exist = false)
     private String submitterMode;
-    @TableField(exist = false)
-    private Integer workshopUploadEnabled;
     @TableField(exist = false)
     private LocalDateTime uploadDeadline;
     @TableField(exist = false)

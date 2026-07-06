@@ -2,7 +2,7 @@
   <div class="doc-detail-page">
     <div class="detail-header">
       <div>
-        <el-button link type="primary" @click="router.push(`/org/${deptId}?restore=1`)">返回文件菜单</el-button>
+        <el-button link type="primary" @click="router.push(`/${moduleBase}/${deptId}?restore=1`)">返回文件菜单</el-button>
         <h2>{{ item?.itemName || '文件详情' }}</h2>
         <p v-if="item" class="detail-meta">
           {{ [item.sectionDeptName, item.categoryName, item.docYear, '文件'].filter(Boolean).join(' / ') }}
@@ -10,7 +10,7 @@
       </div>
       <div class="header-actions">
         <el-button v-if="canManageSection && !primaryAttachment" type="primary" @click="openIssuedUpload">上传文件</el-button>
-        <el-button v-if="canManageSection && workshopUploadEnabled" @click="openRecords">车间提交记录</el-button>
+        <el-button v-if="canManageSection && legacyUploadTask" @click="openRecords">车间提交记录</el-button>
       </div>
     </div>
 
@@ -44,7 +44,7 @@
       <el-empty v-else description="暂无文件" />
     </section>
 
-    <section v-if="workshopUploadEnabled" class="detail-content">
+    <section v-if="showLegacySubmitPanel" class="detail-content">
       <div class="section-heading">
         <h3>车间提交文件</h3>
       </div>
@@ -86,7 +86,7 @@
       </div>
     </section>
 
-    <section v-if="workshopUploadEnabled && displayedSubmissions.length" class="detail-content">
+    <section v-if="legacyUploadTask && displayedSubmissions.length" class="detail-content">
       <div class="section-heading">
         <h3>{{ displayedSubmissionTitle }}</h3>
       </div>
@@ -114,7 +114,7 @@
         </el-table-column>
         <el-table-column label="操作" width="100">
           <template #default="{ row }">
-            <el-button v-if="row.deleteAllowed" link type="danger" @click="deleteSubmission(row)">删除</el-button>
+            <el-button v-if="legacyRecordsEditable && row.deleteAllowed" link type="danger" @click="deleteSubmission(row)">删除</el-button>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -168,7 +168,7 @@
         </el-table-column>
         <el-table-column label="操作" width="100">
           <template #default="{ row }">
-            <el-button v-if="row.deleteAllowed" link type="danger" @click="deleteSubmission(row)">删除</el-button>
+            <el-button v-if="legacyRecordsEditable && row.deleteAllowed" link type="danger" @click="deleteSubmission(row)">删除</el-button>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -257,6 +257,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const deptId = computed(() => Number(route.params.deptId))
 const itemId = computed(() => Number(route.params.itemId))
+const moduleBase = computed(() => route.path.startsWith('/rules') ? 'rules' : 'internal')
 const item = ref<DocItem>()
 const recordsOpen = ref(false)
 const issuedUploadOpen = ref(false)
@@ -271,7 +272,10 @@ const inlinePreviewKind = ref<'PDF' | 'IMAGE' | 'ONLYOFFICE' | 'MESSAGE'>('MESSA
 const inlinePreviewUrl = ref('')
 const inlinePreviewMessage = ref('暂无可预览文件')
 
-const workshopUploadEnabled = computed(() => Boolean(item.value?.workshopUploadEnabled || item.value?.attachmentEnabled))
+const legacyUploadTask = computed(() => Boolean(item.value?.businessType === 'UPLOAD' && (item.value?.workshopUploadEnabled || item.value?.attachmentEnabled)))
+const workshopUploadEnabled = legacyUploadTask
+const showLegacySubmitPanel = computed(() => false)
+const legacyRecordsEditable = false
 const canManageSection = computed(() => Boolean(auth.user?.isSuperAdmin) || auth.user?.deptId === item.value?.sectionDeptId)
 const deadlineExpired = computed(() => Boolean(item.value?.uploadDeadline && apiDateTimeToTimestamp(item.value.uploadDeadline) < Date.now()))
 const primaryAttachment = computed(() => item.value?.issuedAttachments?.[0])
@@ -308,7 +312,7 @@ async function load() {
   inlinePreviewUrl.value = ''
   inlinePreviewMessage.value = '正在加载预览'
   item.value = await apiGet<DocItem>(`/doc-items/${itemId.value}`)
-  if (workshopUploadEnabled.value) {
+  if (legacyUploadTask.value) {
     const [status, submissions] = await Promise.all([
       apiGet<DocSubmission | null>(`/doc-items/${itemId.value}/my-submission`),
       apiGet<DocSubmission[]>(`/doc-items/${itemId.value}/submissions`)
@@ -568,7 +572,7 @@ function downloadBlob(data: BlobPart, filename: string) {
 }
 
 onMounted(load)
-watch(() => route.params.itemId, load)
+watch(() => [route.path, route.params.itemId], load)
 </script>
 
 <style scoped>
