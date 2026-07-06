@@ -6,8 +6,10 @@ VALUES
   (2, 1, '办公室', 'OFFICE', 'SECTION', 10, 'ENABLED', 0),
   (3, 1, '技术科', 'TECH', 'SECTION', 20, 'ENABLED', 0),
   (4, 1, '安全科', 'SAFETY', 'SECTION', 30, 'ENABLED', 0),
-  (5, 0, '房建车间', 'HOUSE_WORKSHOP', 'WORKSHOP', 40, 'ENABLED', 0),
-  (6, 0, '公寓车间', 'APARTMENT_WORKSHOP', 'WORKSHOP', 50, 'ENABLED', 0)
+  (7, 1, '计划财务科', 'FINANCE', 'SECTION', 40, 'ENABLED', 0),
+  (8, 1, '劳动人事科（党委组织科）', 'HR_ORG', 'SECTION', 50, 'ENABLED', 0),
+  (5, 0, '房建车间', 'HOUSE_WORKSHOP', 'WORKSHOP', 60, 'ENABLED', 0),
+  (6, 0, '公寓车间', 'APARTMENT_WORKSHOP', 'WORKSHOP', 70, 'ENABLED', 0)
 ON DUPLICATE KEY UPDATE dept_name = VALUES(dept_name), dept_type = VALUES(dept_type);
 
 INSERT INTO sys_permission (permission_name, permission_code, permission_type, description, sort_order, status)

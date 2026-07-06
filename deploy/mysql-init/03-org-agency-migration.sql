@@ -34,7 +34,7 @@ UPDATE sys_dept
 SET parent_id = @agency_id,
     dept_type = 'SECTION'
 WHERE @agency_id IS NOT NULL
-  AND dept_name IN ('办公室', '技术科', '安全科', '计财科')
+  AND dept_name IN ('办公室', '技术科', '安全科', '计财科', '计划财务科', '劳动人事科（党委组织科）')
   AND deleted = 0;
 
 UPDATE sys_dept
