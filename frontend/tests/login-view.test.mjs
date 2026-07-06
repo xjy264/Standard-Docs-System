@@ -62,6 +62,11 @@ test('module layout puts home in the top left and removes sidebar home', () => {
   assert.doesNotMatch(layoutView, /<el-menu-item\s+index="\/dashboard">首页<\/el-menu-item>/)
 })
 
+test('module layout shows the section sidebar in navigation order for both modules', () => {
+  assert.match(layoutView, /<el-sub-menu\s+index="sections">[\s\S]*<template\s+#title>科室<\/template>[\s\S]*v-for="dept in navigation"[\s\S]*:index="`\/\$\{moduleBase\}\/\$\{dept\.id\}`"/)
+  assert.match(layoutView, /route\.path\.startsWith\('\/rules'\)\s*\?\s*'rules'\s*:\s*'internal'/)
+})
+
 test('org files view removes upload badges and folder upload options', () => {
   assert.doesNotMatch(orgFilesView, /type="success">上传<\/el-tag>/)
   assert.doesNotMatch(orgFilesView, /upload-tag/)
