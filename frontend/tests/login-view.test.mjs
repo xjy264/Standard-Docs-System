@@ -48,3 +48,8 @@ test('frontend reports runtime errors without recursive reporting or secrets', (
   assert.doesNotMatch(errorReporter, /password/)
   assert.doesNotMatch(errorReporter, /Authorization/)
 })
+
+test('frontend skips error event submission before login csrf cookie exists', () => {
+  assert.match(errorReporter, /const csrfToken = readCookie\(['"]XSRF-TOKEN['"]\)/)
+  assert.match(errorReporter, /if\s*\(!csrfToken\)\s*{\s*return\s*}/)
+})
