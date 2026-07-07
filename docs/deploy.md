@@ -10,6 +10,8 @@
 
 内网部署时，将 `APP_DOMAIN`、前端端口和 MinIO 地址配置为内网 IP 或内网域名。MySQL、Redis、MinIO 控制台、OnlyOffice 和后端端口默认只绑定本机或 Docker 内网，不应直接暴露到公网。生产环境启用 HTTPS 后设置 `AUTH_COOKIE_SECURE=true`，并通过单位内网证书或上级 HTTPS 网关统一入口。
 
+启用 Office 在线预览时，建议设置 `ONLYOFFICE_ENABLED=true`、`ONLYOFFICE_URL=/onlyoffice`。前端 Nginx 会把 `/onlyoffice/` 反向代理到 Docker 内网中的 OnlyOffice，仍不需要把 `8082` 暴露到公网。
+
 已有数据卷升级代码后，需要在仓库根目录执行 `./run.sh migrate`，对现有 MySQL 库补齐幂等迁移字段和索引；该命令只执行追加迁移，不重建库、不删除历史数据。后端启动时也会通过 Flyway 检查 `db/migration` 下的追加迁移。
 
 ## 公网部署
