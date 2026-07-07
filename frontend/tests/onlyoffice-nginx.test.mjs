@@ -7,6 +7,7 @@ const nginxConf = readFileSync(resolve('nginx.conf'), 'utf8')
 const envExample = readFileSync(resolve('../deploy/.env.example'), 'utf8')
 
 test('frontend proxies OnlyOffice through the public entrypoint', () => {
+  assert.match(nginxConf, /absolute_redirect\s+off/)
   assert.match(nginxConf, /location\s+\^~\s+\/onlyoffice\//)
   assert.match(nginxConf, /proxy_pass\s+http:\/\/onlyoffice\//)
   assert.match(nginxConf, /proxy_set_header\s+Upgrade\s+\$http_upgrade/)
