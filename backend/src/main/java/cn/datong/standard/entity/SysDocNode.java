@@ -26,6 +26,7 @@ public class SysDocNode {
     private Integer sortOrder;
     private Integer level;
     private Integer showUploadProgress;
+    private Integer progressTarget;
     private Integer workshopUploadEnabled;
     private Long workshopDeptId;
     private Long createdBy;
@@ -59,6 +60,10 @@ public class SysDocNode {
     private Integer completedUploadTaskCount;
     @TableField(exist = false)
     private Integer progressPercent;
+    @TableField(exist = false)
+    private Integer directFileCount;
+    @TableField(exist = false)
+    private Integer completionPercent;
     @JsonIgnore
     @TableField(exist = false)
     private Boolean hasUploadRequirement;

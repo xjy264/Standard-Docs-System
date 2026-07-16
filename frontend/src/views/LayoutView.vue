@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiGet, apiGetSilent } from '../api/http'
 import { apiPost } from '../api/http'
@@ -56,6 +56,7 @@ const auth = useAuthStore()
 const navigation = ref<DeptNavigationItem[]>([])
 const isConsole = computed(() => route.path.startsWith('/console'))
 const isDashboard = computed(() => route.path === '/dashboard')
+const isModuleRoute = computed(() => route.path.startsWith('/internal') || route.path.startsWith('/rules'))
 const moduleBase = computed(() => route.path.startsWith('/rules') ? 'rules' : 'internal')
 const canManageDocRoots = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
 const canManageRepairTemplates = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
@@ -72,7 +73,9 @@ async function logout() {
 
 async function loadNavigation() {
   try {
-    navigation.value = await apiGet('/sections/navigation')
+    navigation.value = await apiGet('/sections/navigation', {
+      moduleType: moduleBase.value === 'rules' ? 'RULES' : 'INTERNAL'
+    })
   } catch {
     navigation.value = []
   }
@@ -99,5 +102,11 @@ onMounted(async () => {
     return
   }
   await loadNavigation()
+})
+
+watch(() => route.path, () => {
+  if (isModuleRoute.value) {
+    loadNavigation()
+  }
 })
 </script>

@@ -9,6 +9,7 @@
         <el-table-column prop="deptName" label="组织名称" min-width="260">
           <template #default="{ row }">
             <span>{{ row.deptName }}</span>
+            <el-tag v-if="row.fixedNavigation" size="small" type="info" class="fixed-navigation-tag">固定侧边栏</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="userCount" label="组织用户数" min-width="170" />
@@ -22,7 +23,7 @@
         <el-table-column label="操作" min-width="180" align="left">
           <template #default="{ row }">
             <el-button v-if="!isAgency(row)" link type="primary" @click="view(row)">查看</el-button>
-            <el-button link type="primary" @click="edit(row)">编辑</el-button>
+            <el-button v-if="!row.fixedNavigation" link type="primary" @click="edit(row)">编辑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -116,5 +117,9 @@ onMounted(load)
 <style scoped>
 .dept-table {
   width: 100%;
+}
+
+.fixed-navigation-tag {
+  margin-left: 8px;
 }
 </style>

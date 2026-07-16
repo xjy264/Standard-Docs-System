@@ -3,7 +3,7 @@
 ## 核心表
 
 - `sys_user`：用户表。
-- `sys_dept`：部门和组织树表，`dept_type` 区分 `AGENCY`、`SECTION`、`WORKSHOP`。
+- `sys_dept`：部门、组织树和固定资料导航节点表，`dept_type` 区分 `AGENCY`、`SECTION`、`WORKSHOP`、`DOC_SECTION`；`DOC_SECTION` 只用于规章资料入口，不用于用户所属组织。
 - `sys_role`：角色模板表。
 - `sys_permission`：系统级权限点表。
 - `sys_user_role`：用户和角色模板关联表。
@@ -18,7 +18,7 @@
 
 ## 资料填报表
 
-- `sys_doc_node`：科室资料多级目录节点，节点类型包含文件夹和文件，最高五层；`module_type` 区分内业资料 `INTERNAL` 和规章制度 `RULES`；`workshop_upload_enabled` 标记内业资料文件夹是否允许车间上传；`workshop_dept_id` 标记自动生成的车间文件夹及车间上传文件归属；文件节点软删除时写入 `deleted_at`、`deleted_by`，用于科室回收站展示和 30 天自动清理。
+- `sys_doc_node`：科室资料多级目录节点，节点类型包含文件夹和文件，最高五层；`module_type` 区分内业资料 `INTERNAL` 和规章制度 `RULES`；`show_upload_progress` 复用为文件夹完成进度开关，`progress_target` 保存完成目标数；`workshop_dept_id` 标记车间上传文件归属；文件节点软删除时写入 `deleted_at`、`deleted_by`，用于科室回收站展示和 30 天自动清理。
 - `sys_doc_category`：旧科室资料二级侧边栏，保留兼容历史数据。
 - `sys_doc_item`：文件入口，包含 `section_dept_id`、`module_type`、`business_type`、`submitter_mode`、`file_type`、`doc_year`、`content_html` 富文本文件内容和附件上传开关；新目录树中文件节点通过 `item_id` 关联该表。`business_type=UPLOAD` 保留历史上传清单，当前新增文件默认作为 `ISSUED` 展示文件。
 - `sys_doc_node_workshop_scope`：内业资料上传文件夹的车间授权范围表，记录允许在母文件夹下新增文件的车间；无记录表示全部当前车间。
@@ -47,5 +47,6 @@
 - `14-doc-submission-soft-delete.sql`：为车间提交记录和提交附件追加软删除字段和索引。
 - `15-error-events.sql`：新增系统错误事件表和查询索引，用于通知台 Bug 统计和内网故障导出。
 - `16-doc-modules.sql`：为资料目录和文件入口追加模块字段、内业资料车间上传文件夹字段以及车间授权范围表。
+- `18-fixed-doc-navigation-and-folder-progress.sql`：补齐并固定资料侧边栏节点，为文件夹追加完成目标数。
 
-已有 MySQL 数据卷不会自动重新执行 `deploy/mysql-init/` 中新增脚本。升级代码后，在仓库根目录执行 `./run.sh migrate`，按顺序补齐 `13-doc-recycle-bin.sql`、`14-doc-submission-soft-delete.sql`、`15-error-events.sql` 和 `16-doc-modules.sql` 中的幂等字段与索引。后端同时接入 Flyway，`V1__baseline_schema_and_seed.sql` 对应当前初始化基线，`V15__error_events.sql` 对应错误事件增量，`V16__doc_modules.sql` 对应资料模块拆分增量；`baseline-on-migrate` 用于兼容已有数据卷，后续新增结构优先追加 `db/migration/V*.sql`，不覆盖历史 SQL。
+已有 MySQL 数据卷不会自动重新执行 `deploy/mysql-init/` 中新增脚本。升级代码后，在仓库根目录执行 `./run.sh migrate`，按顺序执行到 `18-fixed-doc-navigation-and-folder-progress.sql`。后端同时接入 Flyway，`V1__baseline_schema_and_seed.sql` 对应当前初始化基线，`V15__error_events.sql` 至 `V18__fixed_doc_navigation_and_folder_progress.sql` 对应各项增量升级；`baseline-on-migrate` 用于兼容已有数据卷，后续新增结构优先追加 `db/migration/V*.sql`，不覆盖历史 SQL。

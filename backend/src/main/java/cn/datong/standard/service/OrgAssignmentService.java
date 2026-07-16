@@ -56,7 +56,7 @@ public class OrgAssignmentService {
 
     public DeptDetail detail(Long deptId) {
         SysDept dept = deptMapper.selectById(deptId);
-        if (dept == null) {
+        if (dept == null || FixedDocNavigation.isDocSection(dept)) {
             throw new BusinessException("组织不存在");
         }
         if (isAgency(dept)) {
@@ -118,7 +118,8 @@ public class OrgAssignmentService {
 
     private List<SysDept> depts() {
         return deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
-                .eq(SysDept::getDeleted, 0));
+                .eq(SysDept::getDeleted, 0)
+                .ne(SysDept::getDeptType, FixedDocNavigation.DOC_SECTION));
     }
 
     private Map<Long, String> deptNames(List<SysDept> depts) {

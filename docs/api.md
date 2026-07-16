@@ -31,10 +31,10 @@
 
 - `GET /api/depts/tree`：组织树。
 - `GET /api/depts/navigation`：旧组织导航接口，保留兼容控制台和历史页面。
-- `GET /api/sections/navigation`：内业资料和规章制度模块侧边栏科室列表，只返回真实科室节点，不返回首页、搜索、车间或虚拟父级。
+- `GET /api/sections/navigation?moduleType=INTERNAL|RULES`：返回固定资料侧边栏；不传 `moduleType` 默认为 `INTERNAL`。`INTERNAL` 按固定顺序返回九个科室，`RULES` 先返回技术规章、技术文件、管理办法，再返回同样的九个科室。
 - `POST /api/depts`：新建组织节点。
-- `PUT /api/depts/{id}`：修改组织节点。
-- `DELETE /api/depts/{id}`：删除组织节点。
+- `PUT /api/depts/{id}`：修改非固定组织节点；固定资料侧边栏节点返回 `403 固定资料侧边栏不允许修改`。
+- `DELETE /api/depts/{id}`：删除非固定组织节点；固定资料侧边栏节点返回同样的 `403`。
 - `GET /api/users`：用户列表，仅返回审核通过的用户。
 - `POST /api/users`：创建用户。
 - `PUT /api/users/{id}`：修改用户。
@@ -57,10 +57,10 @@
 
 ## 内业资料、规章制度与车间填报
 
-- `GET /api/doc-tree?sectionDeptId=1&moduleType=INTERNAL`：查询科室下多级资料目录树，`moduleType` 可选 `INTERNAL` 或 `RULES`，不传默认 `INTERNAL`；节点类型包含文件夹和文件，最高五层；文件夹和文件节点返回 `docYear`、`moduleType`，历史自动生成的车间文件夹和车间新上传文件返回 `workshopDeptId`。车间用户查看内业资料时，后端仍兼容隐藏其他车间历史文件夹，并把本车间历史文件夹下文件平铺到母文件夹下。`businessType` 仍可选传 `UPLOAD` 或 `ISSUED` 用于兼容历史上传任务筛选。
-- `POST /api/doc-nodes/folders`：新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`docYear`、`sortOrder`、`moduleType`；后端忽略 `showUploadProgress`、`workshopUploadEnabled`、`visibleWorkshopIds`，统一保存为不显示进度、不启用车间上传范围且清空范围。`parentId` 为空时仅本科室管理员或超级管理员可新增最高级文件夹。
+- `GET /api/doc-tree?sectionDeptId=1&moduleType=INTERNAL`：查询科室下多级资料目录树，`moduleType` 可选 `INTERNAL` 或 `RULES`，不传默认 `INTERNAL`；节点类型包含文件夹和文件，最高五层。开启完成进度的内业资料文件夹返回 `progressTarget`、`directFileCount`、`completionPercent`；分子只统计直接、未删除且当前用户可见的文件，`completionPercent` 最大为 100。
+- `POST /api/doc-nodes/folders`：新增文件夹，请求体包含 `sectionDeptId`、`parentId`、`nodeName`、`docYear`、`sortOrder`、`moduleType`；内业资料可传 `showUploadProgress` 和 `progressTarget`，开启时 `progressTarget` 必须为正整数。规章制度忽略进度配置。`parentId` 为空时仅本科室管理员或超级管理员可新增最高级文件夹。
 - `POST /api/doc-nodes/files`：新增文件，请求体或表单包含 `sectionDeptId`、`parentId`、`nodeName`、`moduleType`、`fileType`、`docYear`、`sortOrder`；前端默认用 `multipart/form-data` 同时上传正文附件。科室和超级管理员在对应模块目录下新增文件；车间用户可在内业资料任意文件夹下新增文件，后端直接落到当前父文件夹并记录 `workshopDeptId=userDeptId`；车间用户不能在规章制度目录下新增文件。历史 `businessType=UPLOAD`、`submitterMode`、`requirements`、`uploadDeadline`、`visibleWorkshopIds` 仍保留兼容旧上传清单。
-- `PUT /api/doc-nodes/{id}`：修改文件夹或文件名称、排序；文件夹编辑不再启用上传进度、车间上传开关或可上传车间范围，后端统一关闭并清空范围；规章制度不启用车间上传。文件节点编辑支持 `application/json` 保存元数据，也支持 `multipart/form-data` 附带 `file` 重新上传文件附件，并按新文件名同步文件类型。
+- `PUT /api/doc-nodes/{id}`：修改文件夹或文件名称、排序；内业资料文件夹可同步更新 `showUploadProgress` 和 `progressTarget`，规章制度文件夹统一关闭完成进度。车间上传开关和可上传车间范围仍统一关闭并清空。文件节点编辑支持 `application/json` 或附带 `file` 的 `multipart/form-data`。
 - `DELETE /api/doc-nodes/{id}`：本科室用户或超级管理员删除目录节点；文件节点移入本科室共享回收站，文件夹存在子节点时禁止删除且不进入回收站。
 - `GET /api/doc-nodes/recycle-bin?sectionDeptId=1&moduleType=INTERNAL`：本科室用户或超级管理员按模块查看本科室回收站文件表格，返回 `id`、`itemId`、`nodeName`、`fileType`、`docYear`、`deletedAt`、`deletedByName`、`originalParentName`、`submissionCount`、`attachmentCount`。
 - `POST /api/doc-nodes/{id}/restore`：本科室用户或超级管理员恢复回收站文件，请求体包含 `targetParentId`；目标目录必须是同科室、同模块未删除文件夹，若目标目录已有同名文件则拒绝恢复。

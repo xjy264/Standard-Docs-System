@@ -18,6 +18,7 @@ import cn.datong.standard.mapper.SysDocSubmissionMapper;
 import cn.datong.standard.mapper.SysNotificationMapper;
 import cn.datong.standard.mapper.SysRegisterApprovalMapper;
 import cn.datong.standard.mapper.SysUserMapper;
+import cn.datong.standard.service.FixedDocNavigation;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -78,7 +79,9 @@ public class DashboardController {
                 .eq(SysDept::getDeleted, 0)
                 .eq(SysDept::getStatus, "ENABLED")
                 .orderByAsc(SysDept::getSortOrder)
-                .orderByAsc(SysDept::getId));
+                .orderByAsc(SysDept::getId)).stream()
+                .filter(dept -> !FixedDocNavigation.isDocSection(dept))
+                .toList();
         Map<Long, Long> sectionIdByCategoryId = categoryMapper.selectList(new LambdaQueryWrapper<SysDocCategory>()
                         .eq(SysDocCategory::getDeleted, 0))
                 .stream()

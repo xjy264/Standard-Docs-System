@@ -90,7 +90,11 @@ public class DocWorkspaceService {
     private int recycleBinRetentionDays;
 
     public List<DeptNavigationItem> sections() {
-        return sectionDepts().stream()
+        return sections(MODULE_INTERNAL);
+    }
+
+    public List<DeptNavigationItem> sections(String moduleType) {
+        return sectionDepts(moduleType).stream()
                 .map(dept -> new DeptNavigationItem(
                         dept.getId(),
                         dept.getParentId(),
@@ -120,9 +124,12 @@ public class DocWorkspaceService {
     }
 
     public List<SysDocNode> documentTree(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, String businessType, String moduleType) {
-        requireSection(sectionDeptId);
         String normalizedBusinessType = normalizeBusinessTypeOrNull(businessType);
         String normalizedModuleType = normalizeModuleType(moduleType);
+        requireSectionModule(sectionDeptId, normalizedModuleType);
+        boolean restrictWorkshopNodes = MODULE_INTERNAL.equals(normalizedModuleType)
+                && !canManageSection(userDeptId, superAdmin, sectionDeptId)
+                && isWorkshop(userDeptId);
         List<SysDocNode> nodes = Objects.requireNonNullElse(nodeMapper.selectList(new LambdaQueryWrapper<SysDocNode>()
                 .eq(SysDocNode::getSectionDeptId, sectionDeptId)
                 .eq(SysDocNode::getModuleType, normalizedModuleType)
@@ -138,7 +145,11 @@ public class DocWorkspaceService {
                         || normalizedBusinessType.equalsIgnoreCase(node.getBusinessType()))
                 .filter(node -> !"FILE".equalsIgnoreCase(node.getNodeType())
                         || canViewItemNode(userDeptId, superAdmin, node))
+                .filter(node -> !restrictWorkshopNodes
+                        || node.getWorkshopDeptId() == null
+                        || Objects.equals(node.getWorkshopDeptId(), userDeptId))
                 .toList();
+        fillCompletionProgress(nodes, normalizedModuleType);
         Map<Long, SysDocNode> nodeMap = nodes.stream()
                 .peek(node -> node.setChildren(new ArrayList<>()))
                 .collect(Collectors.toMap(SysDocNode::getId, Function.identity(), (a, b) -> a));
@@ -150,7 +161,7 @@ public class DocWorkspaceService {
                 nodeMap.get(node.getParentId()).getChildren().add(node);
             }
         }
-        roots = reshapeWorkshopTree(userDeptId, superAdmin, sectionDeptId, normalizedModuleType, roots);
+        roots = reshapeWorkshopTree(userDeptId, restrictWorkshopNodes, roots);
         if (normalizedBusinessType == null || "UPLOAD".equals(normalizedBusinessType)) {
             Set<Long> completedItemIds = completedUploadItemIds(userId, userDeptId, superAdmin, sectionDeptId);
             roots.forEach(root -> fillUploadProgress(root, completedItemIds));
@@ -158,8 +169,8 @@ public class DocWorkspaceService {
         return roots;
     }
 
-    private List<SysDocNode> reshapeWorkshopTree(Long userDeptId, boolean superAdmin, Long sectionDeptId, String moduleType, List<SysDocNode> roots) {
-        if (!MODULE_INTERNAL.equals(moduleType) || canManageSection(userDeptId, superAdmin, sectionDeptId) || !isWorkshop(userDeptId)) {
+    private List<SysDocNode> reshapeWorkshopTree(Long userDeptId, boolean restrictWorkshopNodes, List<SysDocNode> roots) {
+        if (!restrictWorkshopNodes) {
             return roots;
         }
         return flattenOwnWorkshopFolders(roots, userDeptId);
@@ -194,7 +205,7 @@ public class DocWorkspaceService {
         node.setDocYear(resolveFolderDocYear(request.parentId(), request.docYear()));
         node.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
         node.setLevel(placement.level());
-        node.setShowUploadProgress(0);
+        applyCompletionProgress(node, request, moduleType);
         node.setWorkshopUploadEnabled(0);
         node.setCreatedBy(userId);
         node.setCreatedAt(LocalDateTime.now());
@@ -335,7 +346,7 @@ public class DocWorkspaceService {
             node.setDocYear(requiredDocYear(request.docYear(), "请选择文件年份"));
         } else {
             node.setDocYear(request.docYear() == null ? node.getDocYear() : requiredDocYear(request.docYear(), "请选择资料年份"));
-            node.setShowUploadProgress(0);
+            applyCompletionProgress(node, request, normalizeModuleType(node.getModuleType()));
             node.setWorkshopUploadEnabled(0);
             replaceNodeWorkshopScopes(node.getId(), List.of());
         }
@@ -1596,6 +1607,42 @@ public class DocWorkspaceService {
         return new int[]{taskCount, completedCount};
     }
 
+    private void fillCompletionProgress(List<SysDocNode> nodes, String moduleType) {
+        Map<Long, Integer> directFileCounts = nodes.stream()
+                .filter(node -> "FILE".equalsIgnoreCase(node.getNodeType()))
+                .filter(node -> node.getParentId() != null)
+                .collect(Collectors.groupingBy(SysDocNode::getParentId, Collectors.summingInt(node -> 1)));
+        for (SysDocNode node : nodes) {
+            if (!"FOLDER".equalsIgnoreCase(node.getNodeType())) {
+                continue;
+            }
+            int directFileCount = directFileCounts.getOrDefault(node.getId(), 0);
+            node.setDirectFileCount(directFileCount);
+            if (!MODULE_INTERNAL.equals(moduleType)
+                    || !Objects.equals(node.getShowUploadProgress(), 1)
+                    || node.getProgressTarget() == null
+                    || node.getProgressTarget() <= 0) {
+                node.setCompletionPercent(0);
+                continue;
+            }
+            long percent = (long) directFileCount * 100 / node.getProgressTarget();
+            node.setCompletionPercent((int) Math.min(percent, 100));
+        }
+    }
+
+    private void applyCompletionProgress(SysDocNode node, DocNodeRequest request, String moduleType) {
+        if (!MODULE_INTERNAL.equals(moduleType) || !Boolean.TRUE.equals(request.showUploadProgress())) {
+            node.setShowUploadProgress(0);
+            node.setProgressTarget(null);
+            return;
+        }
+        if (request.progressTarget() == null || request.progressTarget() <= 0) {
+            throw new BusinessException("请输入大于 0 的完成目标数");
+        }
+        node.setShowUploadProgress(1);
+        node.setProgressTarget(request.progressTarget());
+    }
+
     private void fillAttachmentInfo(List<SysDocAttachment> attachments) {
         if (attachments.isEmpty()) {
             return;
@@ -1720,13 +1767,17 @@ public class DocWorkspaceService {
 
     private NodePlacement resolvePlacement(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, Long parentId,
                                            boolean rootFolderRequiresAdmin, String moduleType) {
+        String normalizedModuleType = normalizeModuleType(moduleType);
         if (parentId == null) {
             if (rootFolderRequiresAdmin) {
-                requireRootFolderManage(userId, userDeptId, superAdmin, sectionDeptId);
+                requireRootFolderManage(userId, userDeptId, superAdmin, sectionDeptId, normalizedModuleType);
             } else {
-                requireManageSection(userDeptId, superAdmin, sectionDeptId);
+                requireSectionModule(sectionDeptId, normalizedModuleType);
+                if (!canManageSection(userDeptId, superAdmin, sectionDeptId)) {
+                    throw new BusinessException(403, "只能维护本科室资料");
+                }
             }
-            return new NodePlacement(sectionDeptId, null, 1, normalizeModuleType(moduleType), null);
+            return new NodePlacement(sectionDeptId, null, 1, normalizedModuleType, null);
         }
         SysDocNode parent = requireNode(parentId);
         if (!"FOLDER".equalsIgnoreCase(parent.getNodeType())) {
@@ -1846,8 +1897,11 @@ public class DocWorkspaceService {
         }
     }
 
-    private void requireRootFolderManage(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId) {
-        requireManageSection(userDeptId, superAdmin, sectionDeptId);
+    private void requireRootFolderManage(Long userId, Long userDeptId, boolean superAdmin, Long sectionDeptId, String moduleType) {
+        requireSectionModule(sectionDeptId, moduleType);
+        if (!canManageSection(userDeptId, superAdmin, sectionDeptId)) {
+            throw new BusinessException(403, "只能维护本科室资料");
+        }
         if (superAdmin) {
             return;
         }
@@ -1902,6 +1956,14 @@ public class DocWorkspaceService {
         SysDept dept = deptMapper.selectById(sectionDeptId);
         if (dept == null || dept.getDeleted() != null && dept.getDeleted() == 1 || !isSection(dept)) {
             throw new BusinessException("科室不存在");
+        }
+        return dept;
+    }
+
+    private SysDept requireSectionModule(Long sectionDeptId, String moduleType) {
+        SysDept dept = requireSection(sectionDeptId);
+        if (FixedDocNavigation.isDocSection(dept) && !MODULE_RULES.equals(moduleType)) {
+            throw new BusinessException("规章专用入口仅支持规章制度资料");
         }
         return dept;
     }
@@ -2032,15 +2094,11 @@ public class DocWorkspaceService {
         return false;
     }
 
-    private List<SysDept> sectionDepts() {
-        return deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
+    private List<SysDept> sectionDepts(String moduleType) {
+        List<SysDept> depts = deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
                         .eq(SysDept::getDeleted, 0)
-                        .eq(SysDept::getStatus, "ENABLED"))
-                .stream()
-                .filter(this::isSection)
-                .sorted(Comparator.comparing(SysDept::getSortOrder, Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(SysDept::getId, Comparator.nullsLast(Long::compareTo)))
-                .toList();
+                        .eq(SysDept::getStatus, "ENABLED"));
+        return FixedDocNavigation.ordered(Objects.requireNonNullElse(depts, List.of()), normalizeModuleType(moduleType));
     }
 
     private boolean isSection(Long deptId) {
@@ -2054,7 +2112,7 @@ public class DocWorkspaceService {
     }
 
     private boolean isSection(SysDept dept) {
-        if ("SECTION".equalsIgnoreCase(dept.getDeptType())) {
+        if ("SECTION".equalsIgnoreCase(dept.getDeptType()) || FixedDocNavigation.isDocSection(dept)) {
             return true;
         }
         return dept.getParentId() != null && dept.getParentId() > 0 && !"机关".equals(dept.getDeptName());

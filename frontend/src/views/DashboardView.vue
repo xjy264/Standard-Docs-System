@@ -8,11 +8,9 @@
     <div class="module-card-grid">
       <button class="module-card" type="button" @click="openModule('internal')">
         <span class="module-card-title">内业资料</span>
-        <span class="module-card-desc">车间上传信息、科室查看汇总资料</span>
       </button>
       <button class="module-card" type="button" @click="openModule('rules')">
-        <span class="module-card-title">规章制度</span>
-        <span class="module-card-desc">制度文件展示、预览和下载</span>
+        <span class="module-card-title">技术规章、文件、管理办法</span>
       </button>
     </div>
   </div>
@@ -20,7 +18,6 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiGet } from '../api/http'
 
@@ -31,26 +28,23 @@ interface DeptNavigationItem {
 }
 
 const router = useRouter()
-const navigation = ref<DeptNavigationItem[]>([])
 
-async function loadNavigation() {
+async function openModule(moduleBase: 'internal' | 'rules') {
+  let navigation: DeptNavigationItem[] = []
   try {
-    navigation.value = await apiGet<DeptNavigationItem[]>('/sections/navigation')
+    navigation = await apiGet<DeptNavigationItem[]>('/sections/navigation', {
+      moduleType: moduleBase === 'rules' ? 'RULES' : 'INTERNAL'
+    })
   } catch {
-    navigation.value = []
+    navigation = []
   }
-}
-
-function openModule(moduleBase: 'internal' | 'rules') {
-  const entry = navigation.value[0]
+  const entry = navigation[0]
   if (!entry) {
     ElMessage.warning('暂无可进入科室')
     return
   }
   router.push(`/${moduleBase}/${entry.id}`)
 }
-
-onMounted(loadNavigation)
 </script>
 
 <style scoped>
@@ -114,11 +108,8 @@ onMounted(loadNavigation)
   color: var(--rail-blue-dark);
   font-size: 28px;
   font-weight: 700;
-}
-
-.module-card-desc {
-  color: #637083;
-  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
 }
 
 @media (max-width: 720px) {

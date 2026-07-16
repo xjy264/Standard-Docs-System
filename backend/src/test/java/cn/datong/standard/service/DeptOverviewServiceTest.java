@@ -40,9 +40,10 @@ class DeptOverviewServiceTest {
         adminRole.setRoleId(2L);
         when(deptMapper.selectList(any())).thenReturn(List.of(
                 dept(24L, 0L, "机关"),
-                dept(25L, 24L, "计财科"),
+                dept(25L, 24L, "计划财务科", "SECTION", "FINANCE"),
                 dept(26L, 25L, "下级组织"),
-                dept(7L, 0L, "秦皇岛房建车间")
+                dept(7L, 0L, "秦皇岛房建车间"),
+                dept(99L, 24L, "技术规章", "DOC_SECTION", "DOC_TECH_RULES")
         ));
         when(userMapper.selectList(any())).thenReturn(List.of(admin, sectionUser, childUser));
         when(categoryMapper.selectList(any())).thenReturn(List.of(
@@ -85,6 +86,9 @@ class DeptOverviewServiceTest {
                     assertThat(item.adminRequired()).isTrue();
                     assertThat(item.missingAdmin()).isTrue();
                 });
+        assertThat(result).noneMatch(item -> item.id().equals(99L));
+        assertThat(result).filteredOn(item -> item.id().equals(25L)).singleElement()
+                .satisfies(item -> assertThat(item.fixedNavigation()).isTrue());
     }
 
     private SysDept dept(Long id, Long parentId, String name) {
@@ -94,6 +98,13 @@ class DeptOverviewServiceTest {
         dept.setDeptName(name);
         dept.setSortOrder(id.intValue());
         dept.setStatus("ENABLED");
+        return dept;
+    }
+
+    private SysDept dept(Long id, Long parentId, String name, String type, String code) {
+        SysDept dept = dept(id, parentId, name);
+        dept.setDeptType(type);
+        dept.setDeptCode(code);
         return dept;
     }
 

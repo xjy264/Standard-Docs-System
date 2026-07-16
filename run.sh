@@ -117,6 +117,7 @@ migration_files=(
   "15-error-events.sql"
   "16-doc-modules.sql"
   "17-seed-missing-sections.sql"
+  "18-fixed-doc-navigation-and-folder-progress.sql"
 )
 
 env_value() {

@@ -12,6 +12,7 @@ import cn.datong.standard.service.DeptAdminCoverage;
 import cn.datong.standard.service.DeptDetail;
 import cn.datong.standard.service.DeptOverview;
 import cn.datong.standard.service.DeptOverviewService;
+import cn.datong.standard.service.FixedDocNavigation;
 import cn.datong.standard.service.DeptNavigationService;
 import cn.datong.standard.service.OrgAssignmentService;
 import cn.datong.standard.service.PermissionService;
@@ -35,6 +36,7 @@ import java.util.List;
 @RequestMapping("/api/depts")
 @RequiredArgsConstructor
 public class DeptController {
+    private static final String FIXED_NAVIGATION_MESSAGE = "固定资料侧边栏不允许修改";
     private final SysDeptMapper deptMapper;
     private final SysUserMapper userMapper;
     private final PermissionService permissionService;
@@ -47,6 +49,7 @@ public class DeptController {
     public ApiResponse<List<SysDept>> tree() {
         return ApiResponse.success(deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
                 .eq(SysDept::getDeleted, 0)
+                .ne(SysDept::getDeptType, FixedDocNavigation.DOC_SECTION)
                 .orderByAsc(SysDept::getSortOrder)));
     }
 
@@ -82,6 +85,7 @@ public class DeptController {
     public ApiResponse<SysDept> create(@RequestBody SysDept dept, HttpServletRequest request) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         requireSuperAdmin(currentUser);
+        rejectFixedNavigation(dept);
         dept.setCreatedAt(LocalDateTime.now());
         dept.setUpdatedAt(LocalDateTime.now());
         dept.setDeleted(0);
@@ -93,6 +97,8 @@ public class DeptController {
     public ApiResponse<SysDept> update(@PathVariable Long id, @RequestBody SysDept dept) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         requireSuperAdmin(currentUser);
+        rejectFixedNavigation(deptMapper.selectById(id));
+        rejectFixedNavigation(dept);
         dept.setId(id);
         dept.setUpdatedAt(LocalDateTime.now());
         deptMapper.updateById(dept);
@@ -103,6 +109,7 @@ public class DeptController {
     public ApiResponse<Void> delete(@PathVariable Long id) {
         CurrentUser currentUser = SecurityUtils.currentUser();
         requireSuperAdmin(currentUser);
+        rejectFixedNavigation(deptMapper.selectById(id));
         deptMapper.deleteById(id);
         return ApiResponse.success();
     }
@@ -117,6 +124,13 @@ public class DeptController {
     private void requireSuperAdmin(CurrentUser currentUser) {
         if (!currentUser.superAdmin()) {
             throw new cn.datong.standard.common.BusinessException(403, "只有超级管理员可以管理组织");
+        }
+    }
+
+    private void rejectFixedNavigation(SysDept dept) {
+        if (FixedDocNavigation.isFixed(dept)
+                || dept != null && FixedDocNavigation.isFixedName(dept.getDeptName())) {
+            throw new cn.datong.standard.common.BusinessException(403, FIXED_NAVIGATION_MESSAGE);
         }
     }
 }

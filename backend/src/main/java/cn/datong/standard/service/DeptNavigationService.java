@@ -135,7 +135,10 @@ public class DeptNavigationService {
     private List<SysDept> depts() {
         List<SysDept> result = deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
                 .eq(SysDept::getDeleted, 0)
+                .ne(SysDept::getDeptType, FixedDocNavigation.DOC_SECTION)
                 .orderByAsc(SysDept::getSortOrder));
-        return result == null ? new ArrayList<>() : result;
+        return result == null ? new ArrayList<>() : result.stream()
+                .filter(dept -> !FixedDocNavigation.isDocSection(dept))
+                .toList();
     }
 }

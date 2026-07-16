@@ -75,8 +75,11 @@ class DeptNavigationServiceTest {
     }
 
     private List<SysDept> defaultDepts() {
+        SysDept docSection = dept(99L, 24L, "技术规章", 5);
+        docSection.setDeptType("DOC_SECTION");
         return List.of(
                 dept(24L, 0L, "机关", 1),
+                docSection,
                 dept(25L, 24L, "计财科", 10),
                 dept(26L, 24L, "技术科", 20),
                 dept(7L, 0L, "房建车间", 30),

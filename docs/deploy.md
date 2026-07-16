@@ -12,7 +12,7 @@
 
 启用 Office 在线预览时，建议设置 `ONLYOFFICE_ENABLED=true`、`ONLYOFFICE_URL=/onlyoffice`。前端 Nginx 会把 `/onlyoffice/` 反向代理到 Docker 内网中的 OnlyOffice，仍不需要把 `8082` 暴露到公网。
 
-已有数据卷升级代码后，需要在仓库根目录执行 `./run.sh migrate`，对现有 MySQL 库补齐幂等迁移字段和索引；该命令只执行追加迁移，不重建库、不删除历史数据。后端启动时也会通过 Flyway 检查 `db/migration` 下的追加迁移。
+已有数据卷升级代码后，需要在仓库根目录先执行 `./run.sh backup`，再执行 `./run.sh migrate`，对现有 MySQL 库补齐幂等迁移字段、固定资料导航节点和索引；该命令只执行追加迁移，不重建库、不删除历史数据。后端启动时也会通过 Flyway 检查 `db/migration` 下的追加迁移。
 
 ## 公网部署
 

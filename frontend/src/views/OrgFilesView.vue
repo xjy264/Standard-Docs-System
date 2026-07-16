@@ -66,6 +66,10 @@
                 </span>
                 <span class="doc-node-name">{{ node.label }}</span>
               </div>
+              <div v-if="shouldShowCompletionProgress(data)" class="folder-progress">
+                <el-progress :percentage="data.completionPercent || 0" :show-text="false" />
+                <span>{{ data.directFileCount || 0 }}/{{ data.progressTarget }}</span>
+              </div>
             </div>
             <div v-if="canManageSection || canCreateFileInFolder(data) || canManageNode(data)" class="doc-tree-actions">
               <el-button v-if="canManageSection && data.nodeType === 'FOLDER' && data.level < 5" link type="primary" @click.stop="openFolderDialog(data)">新增文件夹</el-button>
@@ -92,6 +96,14 @@
           <el-input v-model="nodeForm.nodeName" maxlength="128" />
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="nodeForm.sortOrder" :min="0" /></el-form-item>
+        <template v-if="nodeForm.nodeType === 'FOLDER' && isInternalModule">
+          <el-form-item label="完成进度">
+            <el-switch v-model="nodeForm.showUploadProgress" active-text="使用完成进度条" />
+          </el-form-item>
+          <el-form-item v-if="nodeForm.showUploadProgress" label="完成目标数">
+            <el-input-number v-model="nodeForm.progressTarget" :min="1" :step="1" />
+          </el-form-item>
+        </template>
         <template v-if="nodeForm.nodeType === 'FILE'">
           <el-form-item label="文件">
             <div v-if="showExistingBodyAttachment" class="body-attachment-card">
@@ -232,6 +244,9 @@ interface DocNode {
   moduleType?: 'INTERNAL' | 'RULES'
   workshopDeptId?: number
   showUploadProgress?: number
+  progressTarget?: number
+  directFileCount?: number
+  completionPercent?: number
   uploadTaskCount?: number
   completedUploadTaskCount?: number
   progressPercent?: number
@@ -307,6 +322,7 @@ const nodeForm = reactive({
   uploadDeadline: '' as string | '',
   visibleWorkshopIds: [] as number[],
   showUploadProgress: false,
+  progressTarget: undefined as number | undefined,
   requirements: [{ requirementName: '文件', description: '', sortOrder: 0 }] as DocUploadRequirement[]
 })
 const importForm = reactive({
@@ -362,7 +378,7 @@ const dialogTitle = computed(() => {
 const treeStateKey = computed(() => `${moduleBase.value}-tree-state:${deptId.value}`)
 
 async function load(restore = route.query.restore === '1') {
-  sections.value = await apiGet<SectionItem[]>('/sections/navigation')
+  sections.value = await apiGet<SectionItem[]>('/sections/navigation', { moduleType: moduleType.value })
   depts.value = await apiGet<DeptItem[]>('/depts/tree')
   await loadTree(restore)
 }
@@ -397,6 +413,7 @@ function resetForm(type: 'FOLDER' | 'FILE', parent?: DocNode) {
   nodeForm.uploadDeadline = ''
   nodeForm.visibleWorkshopIds = []
   nodeForm.showUploadProgress = false
+  nodeForm.progressTarget = undefined
   nodeForm.requirements = [{ requirementName: '文件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
 }
@@ -465,6 +482,7 @@ async function openEditDialog(node: DocNode) {
   nodeForm.uploadDeadline = node.uploadDeadline || ''
   nodeForm.visibleWorkshopIds = node.visibleWorkshopIds || []
   nodeForm.showUploadProgress = node.showUploadProgress !== 0
+  nodeForm.progressTarget = node.progressTarget
   nodeForm.requirements = [{ requirementName: '文件', description: '', sortOrder: 0 }]
   issuedFiles.value = []
   if (node.nodeType === 'FILE' && node.itemId) {
@@ -515,6 +533,11 @@ async function submitNode() {
     ElMessage.warning('请选择文件年份')
     return
   }
+  if (nodeForm.nodeType === 'FOLDER' && isInternalModule.value
+    && nodeForm.showUploadProgress && (!nodeForm.progressTarget || nodeForm.progressTarget < 1)) {
+    ElMessage.warning('请输入大于 0 的完成目标数')
+    return
+  }
   const body = {
     sectionDeptId: deptId.value,
     parentId: nodeForm.parentId,
@@ -526,7 +549,10 @@ async function submitNode() {
     fileType: nodeForm.fileType,
     businessType: 'ISSUED',
     submitterMode: 'SINGLE',
-    showUploadProgress: false,
+    showUploadProgress: nodeForm.nodeType === 'FOLDER' && isInternalModule.value && nodeForm.showUploadProgress,
+    progressTarget: nodeForm.nodeType === 'FOLDER' && isInternalModule.value && nodeForm.showUploadProgress
+      ? nodeForm.progressTarget
+      : null,
     uploadDeadline: null,
     workshopUploadEnabled: false,
     visibleWorkshopIds: [],
@@ -653,6 +679,13 @@ function filterTreeByYear(nodes: DocNode[], year: number): DocNode[] {
 
 function nodeYear(node: DocNode) {
   return node.docYear || 2026
+}
+
+function shouldShowCompletionProgress(node: DocNode) {
+  return isInternalModule.value
+    && node.nodeType === 'FOLDER'
+    && node.showUploadProgress !== 0
+    && Boolean(node.progressTarget)
 }
 
 function submitSearch() {
@@ -1072,8 +1105,23 @@ watch(selectedYear, () => {
 .doc-tree-main {
   min-width: 0;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
+}
+
+.folder-progress {
+  width: 260px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #637083;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.folder-progress :deep(.el-progress) {
+  flex: 1;
 }
 
 .doc-tree-title {

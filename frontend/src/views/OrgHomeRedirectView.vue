@@ -17,9 +17,10 @@ interface DeptNavigationItem {
 const route = useRoute()
 const router = useRouter()
 const moduleBase = route.meta.moduleBase === 'rules' ? 'rules' : 'internal'
+const moduleType = moduleBase === 'rules' ? 'RULES' : 'INTERNAL'
 
 onMounted(async () => {
-  const navigation = await apiGet<DeptNavigationItem[]>('/sections/navigation')
+  const navigation = await apiGet<DeptNavigationItem[]>('/sections/navigation', { moduleType })
   const entry = navigation[0]
   if (entry) {
     router.replace(`/${moduleBase}/${entry.id}`)

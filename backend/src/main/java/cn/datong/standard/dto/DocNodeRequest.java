@@ -20,7 +20,8 @@ public record DocNodeRequest(
         Boolean workshopUploadEnabled,
         List<Long> visibleWorkshopIds,
         Boolean showUploadProgress,
-        String moduleType
+        String moduleType,
+        Integer progressTarget
 ) {
     public DocNodeRequest(Long sectionDeptId,
                           Long parentId,
@@ -34,7 +35,7 @@ public record DocNodeRequest(
                           String submitterMode,
                           List<DocUploadRequirementRequest> requirements) {
         this(sectionDeptId, parentId, nodeName, sortOrder, targetParentId, attachmentEnabled,
-                contentHtml, fileType, null, businessType, submitterMode, requirements, null, null, null, null, null);
+                contentHtml, fileType, null, businessType, submitterMode, requirements, null, null, null, null, null, null);
     }
 
     public DocNodeRequest(Long sectionDeptId,
@@ -46,7 +47,7 @@ public record DocNodeRequest(
                           String contentHtml,
                           String fileType) {
         this(sectionDeptId, parentId, nodeName, sortOrder, targetParentId, attachmentEnabled,
-                contentHtml, fileType, null, null, null, null, null, null, null, null, null);
+                contentHtml, fileType, null, null, null, null, null, null, null, null, null, null);
     }
 
     public DocNodeRequest(Long sectionDeptId,
@@ -59,7 +60,7 @@ public record DocNodeRequest(
                           String fileType,
                           Integer docYear) {
         this(sectionDeptId, parentId, nodeName, sortOrder, targetParentId, attachmentEnabled,
-                contentHtml, fileType, docYear, null, null, null, null, null, null, null, null);
+                contentHtml, fileType, docYear, null, null, null, null, null, null, null, null, null);
     }
 
     public DocNodeRequest(Long sectionDeptId,
@@ -75,7 +76,7 @@ public record DocNodeRequest(
                           String submitterMode,
                           List<DocUploadRequirementRequest> requirements) {
         this(sectionDeptId, parentId, nodeName, sortOrder, targetParentId, attachmentEnabled, contentHtml, fileType,
-                docYear, businessType, submitterMode, requirements, null, null, null, null, null);
+                docYear, businessType, submitterMode, requirements, null, null, null, null, null, null);
     }
 
     public DocNodeRequest(Long sectionDeptId,
@@ -91,7 +92,7 @@ public record DocNodeRequest(
                           String submitterMode,
                           Boolean showUploadProgress) {
         this(sectionDeptId, parentId, nodeName, sortOrder, targetParentId, attachmentEnabled, contentHtml, fileType,
-                docYear, businessType, submitterMode, null, null, null, null, showUploadProgress, null);
+                docYear, businessType, submitterMode, null, null, null, null, showUploadProgress, null, null);
     }
 
     public DocNodeRequest(Long sectionDeptId,
@@ -110,7 +111,7 @@ public record DocNodeRequest(
                           Boolean workshopUploadEnabled,
                           List<Long> visibleWorkshopIds) {
         this(sectionDeptId, parentId, nodeName, sortOrder, targetParentId, attachmentEnabled, contentHtml, fileType,
-                docYear, businessType, submitterMode, requirements, uploadDeadline, workshopUploadEnabled, visibleWorkshopIds, null, null);
+                docYear, businessType, submitterMode, requirements, uploadDeadline, workshopUploadEnabled, visibleWorkshopIds, null, null, null);
     }
 
     public DocNodeRequest(Long sectionDeptId,
@@ -130,22 +131,8 @@ public record DocNodeRequest(
                           List<Long> visibleWorkshopIds,
                           Boolean showUploadProgress,
                           String moduleType) {
-        this.sectionDeptId = sectionDeptId;
-        this.parentId = parentId;
-        this.nodeName = nodeName;
-        this.sortOrder = sortOrder;
-        this.targetParentId = targetParentId;
-        this.attachmentEnabled = attachmentEnabled;
-        this.contentHtml = contentHtml;
-        this.fileType = fileType;
-        this.docYear = docYear;
-        this.businessType = businessType;
-        this.submitterMode = submitterMode;
-        this.requirements = requirements;
-        this.uploadDeadline = uploadDeadline;
-        this.workshopUploadEnabled = workshopUploadEnabled;
-        this.visibleWorkshopIds = visibleWorkshopIds;
-        this.showUploadProgress = showUploadProgress;
-        this.moduleType = moduleType;
+        this(sectionDeptId, parentId, nodeName, sortOrder, targetParentId, attachmentEnabled, contentHtml, fileType,
+                docYear, businessType, submitterMode, requirements, uploadDeadline, workshopUploadEnabled,
+                visibleWorkshopIds, showUploadProgress, moduleType, null);
     }
 }

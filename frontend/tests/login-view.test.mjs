@@ -12,6 +12,9 @@ const personalSpaceView = readFileSync(resolve('src/views/PersonalSpaceView.vue'
 const errorReporter = readFileSync(resolve('src/utils/errorReporter.ts'), 'utf8')
 const layoutView = readFileSync(resolve('src/views/LayoutView.vue'), 'utf8')
 const orgFilesView = readFileSync(resolve('src/views/OrgFilesView.vue'), 'utf8')
+const dashboardView = readFileSync(resolve('src/views/DashboardView.vue'), 'utf8')
+const deptView = readFileSync(resolve('src/views/DeptView.vue'), 'utf8')
+const orgHomeRedirectView = readFileSync(resolve('src/views/OrgHomeRedirectView.vue'), 'utf8')
 
 test('login form does not prefill the seeded demo account', () => {
   assert.match(formDeclaration, /password:\s*['"]['"]/)
@@ -67,15 +70,39 @@ test('module layout lists sections directly in navigation order for both modules
   assert.doesNotMatch(layoutView, /<template\s+#title>科室<\/template>/)
   assert.match(layoutView, /<el-menu-item\s+v-for="dept in navigation"[\s\S]*:index="`\/\$\{moduleBase\}\/\$\{dept\.id\}`"/)
   assert.match(layoutView, /route\.path\.startsWith\('\/rules'\)\s*\?\s*'rules'\s*:\s*'internal'/)
+  assert.match(layoutView, /moduleType:\s*moduleBase\.value\s*={2,3}\s*'rules'\s*\?\s*'RULES'\s*:\s*'INTERNAL'/)
+  assert.match(orgHomeRedirectView, /moduleType/)
 })
 
-test('org files view removes upload badges and folder upload options', () => {
+test('module layout reloads navigation whenever a module route is entered', () => {
+  assert.match(layoutView, /watch\(\(\)\s*=>\s*route\.path/)
+  assert.match(layoutView, /if\s*\(isModuleRoute\.value\)\s*{\s*loadNavigation\(\)/)
+})
+
+test('dashboard keeps only the two blue module titles', () => {
+  assert.match(dashboardView, />内业资料</)
+  assert.match(dashboardView, />技术规章、文件、管理办法</)
+  assert.doesNotMatch(dashboardView, /module-card-desc/)
+  assert.doesNotMatch(dashboardView, /车间上传信息/)
+  assert.doesNotMatch(dashboardView, /制度文件展示、预览和下载/)
+})
+
+test('org files view restores completion progress without workshop upload gates', () => {
   assert.doesNotMatch(orgFilesView, /type="success">上传<\/el-tag>/)
   assert.doesNotMatch(orgFilesView, /upload-tag/)
-  assert.doesNotMatch(orgFilesView, /shouldShowFolderProgress/)
-  assert.doesNotMatch(orgFilesView, /显示上传进度/)
   assert.doesNotMatch(orgFilesView, /允许车间上传/)
   assert.doesNotMatch(orgFilesView, /可上传车间/)
+  assert.match(orgFilesView, /使用完成进度条/)
+  assert.match(orgFilesView, /完成目标数/)
+  assert.match(orgFilesView, /directFileCount/)
+  assert.match(orgFilesView, /completionPercent/)
+  assert.match(orgFilesView, /isInternalModule/)
+})
+
+test('organization console renders fixed navigation departments as read only', () => {
+  assert.match(deptView, /fixedNavigation/)
+  assert.match(deptView, />固定侧边栏</)
+  assert.match(deptView, /v-if="!row\.fixedNavigation"[\s\S]*@click="edit\(row\)"/)
 })
 
 test('internal workshop file creation is not gated by folder upload config', () => {

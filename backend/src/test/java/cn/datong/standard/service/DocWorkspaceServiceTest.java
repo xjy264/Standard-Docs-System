@@ -53,17 +53,44 @@ import static org.mockito.Mockito.when;
 class DocWorkspaceServiceTest {
 
     @Test
-    void sectionNavigationReturnsOnlySections() {
+    void internalSectionNavigationReturnsFixedNineItemsInBusinessOrder() {
         Fixtures fx = fixtures();
-        when(fx.deptMapper.selectList(any())).thenReturn(List.of(
-                dept(1L, 0L, "机关", "AGENCY"),
-                dept(2L, 1L, "办公室", "SECTION"),
-                dept(3L, 1L, "技术科", "SECTION"),
-                dept(5L, 0L, "房建车间", "WORKSHOP")
-        ));
+        when(fx.deptMapper.selectList(any())).thenReturn(fixedNavigationDepts());
 
-        assertThat(fx.service.sections()).extracting(item -> item.deptName())
-                .containsExactly("办公室", "技术科");
+        assertThat(fx.service.sections("INTERNAL")).extracting(item -> item.deptName())
+                .containsExactly(
+                        "办公室（党委办公室）",
+                        "安全培训科",
+                        "计划财务科",
+                        "公寓科",
+                        "党群工作科",
+                        "劳动人事科（党委组织科）",
+                        "技术科",
+                        "房建监测和维修中心",
+                        "生产调度和监控中心"
+                );
+    }
+
+    @Test
+    void rulesSectionNavigationPrependsThreeRulesOnlyItems() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectList(any())).thenReturn(fixedNavigationDepts());
+
+        assertThat(fx.service.sections("RULES")).extracting(item -> item.deptName())
+                .containsExactly(
+                        "技术规章",
+                        "技术文件",
+                        "管理办法",
+                        "办公室（党委办公室）",
+                        "安全培训科",
+                        "计划财务科",
+                        "公寓科",
+                        "党群工作科",
+                        "劳动人事科（党委组织科）",
+                        "技术科",
+                        "房建监测和维修中心",
+                        "生产调度和监控中心"
+                );
     }
 
     @Test
@@ -139,6 +166,57 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
+    void completionProgressCountsOnlyDirectVisibleFilesAndCapsAtOneHundred() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        SysDocNode root = node(1L, 2L, null, "FOLDER", "资料目录", null, 1, 10);
+        root.setShowUploadProgress(1);
+        root.setProgressTarget(1);
+        SysDocNode directOne = node(2L, 2L, 1L, "FILE", "直接文件一", 8L, 2, 10);
+        SysDocNode directTwo = node(3L, 2L, 1L, "FILE", "直接文件二", 9L, 2, 20);
+        SysDocNode childFolder = node(4L, 2L, 1L, "FOLDER", "子文件夹", null, 2, 30);
+        SysDocNode nestedFile = node(5L, 2L, 4L, "FILE", "嵌套文件", 10L, 3, 10);
+        when(fx.nodeMapper.selectList(any())).thenReturn(List.of(root, directOne, directTwo, childFolder, nestedFile));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(
+                item(8L, null, 2L, false),
+                item(9L, null, 2L, false),
+                item(10L, null, 2L, false)
+        ));
+
+        SysDocNode result = fx.service.documentTree(1L, 2L, true, 2L, null, "INTERNAL").getFirst();
+
+        assertThat(result.getDirectFileCount()).isEqualTo(2);
+        assertThat(result.getCompletionPercent()).isEqualTo(100);
+        assertThat(result.getChildren()).filteredOn(child -> "FOLDER".equals(child.getNodeType())).singleElement()
+                .satisfies(child -> assertThat(child.getDirectFileCount()).isEqualTo(1));
+    }
+
+    @Test
+    void workshopCompletionProgressExcludesOtherWorkshopDirectFiles() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        when(fx.deptMapper.selectById(5L)).thenReturn(dept(5L, 0L, "房建车间", "WORKSHOP"));
+        SysDocNode folder = node(1L, 2L, null, "FOLDER", "资料目录", null, 1, 10);
+        folder.setShowUploadProgress(1);
+        folder.setProgressTarget(2);
+        SysDocNode ownFile = node(2L, 2L, 1L, "FILE", "本车间文件", 8L, 2, 10);
+        ownFile.setWorkshopDeptId(5L);
+        SysDocNode otherFile = node(3L, 2L, 1L, "FILE", "其他车间文件", 9L, 2, 20);
+        otherFile.setWorkshopDeptId(6L);
+        when(fx.nodeMapper.selectList(any())).thenReturn(List.of(folder, ownFile, otherFile));
+        when(fx.itemMapper.selectList(any())).thenReturn(List.of(
+                item(8L, null, 2L, false),
+                item(9L, null, 2L, false)
+        ));
+
+        SysDocNode result = fx.service.documentTree(20L, 5L, false, 2L, null, "INTERNAL").getFirst();
+
+        assertThat(result.getChildren()).extracting(SysDocNode::getNodeName).containsExactly("本车间文件");
+        assertThat(result.getDirectFileCount()).isEqualTo(1);
+        assertThat(result.getCompletionPercent()).isEqualTo(50);
+    }
+
+    @Test
     void documentTreeFiltersByModuleType() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
@@ -151,6 +229,19 @@ class DocWorkspaceServiceTest {
         List<SysDocNode> tree = fx.service.documentTree(20L, 5L, false, 2L, null, "RULES");
 
         assertThat(tree).extracting(SysDocNode::getNodeName).containsExactly("制度目录");
+    }
+
+    @Test
+    void rulesOnlySectionRejectsInternalDocumentTree() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(20L)).thenReturn(
+                dept(20L, 1L, "技术规章", "DOC_SECTION", "DOC_TECH_RULES"));
+
+        assertThatThrownBy(() -> fx.service.documentTree(1L, 2L, true, 20L, null, "INTERNAL"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("规章专用入口仅支持规章制度资料");
+
+        verify(fx.nodeMapper, never()).selectList(any());
     }
 
     @Test
@@ -233,7 +324,7 @@ class DocWorkspaceServiceTest {
             return 1;
         });
         DocNodeRequest request = new DocNodeRequest(2L, null, "内业资料", 0, null, false, "", null, 2026,
-                null, null, null, null, true, List.of(5L, 6L), true, "INTERNAL");
+                null, null, null, null, true, List.of(5L, 6L), false, "INTERNAL");
 
         fx.service.createFolderNode(10L, 2L, false, request);
 
@@ -255,7 +346,7 @@ class DocWorkspaceServiceTest {
         when(fx.nodeMapper.selectById(10L)).thenReturn(folder);
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         DocNodeRequest request = new DocNodeRequest(2L, null, "内业资料", 0, null, false, "", null, 2026,
-                null, null, null, null, true, List.of(5L), true, "INTERNAL");
+                null, null, null, null, true, List.of(5L), false, "INTERNAL");
 
         fx.service.updateNode(2L, false, 10L, request);
 
@@ -426,31 +517,81 @@ class DocWorkspaceServiceTest {
     }
 
     @Test
-    void createFolderPersistsProgressVisibility() {
+    void createInternalFolderPersistsCompletionTarget() {
         Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
         when(fx.orgAssignmentService.adminUserIds()).thenReturn(java.util.Set.of(10L));
-        DocNodeRequest request = new DocNodeRequest(2L, null, "资料收集", 10, null, false, "", null, 2026, null, null, false);
+        DocNodeRequest request = new DocNodeRequest(2L, null, "资料收集", 10, null, false, "", null,
+                2026, null, null, null, null, false, List.of(), true, "INTERNAL", 12);
 
         fx.service.createFolderNode(10L, 2L, false, request);
 
         ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
         verify(fx.nodeMapper).insert(nodeCaptor.capture());
-        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(0);
+        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(1);
+        assertThat(nodeCaptor.getValue().getProgressTarget()).isEqualTo(12);
     }
 
     @Test
-    void updateFolderPersistsProgressVisibility() {
+    void rulesOnlySectionRejectsInternalRootFolder() {
         Fixtures fx = fixtures();
-        when(fx.nodeMapper.selectById(5L)).thenReturn(node(5L, 2L, null, "FOLDER", "资料收集", null, 1, 10));
+        when(fx.deptMapper.selectById(20L)).thenReturn(
+                dept(20L, 1L, "技术规章", "DOC_SECTION", "DOC_TECH_RULES"));
+        DocNodeRequest request = new DocNodeRequest(20L, null, "错误目录", 10, null, false, "", null,
+                2026, null, null, null, null, false, List.of(), false, "INTERNAL", null);
+
+        assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, true, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("规章专用入口仅支持规章制度资料");
+
+        verify(fx.nodeMapper, never()).insert(any(SysDocNode.class));
+    }
+
+    @Test
+    void createInternalFolderRejectsMissingCompletionTarget() {
+        Fixtures fx = fixtures();
         when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
-        DocNodeRequest request = new DocNodeRequest(2L, null, "资料收集", 10, null, false, "", null, null, null, null, false);
+        DocNodeRequest request = new DocNodeRequest(2L, null, "资料收集", 10, null, false, "", null,
+                2026, null, null, null, null, false, List.of(), true, "INTERNAL", null);
+
+        assertThatThrownBy(() -> fx.service.createFolderNode(10L, 2L, true, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("请输入大于 0 的完成目标数");
+
+        verify(fx.nodeMapper, never()).insert(any(SysDocNode.class));
+    }
+
+    @Test
+    void rulesFolderIgnoresCompletionProgressConfiguration() {
+        Fixtures fx = fixtures();
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "制度目录", 10, null, false, "", null,
+                2026, null, null, null, null, false, List.of(), true, "RULES", 12);
+
+        fx.service.createFolderNode(10L, 2L, true, request);
+
+        ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
+        verify(fx.nodeMapper).insert(nodeCaptor.capture());
+        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isZero();
+        assertThat(nodeCaptor.getValue().getProgressTarget()).isNull();
+    }
+
+    @Test
+    void updateInternalFolderPersistsCompletionTarget() {
+        Fixtures fx = fixtures();
+        SysDocNode folder = node(5L, 2L, null, "FOLDER", "资料收集", null, 1, 10);
+        folder.setModuleType("INTERNAL");
+        when(fx.nodeMapper.selectById(5L)).thenReturn(folder);
+        when(fx.deptMapper.selectById(2L)).thenReturn(dept(2L, 1L, "办公室", "SECTION"));
+        DocNodeRequest request = new DocNodeRequest(2L, null, "资料收集", 10, null, false, "", null,
+                null, null, null, null, null, false, List.of(), true, "INTERNAL", 20);
 
         fx.service.updateNode(2L, false, 5L, request);
 
         ArgumentCaptor<SysDocNode> nodeCaptor = ArgumentCaptor.forClass(SysDocNode.class);
         verify(fx.nodeMapper).updateById(nodeCaptor.capture());
-        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(0);
+        assertThat(nodeCaptor.getValue().getShowUploadProgress()).isEqualTo(1);
+        assertThat(nodeCaptor.getValue().getProgressTarget()).isEqualTo(20);
     }
 
     @Test
@@ -1337,6 +1478,29 @@ class DocWorkspaceServiceTest {
         dept.setDeptType(type);
         dept.setStatus("ENABLED");
         dept.setDeleted(0);
+        return dept;
+    }
+
+    private List<SysDept> fixedNavigationDepts() {
+        return List.of(
+                dept(30L, 1L, "管理办法", "DOC_SECTION", "DOC_MANAGEMENT_METHODS"),
+                dept(3L, 1L, "技术科", "SECTION", "TECH"),
+                dept(11L, 1L, "公寓科", "SECTION", "APARTMENT_SECTION"),
+                dept(20L, 1L, "技术规章", "DOC_SECTION", "DOC_TECH_RULES"),
+                dept(2L, 1L, "办公室（党委办公室）", "SECTION", "OFFICE"),
+                dept(13L, 1L, "房建监测和维修中心", "SECTION", "BUILDING_MAINTENANCE_CENTER"),
+                dept(4L, 1L, "安全培训科", "SECTION", "SAFETY"),
+                dept(12L, 1L, "党群工作科", "SECTION", "PARTY_AFFAIRS"),
+                dept(21L, 1L, "技术文件", "DOC_SECTION", "DOC_TECH_FILES"),
+                dept(7L, 1L, "计划财务科", "SECTION", "FINANCE"),
+                dept(8L, 1L, "劳动人事科（党委组织科）", "SECTION", "HR_ORG"),
+                dept(14L, 1L, "生产调度和监控中心", "SECTION", "PRODUCTION_DISPATCH_CENTER")
+        );
+    }
+
+    private SysDept dept(Long id, Long parentId, String name, String type, String code) {
+        SysDept dept = dept(id, parentId, name, type);
+        dept.setDeptCode(code);
         return dept;
     }
 

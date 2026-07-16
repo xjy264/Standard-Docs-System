@@ -13,6 +13,7 @@ public record DeptOverview(
         long fileCount,
         List<String> adminNames,
         boolean missingAdmin,
-        boolean adminRequired
+        boolean adminRequired,
+        boolean fixedNavigation
 ) {
 }

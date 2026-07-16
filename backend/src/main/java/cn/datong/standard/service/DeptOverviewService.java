@@ -53,6 +53,7 @@ public class DeptOverviewService {
                 .collect(Collectors.groupingBy(sectionDeptId -> sectionDeptId, Collectors.counting()));
 
         return depts.stream()
+                .filter(dept -> !FixedDocNavigation.isDocSection(dept))
                 .sorted(Comparator.comparing(SysDept::getSortOrder, Comparator.nullsLast(Integer::compareTo)))
                 .map(dept -> toOverview(dept, usersByDept.getOrDefault(dept.getId(), List.of()),
                         fileCountByDept.getOrDefault(dept.getId(), 0L), adminUserIds, adminRequiredDeptIds))
@@ -78,7 +79,8 @@ public class DeptOverviewService {
                 fileCount,
                 adminRequired ? adminNames : List.of(),
                 adminRequired && adminNames.isEmpty(),
-                adminRequired
+                adminRequired,
+                FixedDocNavigation.isFixed(dept)
         );
     }
 

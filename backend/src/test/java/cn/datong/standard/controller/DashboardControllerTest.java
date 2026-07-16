@@ -78,7 +78,8 @@ class DashboardControllerTest {
         SysDocCategoryMapper categoryMapper = mock(SysDocCategoryMapper.class);
         when(deptMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
                 dept(1L, 0L, "机关", "AGENCY"),
-                dept(2L, 1L, "技术科", "SECTION")
+                dept(2L, 1L, "技术科", "SECTION"),
+                dept(99L, 1L, "技术规章", "DOC_SECTION")
         ));
         when(categoryMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(category(6L, 2L)));
         when(docItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
@@ -100,6 +101,7 @@ class DashboardControllerTest {
 
         assertThat(response.getData()).hasSize(1);
         assertThat(response.getData().getFirst().fileCount()).isEqualTo(2L);
+        assertThat(response.getData().getFirst().children()).hasSize(1);
         assertThat(response.getData().getFirst().children().getFirst().deptName()).isEqualTo("技术科");
         assertThat(response.getData().getFirst().children().getFirst().fileCount()).isEqualTo(2L);
     }
