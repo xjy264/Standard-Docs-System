@@ -264,7 +264,7 @@ backup_db() {
   output="$BACKUP_DIR/dt-standard-${timestamp}.sql.gz"
   cd "$DEPLOY_DIR"
   echo "开始备份数据库..."
-  compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysqldump -h127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE"' | gzip > "$output"
+  compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysqldump --no-tablespaces -h127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE"' | gzip > "$output"
   password="$(env_value BACKUP_PASSWORD)"
   if [ -n "$password" ] && command -v openssl >/dev/null 2>&1; then
     encrypted="${output}.enc"
