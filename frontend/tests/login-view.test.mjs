@@ -8,9 +8,9 @@ const formDeclaration = loginView.match(/const form = reactive\((\{[^)]*\})\)/s)
 const authStore = readFileSync(resolve('src/stores/auth.ts'), 'utf8')
 const httpClient = readFileSync(resolve('src/api/http.ts'), 'utf8')
 const detailView = readFileSync(resolve('src/views/DocItemDetailView.vue'), 'utf8')
-const personalSpaceView = readFileSync(resolve('src/views/PersonalSpaceView.vue'), 'utf8')
 const errorReporter = readFileSync(resolve('src/utils/errorReporter.ts'), 'utf8')
 const layoutView = readFileSync(resolve('src/views/LayoutView.vue'), 'utf8')
+const routerSource = readFileSync(resolve('src/router/index.ts'), 'utf8')
 const orgFilesView = readFileSync(resolve('src/views/OrgFilesView.vue'), 'utf8')
 const dashboardView = readFileSync(resolve('src/views/DashboardView.vue'), 'utf8')
 const deptView = readFileSync(resolve('src/views/DeptView.vue'), 'utf8')
@@ -39,12 +39,6 @@ test('frontend keeps login jwt out of script-visible storage and urls', () => {
   assert.doesNotMatch(detailView, /access_token/)
 })
 
-test('system error console lives in notifications and is super admin only', () => {
-  assert.match(personalSpaceView, /系统错误/)
-  assert.match(personalSpaceView, /isSuperAdmin/)
-  assert.match(personalSpaceView, /ErrorEventPanel/)
-})
-
 test('frontend reports runtime errors without recursive reporting or secrets', () => {
   assert.match(errorReporter, /installErrorReporter/)
   assert.match(errorReporter, /window\.addEventListener\(['"]error['"]/)
@@ -63,6 +57,27 @@ test('module layout puts home in the top left and removes sidebar home', () => {
   assert.match(layoutView, /<div class="top-actions top-left">[\s\S]*router\.push\('\/dashboard'\)[\s\S]*首页[\s\S]*<\/div>/)
   assert.doesNotMatch(layoutView, />资料目录<\/el-button>/)
   assert.doesNotMatch(layoutView, /<el-menu-item\s+index="\/dashboard">首页<\/el-menu-item>/)
+})
+
+test('console is visible only to administrators and contains only organization and user management', () => {
+  assert.match(layoutView, /v-if="canAccessConsole"[\s\S]*router\.push\('\/console\/users'\)[\s\S]*控制台/)
+  assert.match(layoutView, /const canAccessConsole = computed\(\(\) => Boolean\(auth\.user\?\.isSuperAdmin \|\| auth\.user\?\.admin\)\)/)
+  assert.doesNotMatch(layoutView, />个人空间</)
+  assert.doesNotMatch(layoutView, />资料目录设置</)
+  assert.doesNotMatch(layoutView, />大修模板库</)
+  assert.match(layoutView, />组织管理</)
+  assert.match(layoutView, /<el-menu-item index="\/console\/users">用户管理<\/el-menu-item>/)
+})
+
+test('router retires old console pages and redirects ordinary users away from console routes', () => {
+  assert.doesNotMatch(routerSource, /import PersonalSpaceView/)
+  assert.doesNotMatch(routerSource, /import DocRootFolderSettingsView/)
+  assert.doesNotMatch(routerSource, /import RepairProjectTemplateView/)
+  assert.doesNotMatch(routerSource, /path:\s*'console\/(personal|doc-root-folders|repair-project-templates)'/)
+  assert.match(routerSource, /path:\s*'console',\s*redirect:\s*'\/console\/users'/)
+  assert.match(routerSource, /RETIRED_CONSOLE_PATHS/)
+  assert.match(routerSource, /to\.path\.startsWith\('\/console'\)[\s\S]*!canAccessConsole[\s\S]*return '\/dashboard'/)
+  assert.match(routerSource, /RETIRED_CONSOLE_PATHS\.has\(to\.path\)[\s\S]*canAccessConsole\s*\?\s*'\/console\/users'\s*:\s*'\/dashboard'/)
 })
 
 test('module layout lists sections directly in navigation order for both modules', () => {

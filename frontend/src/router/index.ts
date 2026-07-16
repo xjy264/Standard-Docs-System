@@ -10,8 +10,6 @@ import OrgFilesView from '../views/OrgFilesView.vue'
 import DocRecycleBinView from '../views/DocRecycleBinView.vue'
 import DocItemDetailView from '../views/DocItemDetailView.vue'
 import DocCategorySettingsView from '../views/DocCategorySettingsView.vue'
-import DocRootFolderSettingsView from '../views/DocRootFolderSettingsView.vue'
-import PersonalSpaceView from '../views/PersonalSpaceView.vue'
 import UsersView from '../views/UsersView.vue'
 import ApprovalView from '../views/ApprovalView.vue'
 import DeptView from '../views/DeptView.vue'
@@ -21,7 +19,13 @@ import PermissionMatrixView from '../views/PermissionMatrixView.vue'
 import LogsView from '../views/LogsView.vue'
 import StorageView from '../views/StorageView.vue'
 import SettingsView from '../views/SettingsView.vue'
-import RepairProjectTemplateView from '../views/RepairProjectTemplateView.vue'
+
+const RETIRED_CONSOLE_PATHS = new Set([
+  '/console/personal',
+  '/console/doc-root-folders',
+  '/console/repair-project-templates',
+  '/personal'
+])
 
 const router = createRouter({
   history: createWebHistory(),
@@ -47,16 +51,12 @@ const router = createRouter({
         { path: 'rules/:deptId', name: 'rules-root', component: OrgFilesView, meta: { moduleBase: 'rules', moduleType: 'RULES' } },
         { path: 'rules/:deptId/recycle-bin', name: 'rules-recycle-bin', component: DocRecycleBinView, meta: { moduleBase: 'rules', moduleType: 'RULES' } },
         { path: 'rules/:deptId/items/:itemId', name: 'rules-item-detail', component: DocItemDetailView, meta: { moduleBase: 'rules', moduleType: 'RULES' } },
-        { path: 'console', redirect: '/console/personal' },
-        { path: 'console/personal', component: PersonalSpaceView },
+        { path: 'console', redirect: '/console/users' },
         { path: 'console/doc-categories', component: DocCategorySettingsView },
-        { path: 'console/doc-root-folders', component: DocRootFolderSettingsView },
-        { path: 'console/repair-project-templates', component: RepairProjectTemplateView },
         { path: 'console/depts', component: DeptView },
         { path: 'console/depts/:id', component: DeptDetailView },
         { path: 'console/users', component: UsersView },
         { path: 'console/approvals', component: ApprovalView },
-        { path: 'personal', redirect: '/console/personal' },
         { path: 'depts', redirect: '/console/depts' },
         { path: 'depts/:id', redirect: (to) => `/console/depts/${to.params.id}` },
         { path: 'approvals', redirect: '/console/approvals' },
@@ -97,6 +97,13 @@ router.beforeEach(async (to) => {
     return '/login'
   }
   if (auth.isAuthenticated && to.path === '/login') {
+    return '/dashboard'
+  }
+  const canAccessConsole = Boolean(auth.user?.isSuperAdmin || auth.user?.admin)
+  if (RETIRED_CONSOLE_PATHS.has(to.path)) {
+    return canAccessConsole ? '/console/users' : '/dashboard'
+  }
+  if (to.path.startsWith('/console') && !canAccessConsole) {
     return '/dashboard'
   }
   return true

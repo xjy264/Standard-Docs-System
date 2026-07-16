@@ -6,7 +6,7 @@
       </div>
       <div class="brand">标准化资料管理系统</div>
       <div class="top-actions top-right">
-        <el-button class="console-button" plain @click="router.push('/console/personal')">控制台</el-button>
+        <el-button v-if="canAccessConsole" class="console-button" plain @click="router.push('/console/users')">控制台</el-button>
         <span>{{ auth.user?.realName || auth.user?.phone }}</span>
         <el-button link style="color:#fff;margin-left:14px" @click="logout">退出</el-button>
       </div>
@@ -15,11 +15,8 @@
       <aside v-if="!isDashboard" class="sidebar">
         <el-menu router :default-active="$route.path" :default-openeds="defaultOpeneds">
           <template v-if="isConsole">
-            <el-menu-item index="/console/personal">个人空间</el-menu-item>
-            <el-menu-item v-if="canManageDocRoots" index="/console/doc-root-folders">资料目录设置</el-menu-item>
-            <el-menu-item v-if="canManageRepairTemplates" index="/console/repair-project-templates">大修模板库</el-menu-item>
             <el-menu-item v-if="auth.user?.isSuperAdmin" index="/console/depts">组织管理</el-menu-item>
-            <el-menu-item v-if="auth.hasPermission('user:view')" index="/console/users">用户管理</el-menu-item>
+            <el-menu-item index="/console/users">用户管理</el-menu-item>
           </template>
           <template v-else>
             <el-menu-item v-for="dept in navigation" :key="dept.id" :index="`/${moduleBase}/${dept.id}`">{{ dept.deptName }}</el-menu-item>
@@ -58,8 +55,7 @@ const isConsole = computed(() => route.path.startsWith('/console'))
 const isDashboard = computed(() => route.path === '/dashboard')
 const isModuleRoute = computed(() => route.path.startsWith('/internal') || route.path.startsWith('/rules'))
 const moduleBase = computed(() => route.path.startsWith('/rules') ? 'rules' : 'internal')
-const canManageDocRoots = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
-const canManageRepairTemplates = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
+const canAccessConsole = computed(() => Boolean(auth.user?.isSuperAdmin || auth.user?.admin))
 const defaultOpeneds: string[] = []
 
 async function logout() {
