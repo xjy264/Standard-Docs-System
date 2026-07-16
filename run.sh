@@ -171,7 +171,7 @@ migrate_compose_mysql() {
   wait_compose_mysql
   for file in "${migration_files[@]}"; do
     echo "执行数据库迁移：$file"
-    compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE"' < "$DEPLOY_DIR/mysql-init/$file" >/dev/null
+    compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -h127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE"' < "$DEPLOY_DIR/mysql-init/$file" >/dev/null
   done
 }
 
@@ -264,7 +264,7 @@ backup_db() {
   output="$BACKUP_DIR/dt-standard-${timestamp}.sql.gz"
   cd "$DEPLOY_DIR"
   echo "开始备份数据库..."
-  compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysqldump -u"$MYSQL_USER" "$MYSQL_DATABASE"' | gzip > "$output"
+  compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysqldump -h127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE"' | gzip > "$output"
   password="$(env_value BACKUP_PASSWORD)"
   if [ -n "$password" ] && command -v openssl >/dev/null 2>&1; then
     encrypted="${output}.enc"
@@ -297,7 +297,7 @@ restore_db() {
   fi
   cd "$DEPLOY_DIR"
   echo "即将恢复数据库：$file"
-  gzip -dc "$input" | compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE"'
+  gzip -dc "$input" | compose_cmd exec -T mysql sh -lc 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -h127.0.0.1 -u"$MYSQL_USER" "$MYSQL_DATABASE"'
   [ -n "$temp" ] && rm -f "$temp"
   echo "数据库恢复完成。"
 }
@@ -320,8 +320,8 @@ export_errors() {
   output="$ROOT_DIR/error-events-${timestamp}.zip"
   cd "$DEPLOY_DIR"
   echo "导出最近 ${days} 天系统错误..."
-  compose_cmd exec -T mysql sh -lc "MYSQL_PWD=\"\$MYSQL_PASSWORD\" mysql -u\"\$MYSQL_USER\" \"\$MYSQL_DATABASE\" --batch --raw -e \"SELECT id,error_id,trace_id,source,severity,status_code,business_code,message,exception_class,request_uri,frontend_route,user_id,dept_id,resolved,created_at FROM sys_error_event WHERE created_at >= DATE_SUB(NOW(), INTERVAL ${days} DAY) ORDER BY created_at DESC\"" > "$tmp/error-events.tsv" || true
-  compose_cmd exec -T mysql sh -lc "MYSQL_PWD=\"\$MYSQL_PASSWORD\" mysql -u\"\$MYSQL_USER\" \"\$MYSQL_DATABASE\" --batch --raw --skip-column-names -e \"SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('id',id,'errorId',error_id,'traceId',trace_id,'source',source,'severity',severity,'message',message,'exceptionClass',exception_class,'requestUri',request_uri,'frontendRoute',frontend_route,'stackTrace',stack_trace,'frontendStack',frontend_stack,'createdAt',created_at)), JSON_ARRAY()) FROM sys_error_event WHERE created_at >= DATE_SUB(NOW(), INTERVAL ${days} DAY)\"" > "$tmp/error-events.json" || true
+  compose_cmd exec -T mysql sh -lc "MYSQL_PWD=\"\$MYSQL_PASSWORD\" mysql -h127.0.0.1 -u\"\$MYSQL_USER\" \"\$MYSQL_DATABASE\" --batch --raw -e \"SELECT id,error_id,trace_id,source,severity,status_code,business_code,message,exception_class,request_uri,frontend_route,user_id,dept_id,resolved,created_at FROM sys_error_event WHERE created_at >= DATE_SUB(NOW(), INTERVAL ${days} DAY) ORDER BY created_at DESC\"" > "$tmp/error-events.tsv" || true
+  compose_cmd exec -T mysql sh -lc "MYSQL_PWD=\"\$MYSQL_PASSWORD\" mysql -h127.0.0.1 -u\"\$MYSQL_USER\" \"\$MYSQL_DATABASE\" --batch --raw --skip-column-names -e \"SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('id',id,'errorId',error_id,'traceId',trace_id,'source',source,'severity',severity,'message',message,'exceptionClass',exception_class,'requestUri',request_uri,'frontendRoute',frontend_route,'stackTrace',stack_trace,'frontendStack',frontend_stack,'createdAt',created_at)), JSON_ARRAY()) FROM sys_error_event WHERE created_at >= DATE_SUB(NOW(), INTERVAL ${days} DAY)\"" > "$tmp/error-events.json" || true
   compose_cmd logs --since "${days}d" backend frontend > "$tmp/docker-logs.txt" 2>/dev/null || true
   (cd "$ROOT_DIR" && ./run.sh doctor > "$tmp/doctor.txt" 2>&1) || true
   cat > "$tmp/README.txt" <<EOF
